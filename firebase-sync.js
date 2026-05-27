@@ -20,6 +20,8 @@
   ];
 
   var loaded = 0;
+  var sdkReady = false;
+
   function loadNext() {
     if (loaded >= scriptsToLoad.length) {
       onSDKReady();
@@ -28,7 +30,11 @@
     var s = document.createElement('script');
     s.src = scriptsToLoad[loaded];
     s.onload = function () { loaded++; loadNext(); };
-    s.onerror = function () { console.error('Firebase SDK load failed:', scriptsToLoad[loaded]); };
+    s.onerror = function () {
+      console.error('Firebase SDK load failed:', scriptsToLoad[loaded]);
+      // Still try to inject the button so user sees something
+      injectAuthUI();
+    };
     document.head.appendChild(s);
   }
   loadNext();
@@ -63,6 +69,7 @@
 
   /* ── SDK Ready ── */
   function onSDKReady() {
+    sdkReady = true;
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
 
@@ -92,17 +99,30 @@
       if (!isSyncing) schedulePush();
     };
 
-    injectAuthUI();
+    // Update UI now that SDK is loaded
+    updateAuthUI();
   }
 
-  /* ── Auth UI ── */
+  /* ── Auth UI — injected immediately, doesn't wait for SDK ── */
+  function waitForTopbar() {
+    var topbar = document.getElementById('topbar');
+    if (topbar) {
+      injectAuthUI();
+    } else {
+      setTimeout(waitForTopbar, 200);
+    }
+  }
+
+  // Start looking for topbar right away (don't wait for SDK)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', waitForTopbar, { once: true });
+  } else {
+    waitForTopbar();
+  }
+
   function injectAuthUI() {
     var topbar = document.getElementById('topbar');
-    if (!topbar) {
-      // Wait for topbar.js to inject
-      setTimeout(injectAuthUI, 200);
-      return;
-    }
+    if (!topbar) return;
 
     // Check if already injected
     if (document.getElementById('syncAuthBtn')) return;
@@ -110,13 +130,17 @@
     var btn = document.createElement('button');
     btn.id = 'syncAuthBtn';
     btn.setAttribute('aria-label', 'Sync account');
-    btn.style.cssText = 'background:none;border:1px solid rgba(255,255,255,0.1);border-radius:50%;' +
-      'width:32px;height:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
-      'font-size:16px;padding:0;-webkit-tap-highlight-color:transparent;transition:border-color 0.15s;' +
-      'flex-shrink:0;overflow:hidden;';
+    btn.style.cssText = 'background:none;border:1px solid rgba(255,255,255,0.15);border-radius:50%;' +
+      'width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
+      'font-size:16px;padding:0;-webkit-tap-highlight-color:transparent;transition:border-color 0.15s,opacity 0.15s;' +
+      'flex-shrink:0;overflow:hidden;margin-right:auto;';
     topbar.insertBefore(btn, topbar.firstChild);
 
     btn.addEventListener('click', function () {
+      if (!sdkReady) {
+        alert('Firebase загружается, подождите пару секунд...');
+        return;
+      }
       if (currentUser) {
         if (confirm('Выйти из синхронизации?\n\nДанные останутся на этом устройстве.')) {
           firebase.auth().signOut();
@@ -152,9 +176,9 @@
       }
       btn.title = 'Синхронизация: ' + currentUser.email;
     } else {
-      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>';
+      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="rgba(255,255,255,0.5)" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>';
       btn.title = 'Войти для синхронизации';
-      btn.style.borderColor = 'rgba(255,255,255,0.1)';
+      btn.style.borderColor = 'rgba(255,255,255,0.15)';
     }
   }
 
@@ -246,7 +270,7 @@
     if (!btn) return;
     btn.style.borderColor = type === 'synced' ? 'rgba(107,227,164,0.5)' : 'rgba(242,192,99,0.5)';
     setTimeout(function () {
-      btn.style.borderColor = currentUser ? 'rgba(107,227,164,0.3)' : 'rgba(255,255,255,0.1)';
+      btn.style.borderColor = currentUser ? 'rgba(107,227,164,0.3)' : 'rgba(255,255,255,0.15)';
     }, 1500);
   }
 
