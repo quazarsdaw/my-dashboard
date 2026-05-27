@@ -240,14 +240,7 @@
 
         if (changed) {
           window.dispatchEvent(new CustomEvent('gamification-update'));
-          // Reload once to show synced data, but guard against loops:
-          // only reload if we haven't reloaded for sync in the last 10 seconds
-          var now = Date.now();
-          var lastReload = parseInt(localStorage.getItem('_sync_reload_ts') || '0', 10);
-          if (now - lastReload > 10000) {
-            localStorage.setItem('_sync_reload_ts', String(now));
-            setTimeout(function () { window.location.reload(); }, 400);
-          }
+          showSyncBanner();
         }
       } else {
         // No cloud data yet — push current local data
@@ -265,6 +258,32 @@
   }
   function unsanitizeKey(key) {
     return key.replace(/__DOT__/g, '.').replace(/__SLASH__/g, '/');
+  }
+
+  /* ── Sync banner (shown once after cloud pull) ── */
+  function showSyncBanner() {
+    if (document.getElementById('syncBanner')) return;
+    var bar = document.createElement('div');
+    bar.id = 'syncBanner';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;' +
+      'background:linear-gradient(135deg,rgba(107,227,164,0.15),rgba(99,179,237,0.15));' +
+      'backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
+      'border-bottom:1px solid rgba(107,227,164,0.25);' +
+      'padding:14px 20px;display:flex;align-items:center;justify-content:center;gap:12px;' +
+      'font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;font-size:14px;color:#fff;';
+    bar.innerHTML = '<span>☁️ Данные синхронизированы</span>' +
+      '<button id="syncBannerBtn" style="background:rgba(107,227,164,0.2);border:1px solid rgba(107,227,164,0.4);' +
+      'color:#6BE3A4;border-radius:8px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer;' +
+      'font-family:inherit;">Обновить</button>' +
+      '<button id="syncBannerClose" style="background:none;border:none;color:rgba(255,255,255,0.5);' +
+      'font-size:18px;cursor:pointer;padding:0 4px;line-height:1;">✕</button>';
+    document.body.appendChild(bar);
+    document.getElementById('syncBannerBtn').addEventListener('click', function () {
+      window.location.reload();
+    });
+    document.getElementById('syncBannerClose').addEventListener('click', function () {
+      bar.remove();
+    });
   }
 
   /* ── Visual sync indicator ── */
