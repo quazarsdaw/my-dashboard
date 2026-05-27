@@ -73,11 +73,6 @@
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
 
-    // Enable offline persistence
-    db.enablePersistence({ synchronizeTabs: true }).catch(function (err) {
-      console.warn('Firestore persistence:', err.code);
-    });
-
     // Auth state listener
     firebase.auth().onAuthStateChanged(function (user) {
       currentUser = user;
