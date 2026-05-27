@@ -221,30 +221,31 @@
       if (doc.exists && doc.data().data) {
         isSyncing = true;
         var cloudData = doc.data().data;
-        var localHasData = false;
+        var changed = false;
 
-        // Check if local has meaningful data
-        SYNC_KEYS.forEach(function (key) {
-          if (localStorage.getItem(key)) localHasData = true;
-        });
-
-        // If both local and cloud have data, cloud wins (it's the shared state)
+        // Apply cloud data, track if anything actually changed
         Object.keys(cloudData).forEach(function (sanitized) {
           var originalKey = unsanitizeKey(sanitized);
           var cloudVal = cloudData[sanitized];
           if (cloudVal !== null && cloudVal !== undefined) {
-            localStorage.setItem(originalKey, cloudVal);
+            var localVal = localStorage.getItem(originalKey);
+            if (localVal !== cloudVal) {
+              localStorage.setItem(originalKey, cloudVal);
+              changed = true;
+            }
           }
         });
 
         isSyncing = false;
 
-        // Refresh UI
-        window.dispatchEvent(new CustomEvent('gamification-update'));
-        if (window.location.pathname.indexOf('index.html') !== -1 || window.location.pathname === '/' || window.location.pathname.endsWith('/my-dashboard/')) {
-          setTimeout(function () { window.location.reload(); }, 300);
-        } else {
-          window.location.reload();
+        // Only reload if data actually changed
+        if (changed) {
+          window.dispatchEvent(new CustomEvent('gamification-update'));
+          // Use sessionStorage flag to prevent reload loop
+          if (!sessionStorage.getItem('_sync_reloaded')) {
+            sessionStorage.setItem('_sync_reloaded', '1');
+            setTimeout(function () { window.location.reload(); }, 300);
+          }
         }
       } else {
         // No cloud data yet — push current local data
