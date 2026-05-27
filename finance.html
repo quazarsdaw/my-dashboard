@@ -287,35 +287,50 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 
   /* --- CSV Parsing --- */
   function parseCSV(text){
+    // Strip UTF-8 BOM if present
+    if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
     // ZenMoney CSV: semicolon or comma separated, first row is headers
     var lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     if(lines.length < 2) return null;
 
-    // Detect delimiter
+    // Detect delimiter: count semicolons vs commas in first line
     var firstLine = lines[0];
-    var delim = firstLine.indexOf(';') !== -1 ? ';' : ',';
+    var semis = (firstLine.match(/;/g) || []).length;
+    var commas = (firstLine.match(/,/g) || []).length;
+    var delim = semis >= commas ? ';' : ',';
 
     // Parse header
     var headers = splitCSVLine(firstLine, delim);
     headers = headers.map(function(h){ return h.replace(/^["']|["']$/g,'').trim().toLowerCase(); });
 
-    // Find column indices
+    // Find column indices — match both English and Russian headers
     var colMap = {};
-    var knownCols = ['date','categoryname','payee','comment','outcomeaccountname','outcome',
-      'outcomecurrencyshorttitle','incomeaccountname','income','incomecurrencyshorttitle'];
-    // Also support Russian headers
-    var ruMap = {
-      'дата':'date','категория':'categoryname','получатель':'payee','комментарий':'comment',
-      'счёт расхода':'outcomeaccountname','расход':'outcome','валюта расхода':'outcomecurrencyshorttitle',
-      'счёт дохода':'incomeaccountname','доход':'income','валюта дохода':'incomecurrencyshorttitle'
+    // Map: normalized header → colMap key
+    var headerAliases = {
+      'date':'date', 'дата':'date',
+      'categoryname':'categoryname', 'category name':'categoryname',
+      'category':'categoryname', 'категория':'categoryname',
+      'payee':'payee', 'получатель':'payee',
+      'comment':'comment', 'комментарий':'comment',
+      'outcomeaccountname':'outcomeaccountname', 'outcome account name':'outcomeaccountname',
+      'счёт расхода':'outcomeaccountname', 'счет расхода':'outcomeaccountname',
+      'outcome':'outcome', 'расход':'outcome',
+      'outcomecurrencyshorttitle':'outcomecurrencyshorttitle',
+      'валюта расхода':'outcomecurrencyshorttitle',
+      'incomeaccountname':'incomeaccountname', 'income account name':'incomeaccountname',
+      'счёт дохода':'incomeaccountname', 'счет дохода':'incomeaccountname',
+      'income':'income', 'доход':'income',
+      'incomecurrencyshorttitle':'incomecurrencyshorttitle',
+      'валюта дохода':'incomecurrencyshorttitle'
     };
 
     headers.forEach(function(h, i){
-      var norm = h.replace(/["\s]/g,'');
-      if(knownCols.indexOf(norm) !== -1) colMap[norm] = i;
-      if(ruMap[norm]) colMap[ruMap[norm]] = i;
-      // fuzzy match
-      if(norm === 'category' || norm === 'категория') colMap.categoryname = i;
+      // Try exact match first (preserving spaces)
+      if(headerAliases[h]) colMap[headerAliases[h]] = i;
+      // Try without spaces (for camelCase English headers like categoryName)
+      var noSpace = h.replace(/\s/g,'');
+      if(headerAliases[noSpace]) colMap[headerAliases[noSpace]] = i;
     });
 
     var rows = [];
@@ -522,8 +537,11 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
   }
 
   function processText(text, file){
+    // Strip BOM before checking
+    if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
     // Check if text looks like garbage (common with windows-1251 CSVs)
-    if(text.indexOf('�') !== -1 || (text.charCodeAt(0) > 127 && text.indexOf('date') === -1 && text.indexOf('Date') === -1 && text.indexOf('дата') === -1)){
+    var textLower = text.toLowerCase();
+    if(text.indexOf('�') !== -1 || (text.charCodeAt(0) > 127 && textLower.indexOf('date') === -1 && textLower.indexOf('дата') === -1 && textLower.indexOf('категория') === -1)){
       // Re-read as windows-1251
       var reader2 = new FileReader();
       reader2.onload = function(e2){
