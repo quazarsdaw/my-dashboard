@@ -238,14 +238,9 @@
 
         isSyncing = false;
 
-        // Only reload if data actually changed
+        // Update UI without reloading (reload causes infinite loops)
         if (changed) {
           window.dispatchEvent(new CustomEvent('gamification-update'));
-          // Use sessionStorage flag to prevent reload loop
-          if (!sessionStorage.getItem('_sync_reloaded')) {
-            sessionStorage.setItem('_sync_reloaded', '1');
-            setTimeout(function () { window.location.reload(); }, 300);
-          }
         }
       } else {
         // No cloud data yet — push current local data
