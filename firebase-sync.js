@@ -238,9 +238,16 @@
 
         isSyncing = false;
 
-        // Update UI without reloading (reload causes infinite loops)
         if (changed) {
           window.dispatchEvent(new CustomEvent('gamification-update'));
+          // Reload once to show synced data, but guard against loops:
+          // only reload if we haven't reloaded for sync in the last 10 seconds
+          var now = Date.now();
+          var lastReload = parseInt(localStorage.getItem('_sync_reload_ts') || '0', 10);
+          if (now - lastReload > 10000) {
+            localStorage.setItem('_sync_reload_ts', String(now));
+            setTimeout(function () { window.location.reload(); }, 400);
+          }
         }
       } else {
         // No cloud data yet — push current local data
