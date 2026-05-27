@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Магазин наград</title>
+<script src="gamification.js"></script>
+<script src="topbar.js?v=6" defer></script>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-primary: #FAFAFA;
+  --text-secondary: #B8B6B0;
+  --text-tertiary: #76746E;
+  --success: #6BE3A4;
+  --warning: #F2C063;
+  --danger: #FF6B6B;
+  --card-bg: rgba(255,255,255,0.04);
+  --card-radius: 16px;
+}
+html { background: #050506; }
+body {
+  font-family: var(--font-sans); color: var(--text-primary);
+  background: #050506; min-height: 100vh;
+  max-width: 1100px; margin: 0 auto; padding: 0 16px 40px;
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background:
+    radial-gradient(ellipse 50% 50% at 82% 14%, rgba(224,118,88,0.16), transparent),
+    radial-gradient(ellipse 50% 50% at 18% 90%, rgba(180,180,200,0.06), transparent);
+  filter: blur(40px);
+  animation: bgDrift 36s ease-in-out infinite alternate;
+}
+@keyframes bgDrift { 0% { transform: translate(0,0); } 100% { transform: translate(-12px,8px); } }
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='3' height='3' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='white' fill-opacity='0.014'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+.page-title {
+  font-size: 28px; font-weight: 700; letter-spacing: -0.025em;
+  background: linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 16px 0 8px;
+}
+
+/* Balance card */
+.balance-card {
+  background: linear-gradient(135deg, rgba(242,192,99,0.12) 0%, rgba(255,149,89,0.08) 100%);
+  border: 1px solid rgba(242,192,99,0.15);
+  border-radius: var(--card-radius); padding: 20px 24px;
+  margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+}
+.balance-main { display: flex; align-items: baseline; gap: 10px; }
+.balance-icon { font-size: 32px; line-height: 1; }
+.balance-amount {
+  font-size: 40px; font-weight: 800; color: #F2C063;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+}
+.balance-label { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.balance-stats {
+  display: flex; gap: 20px; font-family: var(--font-mono);
+  font-size: 12px; color: var(--text-tertiary);
+}
+.balance-stat span { font-weight: 700; color: var(--text-secondary); }
+
+/* Section */
+.section { margin-bottom: 24px; }
+.section-title {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--text-tertiary);
+  display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+}
+.section-title::before { content: ''; width: 18px; height: 1px; background: var(--text-tertiary); opacity: 0.6; }
+.section-title::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent); }
+
+/* Rewards grid */
+.rewards-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.reward-card {
+  background: var(--card-bg); border-radius: 14px; padding: 16px;
+  border: 1px solid rgba(255,255,255,0.04);
+  display: flex; flex-direction: column; gap: 10px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.reward-card:hover { border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.055); }
+.reward-top { display: flex; align-items: center; gap: 10px; }
+.reward-icon { font-size: 28px; line-height: 1; }
+.reward-info { flex: 1; min-width: 0; }
+.reward-name {
+  font-size: 14px; font-weight: 700; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.reward-price {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+  color: #F2C063; margin-top: 2px;
+}
+.reward-actions { display: flex; gap: 8px; }
+.reward-buy-btn {
+  flex: 1; padding: 10px; border: none; border-radius: 10px; cursor: pointer;
+  font-family: var(--font-sans); font-size: 13px; font-weight: 700;
+  background: linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%);
+  color: #0A0A0B;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.3);
+  transition: transform 0.1s;
+}
+.reward-buy-btn:hover { transform: translateY(-1px); }
+.reward-buy-btn:active { transform: scale(0.97); }
+.reward-buy-btn:disabled {
+  opacity: 0.4; cursor: not-allowed; transform: none;
+}
+.reward-buy-btn.bought {
+  background: rgba(107,227,164,0.15); color: var(--success);
+  box-shadow: none; pointer-events: none;
+}
+.reward-del-btn {
+  width: 38px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; color: var(--text-tertiary); font-size: 16px;
+  cursor: pointer; transition: color 0.15s, background 0.15s;
+}
+.reward-del-btn:hover { color: var(--danger); background: rgba(255,107,107,0.08); }
+
+/* Add reward */
+.add-reward-card {
+  background: var(--card-bg); border-radius: var(--card-radius); padding: 18px;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.add-reward-row {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.add-input {
+  flex: 1; min-width: 140px; padding: 10px 14px; border-radius: 12px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-primary); font-size: 14px; font-family: var(--font-sans);
+  outline: none;
+}
+.add-input:focus { border-color: rgba(255,255,255,0.2); }
+.add-input::placeholder { color: var(--text-tertiary); }
+.add-price {
+  width: 90px; padding: 10px 14px; border-radius: 12px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  color: #F2C063; font-size: 14px; font-family: var(--font-mono); font-weight: 700;
+  outline: none; text-align: center;
+}
+.add-price:focus { border-color: rgba(242,192,99,0.3); }
+.add-price::placeholder { color: var(--text-tertiary); font-weight: 400; }
+.add-icon-btn {
+  width: 50px; height: 46px; border-radius: 12px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-primary); font-size: 22px; text-align: center;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.add-icon-btn:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); }
+.emoji-popup {
+  display: none; position: absolute; z-index: 50; bottom: calc(100% + 8px); left: 0;
+  background: #1a1a1c; border: 1px solid rgba(255,255,255,0.12); border-radius: 16px;
+  padding: 12px; width: 260px; max-height: 220px; overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  display: none; flex-wrap: wrap; gap: 6px;
+}
+.emoji-popup.open { display: flex; }
+.emoji-popup-opt {
+  width: 38px; height: 38px; border-radius: 10px; border: 2px solid transparent;
+  background: rgba(255,255,255,0.04); font-size: 20px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.emoji-popup-opt:hover { background: rgba(255,255,255,0.08); }
+.emoji-popup-opt.selected { border-color: rgba(242,192,99,0.5); background: rgba(242,192,99,0.1); }
+.add-icon-wrap { position: relative; flex-shrink: 0; }
+.add-btn {
+  padding: 10px 20px; border-radius: 12px; border: none; cursor: pointer;
+  background: linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%);
+  color: #0A0A0B; font-size: 13px; font-weight: 700; font-family: var(--font-sans);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.3);
+  transition: transform 0.1s; white-space: nowrap;
+}
+.add-btn:hover { transform: translateY(-1px); }
+
+/* Purchase history */
+.history-list { display: flex; flex-direction: column; gap: 6px; }
+.history-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 10px;
+  background: rgba(255,255,255,0.025);
+}
+.history-name { flex: 1; font-size: 13px; color: var(--text-secondary); }
+.history-price {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--danger);
+}
+.history-date {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary);
+}
+.empty-history {
+  font-size: 12px; color: var(--text-tertiary); font-style: italic;
+  padding: 14px 0; text-align: center;
+}
+
+@media (max-width: 480px) {
+  .page-title { font-size: 22px; }
+  .balance-amount { font-size: 32px; }
+  .rewards-grid { grid-template-columns: 1fr; }
+  .add-reward-row { flex-direction: column; }
+  .add-input, .add-price { width: 100%; }
+  .add-icon-wrap { width: 100%; }
+  .add-icon-btn { width: 100%; }
+  .emoji-popup { left: 0; right: 0; width: auto; }
+}
+</style>
+</head>
+<body>
+
+<h1 class="page-title">Магазин наград</h1>
+
+<div class="balance-card" id="balanceCard">
+  <div>
+    <div class="balance-main">
+      <span class="balance-icon">🪙</span>
+      <span class="balance-amount" id="balanceAmount">0</span>
+    </div>
+    <div class="balance-label">монет на балансе</div>
+  </div>
+  <div class="balance-stats">
+    <div>Заработано: <span id="statEarned">0</span></div>
+    <div>Потрачено: <span id="statSpent">0</span></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Награды</div>
+  <div class="rewards-grid" id="rewardsGrid"></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Добавить награду</div>
+  <div class="add-reward-card">
+    <div class="add-reward-row">
+      <div class="add-icon-wrap">
+        <button class="add-icon-btn" id="addIconBtn" type="button" title="Выбрать эмодзи">🎁</button>
+        <div class="emoji-popup" id="emojiPopup"></div>
+      </div>
+      <input class="add-input" id="addName" type="text" placeholder="Название награды" autocomplete="off">
+      <input class="add-price" id="addPrice" type="number" placeholder="Цена" min="1">
+      <button class="add-btn" id="addBtn">+ Добавить</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">История покупок</div>
+  <div id="historyContainer">
+    <div class="empty-history" id="emptyHistory">Покупок пока нет.</div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var G = window.Gamification;
+
+  function renderBalance() {
+    var coins = G.getCoins();
+    document.getElementById('balanceAmount').textContent = coins.balance;
+    document.getElementById('statEarned').textContent = coins.earned;
+    document.getElementById('statSpent').textContent = coins.spent;
+  }
+
+  function renderRewards() {
+    var store = G.getStore();
+    var coins = G.getCoins();
+    var grid = document.getElementById('rewardsGrid');
+    grid.innerHTML = '';
+    store.rewards.forEach(function (r) {
+      var card = document.createElement('div');
+      card.className = 'reward-card';
+      var canBuy = coins.balance >= r.price;
+      card.innerHTML =
+        '<div class="reward-top">' +
+          '<span class="reward-icon">' + r.icon + '</span>' +
+          '<div class="reward-info">' +
+            '<div class="reward-name">' + r.name + '</div>' +
+            '<div class="reward-price">🪙 ' + r.price + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="reward-actions">' +
+          '<button class="reward-buy-btn" data-id="' + r.id + '"' + (canBuy ? '' : ' disabled') + '>Купить</button>' +
+          '<button class="reward-del-btn" data-id="' + r.id + '" title="Удалить">×</button>' +
+        '</div>';
+      grid.appendChild(card);
+    });
+
+    grid.querySelectorAll('.reward-buy-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-id');
+        var result = G.purchaseReward(id);
+        if (result) {
+          btn.textContent = '✓ Куплено!';
+          btn.classList.add('bought');
+          setTimeout(function () { renderAll(); }, 1200);
+        }
+      });
+    });
+
+    grid.querySelectorAll('.reward-del-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-id');
+        G.removeReward(id);
+        renderAll();
+      });
+    });
+  }
+
+  function renderHistory() {
+    var store = G.getStore();
+    var list = document.getElementById('historyList');
+    var empty = document.getElementById('emptyHistory');
+    list.innerHTML = '';
+    if (store.purchases.length === 0) {
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+    store.purchases.slice(0, 50).forEach(function (p) {
+      var item = document.createElement('div');
+      item.className = 'history-item';
+      var d = new Date(p.date);
+      var dateStr = d.getDate() + '.' + String(d.getMonth()+1).padStart(2,'0') + ' ' +
+                    String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      item.innerHTML =
+        '<span class="history-name">' + (p.name || p.rewardId) + '</span>' +
+        '<span class="history-price">−' + p.price + ' 🪙</span>' +
+        '<span class="history-date">' + dateStr + '</span>';
+      list.appendChild(item);
+    });
+  }
+
+  function renderAll() {
+    renderBalance();
+    renderRewards();
+    renderHistory();
+  }
+
+  // Emoji picker
+  var REWARD_EMOJIS = ['🎁','📺','🎮','🍔','😴','🛍️','🏖️','📱','🍕','🍫','☕','🎬','🎵','🎧','📖','🧖','🛒','🍰','🍦','🎂','🌴','✈️','🎪','🎨','🧘','💆','🍿','🥤','🎯','🏋️'];
+  var selectedIcon = '🎁';
+
+  function renderEmojiPopup() {
+    var popup = document.getElementById('emojiPopup');
+    popup.innerHTML = '';
+    REWARD_EMOJIS.forEach(function (e) {
+      var opt = document.createElement('button');
+      opt.className = 'emoji-popup-opt' + (e === selectedIcon ? ' selected' : '');
+      opt.type = 'button';
+      opt.textContent = e;
+      opt.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        selectedIcon = e;
+        document.getElementById('addIconBtn').textContent = e;
+        renderEmojiPopup();
+        document.getElementById('emojiPopup').classList.remove('open');
+      });
+      popup.appendChild(opt);
+    });
+  }
+
+  document.getElementById('addIconBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var popup = document.getElementById('emojiPopup');
+    popup.classList.toggle('open');
+    renderEmojiPopup();
+  });
+
+  document.addEventListener('click', function () {
+    document.getElementById('emojiPopup').classList.remove('open');
+  });
+
+  document.getElementById('addBtn').addEventListener('click', function () {
+    var name = document.getElementById('addName').value.trim();
+    var price = parseInt(document.getElementById('addPrice').value, 10);
+    if (!name || !price || price < 1) return;
+    G.addReward(name, price, selectedIcon);
+    document.getElementById('addName').value = '';
+    document.getElementById('addPrice').value = '';
+    selectedIcon = '🎁';
+    document.getElementById('addIconBtn').textContent = '🎁';
+    renderAll();
+  });
+
+  document.getElementById('addName').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('addBtn').click();
+  });
+
+  renderAll();
+  window.addEventListener('gamification-update', renderAll);
+  window.addEventListener('storage', renderAll);
+})();
+</script>
+</body>
+</html>

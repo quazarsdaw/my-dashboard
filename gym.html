@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Спорт</title>
+<script src="gamification.js"></script>
+<script src="topbar.js?v=6" defer></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --text-primary:#FAFAFA;--text-secondary:#B8B6B0;--text-tertiary:#76746E;
+  --success:#6BE3A4;--warning:#F2C063;--danger:#FF6B6B;
+  --card-bg:rgba(255,255,255,0.04);--card-radius:16px;
+}
+html{background:#050506}
+body{font-family:var(--font-sans);color:var(--text-primary);background:#050506;
+  min-height:100vh;max-width:1100px;margin:0 auto;padding:0 16px 40px;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.16),transparent),
+  radial-gradient(ellipse 50% 50% at 18% 90%,rgba(180,180,200,0.06),transparent);
+  filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
+@keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
+body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg width='3' height='3' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='white' fill-opacity='0.014'/%3E%3C/svg%3E");background-repeat:repeat}
+
+.page-title{font-size:28px;font-weight:700;letter-spacing:-0.025em;
+  background:linear-gradient(180deg,#FFF 0%,#C7C4BC 120%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin:16px 0 14px}
+.section{margin-bottom:24px}
+.section-title{font-size:10.5px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;
+  color:var(--text-tertiary);display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.section-title::before{content:'';width:18px;height:1px;background:var(--text-tertiary);opacity:0.6}
+.section-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,0.08),transparent)}
+
+.card{background:var(--card-bg);border-radius:var(--card-radius);padding:18px;
+  backdrop-filter:blur(24px) saturate(1.2);box-shadow:0 12px 40px rgba(0,0,0,0.45)}
+
+/* Workout summary */
+.workout-stats{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.ws-stat{flex:1;min-width:100px;text-align:center;padding:14px;border-radius:14px;
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04)}
+.ws-stat-num{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-0.03em}
+.ws-stat-label{font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--text-tertiary);margin-top:4px}
+.ws-stat.green .ws-stat-num{color:var(--success)}
+.ws-stat.gold .ws-stat-num{color:var(--warning)}
+.ws-stat.blue .ws-stat-num{color:#7DD3FC}
+
+/* Workout day */
+.workout-day{margin-bottom:8px}
+.workout-day-header{display:flex;align-items:center;justify-content:space-between;
+  padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.035);
+  border:1px solid rgba(255,255,255,0.06);cursor:pointer;transition:background 0.15s;
+  -webkit-tap-highlight-color:transparent}
+.workout-day-header:hover{background:rgba(255,255,255,0.055)}
+.workout-day-header.done{background:rgba(107,227,164,0.04);border-color:rgba(107,227,164,0.1)}
+.wdh-left{display:flex;align-items:center;gap:10px}
+.wdh-icon{font-size:18px}
+.wdh-name{font-size:14px;font-weight:700}
+.wdh-muscles{font-size:11px;color:var(--text-tertiary);margin-top:2px}
+.wdh-status{font-family:var(--font-mono);font-size:11px;font-weight:700;
+  padding:4px 10px;border-radius:8px;text-transform:uppercase;letter-spacing:0.06em}
+.wdh-status.pending{color:var(--text-tertiary);background:rgba(255,255,255,0.04)}
+.wdh-status.done{color:var(--success);background:rgba(107,227,164,0.1)}
+
+/* Exercise list */
+.exercise-list{display:none;padding:8px 0 0;list-style:none}
+.exercise-list.open{display:block}
+.exercise-item{display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:4px;
+  border-radius:10px;background:rgba(255,255,255,0.025);transition:background 0.15s}
+.exercise-item:hover{background:rgba(255,255,255,0.045)}
+.ex-name{flex:1;font-size:13px;font-weight:600;color:var(--text-primary);min-width:0}
+.ex-sets{font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);white-space:nowrap}
+.ex-weight{font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--warning);white-space:nowrap}
+.ex-input{width:60px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:12px;
+  font-family:var(--font-mono);text-align:center;outline:none}
+.ex-input:focus{border-color:rgba(255,255,255,0.2)}
+.ex-pr{font-size:12px;color:var(--success);font-weight:700;display:none}
+.ex-pr.show{display:inline}
+
+/* Add workout / exercise */
+.add-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  border-top:1px solid rgba(255,255,255,0.06);padding-top:14px;margin-top:14px}
+.add-input{flex:1;min-width:120px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;
+  font-family:var(--font-sans);outline:none}
+.add-input:focus{border-color:rgba(255,255,255,0.2)}
+.add-input::placeholder{color:var(--text-tertiary)}
+.add-small{width:80px;text-align:center}
+.add-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;
+  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#0A0A0B;
+  font-size:13px;font-weight:700;font-family:var(--font-sans);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 8px rgba(0,0,0,0.3);
+  transition:transform 0.1s;white-space:nowrap}
+.add-btn:hover{transform:translateY(-1px)}
+
+.complete-workout-btn{width:100%;padding:14px;margin-top:14px;border:none;border-radius:14px;cursor:pointer;
+  background:linear-gradient(180deg,rgba(107,227,164,0.2),rgba(107,227,164,0.08));
+  color:var(--success);font-size:14px;font-weight:700;font-family:var(--font-sans);
+  transition:background 0.15s,transform 0.1s}
+.complete-workout-btn:active{transform:scale(0.97)}
+.complete-workout-btn:disabled{opacity:0.3;cursor:not-allowed}
+
+.empty{font-size:12px;color:var(--text-tertiary);font-style:italic;padding:14px 0;text-align:center}
+
+/* History */
+.history-item{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:4px;
+  border-radius:10px;background:rgba(255,255,255,0.025)}
+.hi-date{font-family:var(--font-mono);font-size:12px;color:var(--text-tertiary);min-width:70px}
+.hi-name{flex:1;font-size:13px;font-weight:600;color:var(--text-secondary)}
+.hi-exercises{font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary)}
+
+@media(max-width:480px){
+  .page-title{font-size:22px}
+  .ws-stat-num{font-size:22px}
+  .workout-stats{gap:8px}
+  .ws-stat{padding:10px;min-width:80px}
+  .add-row{flex-direction:column}
+  .add-input,.add-small{width:100%}
+}
+</style>
+</head>
+<body>
+
+<h1 class="page-title">Спорт</h1>
+
+<!-- Stats -->
+<div class="workout-stats" id="workoutStats">
+  <div class="ws-stat green"><div class="ws-stat-num" id="statWorkouts">0</div><div class="ws-stat-label">Тренировок</div></div>
+  <div class="ws-stat gold"><div class="ws-stat-num" id="statStreak">0</div><div class="ws-stat-label">Streak</div></div>
+  <div class="ws-stat blue"><div class="ws-stat-num" id="statThisWeek">0</div><div class="ws-stat-label">На этой неделе</div></div>
+</div>
+
+<!-- Program -->
+<div class="section">
+  <div class="section-title">Программа</div>
+  <div class="card">
+    <div id="programList"></div>
+    <div class="empty" id="programEmpty">Добавь свой первый тренировочный день.</div>
+    <div class="add-row">
+      <input class="add-input" id="dayNameInput" type="text" placeholder="Название дня (Грудь + Трицепс, Ноги…)" autocomplete="off">
+      <input class="add-input" id="dayMusclesInput" type="text" placeholder="Мышцы (опционально)" autocomplete="off">
+      <button class="add-btn" id="dayAddBtn">+ День</button>
+    </div>
+  </div>
+</div>
+
+<!-- History -->
+<div class="section">
+  <div class="section-title">История</div>
+  <div class="card">
+    <div id="historyList"></div>
+    <div class="empty" id="historyEmpty">Пока нет завершённых тренировок.</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var G = window.Gamification;
+
+  function getProgram(){ return G.storeGet('gym_program_v1') || []; }
+  function setProgram(p){ G.storeSet('gym_program_v1', p); }
+  function getWeights(){ return G.storeGet('gym_weights_v1') || {}; }
+  function setWeights(w){ G.storeSet('gym_weights_v1', w); }
+  function getHistory(){ return G.storeGet('gym_history_v1') || []; }
+  function setHistory(h){ G.storeSet('gym_history_v1', h); }
+  function todayKey(){
+    var d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function getDone(){ return G.storeGet('gym_done:'+todayKey()) || null; }
+  function setDone(dayId){ G.storeSet('gym_done:'+todayKey(), dayId); }
+
+  var DAY_ICONS = ['💪','🏋️','🦵','🫁','🔥','⚡','🏃'];
+  var openDayId = null;
+
+  function renderStats(){
+    var history = getHistory();
+    document.getElementById('statWorkouts').textContent = history.length;
+    var now = new Date();
+    var weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    weekStart.setHours(0,0,0,0);
+    var thisWeek = history.filter(function(h){ return new Date(h.date) >= weekStart; }).length;
+    document.getElementById('statThisWeek').textContent = thisWeek;
+    var streak = 0;
+    var dates = history.map(function(h){ return h.date.slice(0,10); });
+    var uniqueDates = [];
+    dates.forEach(function(d){ if(uniqueDates.indexOf(d)===-1) uniqueDates.push(d); });
+    uniqueDates.sort().reverse();
+    var check = new Date(); check.setHours(0,0,0,0);
+    for(var i=0; i<uniqueDates.length; i++){
+      var dStr = check.getFullYear()+'-'+String(check.getMonth()+1).padStart(2,'0')+'-'+String(check.getDate()).padStart(2,'0');
+      if(uniqueDates[i] === dStr){ streak++; check.setDate(check.getDate()-1); }
+      else break;
+    }
+    document.getElementById('statStreak').textContent = streak;
+  }
+
+  function renderProgram(){
+    var program = getProgram();
+    var weights = getWeights();
+    var doneToday = getDone();
+    var container = document.getElementById('programList');
+    var empty = document.getElementById('programEmpty');
+    container.innerHTML = '';
+    if(program.length === 0){ empty.style.display = ''; return; }
+    empty.style.display = 'none';
+
+    program.forEach(function(day, dayIdx){
+      var isDone = doneToday === day.id;
+      var wrap = document.createElement('div');
+      wrap.className = 'workout-day';
+
+      var header = document.createElement('div');
+      header.className = 'workout-day-header' + (isDone ? ' done' : '');
+      header.innerHTML =
+        '<div class="wdh-left">' +
+          '<span class="wdh-icon">'+(DAY_ICONS[dayIdx % DAY_ICONS.length])+'</span>' +
+          '<div><div class="wdh-name">'+day.name+'</div>' +
+          (day.muscles ? '<div class="wdh-muscles">'+day.muscles+'</div>' : '') + '</div>' +
+        '</div>' +
+        '<span class="wdh-status '+(isDone?'done':'pending')+'">'+(isDone?'Done':'—')+'</span>';
+
+      header.addEventListener('click', function(){
+        openDayId = openDayId === day.id ? null : day.id;
+        renderProgram();
+      });
+      wrap.appendChild(header);
+
+      var exList = document.createElement('ul');
+      exList.className = 'exercise-list' + (openDayId === day.id ? ' open' : '');
+
+      (day.exercises || []).forEach(function(ex, exIdx){
+        var wKey = day.id + ':' + ex.id;
+        var currentWeight = weights[wKey] || ex.startWeight || 0;
+        var li = document.createElement('li');
+        li.className = 'exercise-item';
+        li.innerHTML =
+          '<span class="ex-name">'+ex.name+'</span>' +
+          '<span class="ex-sets">'+ex.sets+'×'+ex.reps+'</span>' +
+          '<input class="ex-input" type="number" value="'+currentWeight+'" data-key="'+wKey+'" title="Вес (кг)"> кг' +
+          '<span class="ex-pr" id="pr_'+wKey+'">PR!</span>' +
+          '<button class="stack-del" data-day="'+dayIdx+'" data-ex="'+exIdx+'" title="Удалить">×</button>';
+        exList.appendChild(li);
+      });
+
+      // Add exercise row
+      var addLi = document.createElement('li');
+      addLi.className = 'add-row';
+      addLi.style.border = 'none'; addLi.style.margin = '0';
+      addLi.innerHTML =
+        '<input class="add-input" type="text" placeholder="Упражнение" data-day="'+dayIdx+'" autocomplete="off">' +
+        '<input class="add-input add-small" type="text" placeholder="3×12" data-sr="'+dayIdx+'">' +
+        '<button class="add-btn" data-dayadd="'+dayIdx+'">+</button>';
+      exList.appendChild(addLi);
+
+      // Complete button
+      if(!isDone){
+        var completeBtn = document.createElement('button');
+        completeBtn.className = 'complete-workout-btn';
+        completeBtn.textContent = '✓ Завершить тренировку';
+        completeBtn.addEventListener('click', function(){
+          setDone(day.id);
+          var history = getHistory();
+          var exercises = (day.exercises||[]).map(function(ex){
+            var wKey = day.id+':'+ex.id;
+            return { name: ex.name, weight: weights[wKey]||ex.startWeight||0 };
+          });
+          history.unshift({ dayName: day.name, date: new Date().toISOString(), exercises: exercises });
+          if(history.length > 100) history.length = 100;
+          setHistory(history);
+          G.completeTask('health', 'hard');
+          renderProgram();
+          renderStats();
+          renderHistory();
+        });
+        exList.appendChild(completeBtn);
+      }
+
+      wrap.appendChild(exList);
+
+      // Delete day button
+      var delDay = document.createElement('span');
+      delDay.style.cssText = 'display:none;position:absolute;';
+
+      container.appendChild(wrap);
+    });
+
+    // Wire up weight inputs
+    container.querySelectorAll('.ex-input').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        var w = getWeights();
+        var newVal = parseFloat(inp.value)||0;
+        var oldVal = w[inp.dataset.key]||0;
+        w[inp.dataset.key] = newVal;
+        setWeights(w);
+        if(newVal > oldVal && oldVal > 0){
+          var prEl = document.getElementById('pr_'+inp.dataset.key);
+          if(prEl){ prEl.classList.add('show'); setTimeout(function(){ prEl.classList.remove('show'); }, 2000); }
+        }
+      });
+    });
+
+    // Wire up exercise delete
+    container.querySelectorAll('.stack-del[data-day]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var p = getProgram();
+        var di = parseInt(btn.dataset.day,10);
+        var ei = parseInt(btn.dataset.ex,10);
+        if(p[di] && p[di].exercises) p[di].exercises.splice(ei,1);
+        setProgram(p);
+        renderProgram();
+      });
+    });
+
+    // Wire up exercise add
+    container.querySelectorAll('button[data-dayadd]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var di = parseInt(btn.dataset.dayadd,10);
+        var nameInput = container.querySelector('input[data-day="'+di+'"]');
+        var srInput = container.querySelector('input[data-sr="'+di+'"]');
+        var name = nameInput.value.trim();
+        if(!name) return;
+        var sr = srInput.value.trim() || '3×12';
+        var parts = sr.split(/[×x]/i);
+        var sets = parseInt(parts[0],10)||3;
+        var reps = parseInt(parts[1],10)||12;
+        var p = getProgram();
+        if(!p[di].exercises) p[di].exercises = [];
+        p[di].exercises.push({ id:'ex_'+Date.now(), name:name, sets:sets, reps:reps, startWeight:0 });
+        setProgram(p);
+        nameInput.value = '';
+        srInput.value = '';
+        renderProgram();
+      });
+    });
+  }
+
+  // Add workout day
+  document.getElementById('dayAddBtn').addEventListener('click', function(){
+    var name = document.getElementById('dayNameInput').value.trim();
+    if(!name) return;
+    var muscles = document.getElementById('dayMusclesInput').value.trim();
+    var p = getProgram();
+    p.push({ id:'day_'+Date.now(), name:name, muscles:muscles, exercises:[] });
+    setProgram(p);
+    document.getElementById('dayNameInput').value = '';
+    document.getElementById('dayMusclesInput').value = '';
+    openDayId = p[p.length-1].id;
+    renderProgram();
+  });
+  document.getElementById('dayNameInput').addEventListener('keydown', function(e){
+    if(e.key==='Enter') document.getElementById('dayAddBtn').click();
+  });
+
+  function renderHistory(){
+    var history = getHistory();
+    var container = document.getElementById('historyList');
+    var empty = document.getElementById('historyEmpty');
+    container.innerHTML = '';
+    if(history.length === 0){ empty.style.display = ''; return; }
+    empty.style.display = 'none';
+    history.slice(0,20).forEach(function(h){
+      var d = new Date(h.date);
+      var dateStr = d.getDate()+'.'+String(d.getMonth()+1).padStart(2,'0');
+      var item = document.createElement('div');
+      item.className = 'history-item';
+      item.innerHTML =
+        '<span class="hi-date">'+dateStr+'</span>' +
+        '<span class="hi-name">'+h.dayName+'</span>' +
+        '<span class="hi-exercises">'+(h.exercises||[]).length+' упр.</span>';
+      container.appendChild(item);
+    });
+  }
+
+  renderStats();
+  renderProgram();
+  renderHistory();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Финансы</title>
+<script src="gamification.js"></script>
+<script src="topbar.js?v=6"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --text-primary:#FAFAFA;--text-secondary:#B8B6B0;--text-tertiary:#76746E;
+  --success:#6BE3A4;--warning:#F2C063;--danger:#FF6B6B;
+  --card-bg:rgba(255,255,255,0.04);--card-radius:16px;
+}
+html{background:#050506}
+body{font-family:var(--font-sans);color:var(--text-primary);background:#050506;
+  min-height:100vh;max-width:1100px;margin:0 auto;padding:0 16px 40px;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.16),transparent),
+  radial-gradient(ellipse 50% 50% at 18% 90%,rgba(180,180,200,0.06),transparent);
+  filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
+@keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
+body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg width='3' height='3' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='white' fill-opacity='0.014'/%3E%3C/svg%3E");background-repeat:repeat}
+
+.page-title{font-size:22px;font-weight:800;letter-spacing:-0.02em;padding:16px 0 4px}
+
+/* Tabs */
+.fin-tabs{display:flex;gap:2px;padding:8px 0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fin-tab{flex:1;padding:10px 6px;text-align:center;border-radius:12px;cursor:pointer;
+  font-size:12px;font-weight:700;color:var(--text-tertiary);background:rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.04);transition:all 0.15s;white-space:nowrap;
+  -webkit-tap-highlight-color:transparent}
+.fin-tab.active{color:var(--text-primary);background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.1)}
+.fin-tab:hover:not(.active){background:rgba(255,255,255,0.05)}
+
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+.card{background:var(--card-bg);border-radius:var(--card-radius);padding:18px;
+  backdrop-filter:blur(24px) saturate(1.2);box-shadow:0 12px 40px rgba(0,0,0,0.45);margin-bottom:16px}
+.section-title{font-size:10.5px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;
+  color:var(--text-tertiary);display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.section-title::before{content:'';width:18px;height:1px;background:var(--text-tertiary);opacity:0.6}
+.section-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,0.08),transparent)}
+
+/* Net worth */
+.nw-total{font-size:40px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-0.03em;margin-bottom:4px}
+.nw-currency{font-family:var(--font-mono);font-size:14px;color:var(--text-tertiary)}
+.nw-accounts{margin-top:16px;display:flex;flex-direction:column;gap:6px}
+.nw-account{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;
+  background:rgba(255,255,255,0.025)}
+.nw-acc-icon{font-size:18px}
+.nw-acc-name{flex:1;font-size:13px;font-weight:600;color:var(--text-secondary)}
+.nw-acc-amount{font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-primary);
+  font-variant-numeric:tabular-nums}
+.nw-acc-del{background:none;border:none;color:var(--text-tertiary);font-size:16px;cursor:pointer;
+  opacity:0.3;transition:opacity 0.15s,color 0.15s;padding:0 4px}
+.nw-acc-del:hover{opacity:1;color:var(--danger)}
+
+/* Subs */
+.sub-item{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:6px;
+  border-radius:10px;background:rgba(255,255,255,0.025)}
+.sub-icon{font-size:18px}
+.sub-info{flex:1;min-width:0}
+.sub-name{font-size:13px;font-weight:600;color:var(--text-primary)}
+.sub-cycle{font-size:11px;color:var(--text-tertiary)}
+.sub-price{font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--danger);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.sub-del{background:none;border:none;color:var(--text-tertiary);font-size:16px;cursor:pointer;
+  opacity:0.3;transition:opacity 0.15s,color 0.15s;padding:0 4px}
+.sub-del:hover{opacity:1;color:var(--danger)}
+.sub-total{font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-secondary);
+  text-align:right;padding:8px 14px}
+
+/* Wishlist */
+.wish-item{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:6px;
+  border-radius:10px;background:rgba(255,255,255,0.025)}
+.wish-name{flex:1;font-size:13px;font-weight:600;color:var(--text-primary)}
+.wish-price{font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--warning);
+  font-variant-numeric:tabular-nums}
+.wish-link{color:var(--text-tertiary);font-size:14px;text-decoration:none;transition:color 0.15s}
+.wish-link:hover{color:var(--text-primary)}
+.wish-del{background:none;border:none;color:var(--text-tertiary);font-size:16px;cursor:pointer;
+  opacity:0.3;transition:opacity 0.15s,color 0.15s;padding:0 4px}
+.wish-del:hover{opacity:1;color:var(--danger)}
+
+/* Add rows */
+.add-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  border-top:1px solid rgba(255,255,255,0.06);padding-top:14px;margin-top:14px}
+.add-input{flex:1;min-width:100px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;
+  font-family:var(--font-sans);outline:none}
+.add-input:focus{border-color:rgba(255,255,255,0.2)}
+.add-input::placeholder{color:var(--text-tertiary)}
+.add-small{width:100px;text-align:center}
+.add-icon{width:50px;text-align:center;font-size:20px}
+.add-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;
+  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#0A0A0B;
+  font-size:13px;font-weight:700;font-family:var(--font-sans);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 8px rgba(0,0,0,0.3);
+  transition:transform 0.1s;white-space:nowrap}
+.add-btn:hover{transform:translateY(-1px)}
+
+.empty{font-size:12px;color:var(--text-tertiary);font-style:italic;padding:14px 0;text-align:center}
+
+/* === CSV Report tab === */
+.upload-zone{border:2px dashed rgba(255,255,255,0.1);border-radius:16px;padding:32px 20px;
+  text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;position:relative}
+.upload-zone:hover,.upload-zone.drag{border-color:rgba(255,255,255,0.25);background:rgba(255,255,255,0.03)}
+.upload-zone-icon{font-size:36px;margin-bottom:8px}
+.upload-zone-text{font-size:14px;color:var(--text-secondary);margin-bottom:4px}
+.upload-zone-hint{font-size:11px;color:var(--text-tertiary)}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+.report-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.report-period{font-size:14px;font-weight:600;color:var(--text-secondary)}
+.report-clear{background:none;border:none;color:var(--text-tertiary);font-size:12px;cursor:pointer;
+  text-decoration:underline;transition:color 0.15s}
+.report-clear:hover{color:var(--danger)}
+
+.report-summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+.report-box{padding:14px;border-radius:12px;background:rgba(255,255,255,0.03);text-align:center}
+.report-box-label{font-size:10.5px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--text-tertiary);margin-bottom:6px}
+.report-box-value{font-family:var(--font-mono);font-size:22px;font-weight:800;
+  font-variant-numeric:tabular-nums}
+.report-box-value.income{color:var(--success)}
+.report-box-value.expense{color:var(--danger)}
+.report-box-value.net{color:var(--text-primary)}
+.report-box-value.txn{color:var(--warning)}
+
+.cat-section{margin-top:18px}
+.cat-section-title{font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--text-tertiary);margin-bottom:10px}
+.cat-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.cat-row:last-child{border-bottom:none}
+.cat-name{flex:1;font-size:13px;font-weight:600;color:var(--text-secondary);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-bar-wrap{width:120px;height:6px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden;flex-shrink:0}
+.cat-bar{height:100%;border-radius:3px;transition:width 0.3s}
+.cat-bar.exp{background:linear-gradient(90deg,#FF6B6B,#ff8a8a)}
+.cat-bar.inc{background:linear-gradient(90deg,#6BE3A4,#34d399)}
+.cat-amount{font-family:var(--font-mono);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;
+  min-width:80px;text-align:right}
+.cat-amount.exp{color:var(--danger)}
+.cat-amount.inc{color:var(--success)}
+
+/* Saved reports list */
+.saved-reports{margin-top:18px}
+.saved-report-item{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:6px;
+  border-radius:10px;background:rgba(255,255,255,0.025);cursor:pointer;transition:background 0.15s}
+.saved-report-item:hover{background:rgba(255,255,255,0.05)}
+.saved-report-item.active{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1)}
+.sr-icon{font-size:18px}
+.sr-info{flex:1;min-width:0}
+.sr-dates{font-size:13px;font-weight:600;color:var(--text-primary)}
+.sr-meta{font-size:11px;color:var(--text-tertiary)}
+.sr-del{background:none;border:none;color:var(--text-tertiary);font-size:16px;cursor:pointer;
+  opacity:0.3;transition:opacity 0.15s,color 0.15s;padding:0 4px}
+.sr-del:hover{opacity:1;color:var(--danger)}
+
+@media(max-width:480px){
+  .nw-total{font-size:30px}
+  .fin-tab{font-size:11px;padding:8px 4px}
+  .add-row{flex-direction:column}
+  .add-input,.add-small,.add-icon{width:100%}
+  .report-summary{grid-template-columns:1fr 1fr}
+  .report-box-value{font-size:18px}
+  .cat-bar-wrap{width:80px}
+}
+</style>
+</head>
+<body>
+
+<div class="page-title">Финансы</div>
+
+<div class="fin-tabs" id="finTabs">
+  <div class="fin-tab active" data-tab="report">Отчёт</div>
+  <div class="fin-tab" data-tab="nw">Капитал</div>
+  <div class="fin-tab" data-tab="subs">Подписки</div>
+  <div class="fin-tab" data-tab="wishlist">Вишлист</div>
+</div>
+
+<!-- CSV Report -->
+<div class="tab-content active" id="tab-report">
+  <div class="card" id="uploadCard">
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="csvInput" accept=".csv,.txt">
+      <div class="upload-zone-icon">📊</div>
+      <div class="upload-zone-text">Загрузить отчёт ZenMoney</div>
+      <div class="upload-zone-hint">CSV файл из ZenMoney (перетащи или нажми)</div>
+    </div>
+  </div>
+  <div class="card" id="reportCard" style="display:none">
+    <div class="report-header">
+      <span class="report-period" id="reportPeriod"></span>
+      <button class="report-clear" id="reportClear">Очистить</button>
+    </div>
+    <div class="report-summary" id="reportSummary"></div>
+    <div class="cat-section" id="expenseSection">
+      <div class="cat-section-title">Расходы по категориям</div>
+      <div id="expenseCats"></div>
+    </div>
+    <div class="cat-section" id="incomeSection" style="margin-top:24px">
+      <div class="cat-section-title">Доходы по категориям</div>
+      <div id="incomeCats"></div>
+    </div>
+  </div>
+  <div id="savedReportsList" class="saved-reports"></div>
+</div>
+
+<!-- Net Worth -->
+<div class="tab-content" id="tab-nw">
+  <div class="card">
+    <div class="nw-total" id="nwTotal">0</div>
+    <div class="nw-currency">&rarr; Рубли</div>
+    <div class="nw-accounts" id="nwAccounts"></div>
+    <div class="empty" id="nwEmpty">Добавь свои счета и активы.</div>
+    <div class="add-row">
+      <input class="add-input add-icon" id="nwIcon" type="text" placeholder="🏦" maxlength="2">
+      <input class="add-input" id="nwName" type="text" placeholder="Название счёта" autocomplete="off">
+      <input class="add-input add-small" id="nwAmount" type="number" placeholder="Сумма">
+      <button class="add-btn" id="nwAddBtn">+ Добавить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Subscriptions -->
+<div class="tab-content" id="tab-subs">
+  <div class="card">
+    <div id="subsList"></div>
+    <div class="empty" id="subsEmpty">Подписок пока нет.</div>
+    <div class="sub-total">Итого/мес: <span id="subsTotal">0</span> &thinsp;</div>
+    <div class="add-row">
+      <input class="add-input add-icon" id="subIcon" type="text" placeholder="📺" maxlength="2">
+      <input class="add-input" id="subName" type="text" placeholder="Название" autocomplete="off">
+      <input class="add-input add-small" id="subPrice" type="number" placeholder="Цена/мес">
+      <button class="add-btn" id="subAddBtn">+ Добавить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wishlist -->
+<div class="tab-content" id="tab-wishlist">
+  <div class="card">
+    <div id="wishList"></div>
+    <div class="empty" id="wishEmpty">Вишлист пуст.</div>
+    <div class="add-row">
+      <input class="add-input" id="wishName" type="text" placeholder="Что хочешь купить" autocomplete="off">
+      <input class="add-input add-small" id="wishPrice" type="number" placeholder="Цена">
+      <input class="add-input" id="wishLink" type="url" placeholder="Ссылка (опционально)">
+      <button class="add-btn" id="wishAddBtn">+ Добавить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var G = window.Gamification;
+
+  /* ── Tabs ── */
+  var tabs = document.querySelectorAll('.fin-tab');
+  tabs.forEach(function(tab){
+    tab.addEventListener('click', function(){
+      tabs.forEach(function(t){ t.classList.remove('active'); });
+      tab.classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(function(c){ c.classList.remove('active'); });
+      document.getElementById('tab-'+tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  /* ══════════════════════════════════════
+       CSV REPORT (ZenMoney)
+     ══════════════════════════════════════ */
+
+  function getReports(){ return G.storeGet('fin_reports_v1') || []; }
+  function setReports(r){ G.storeSet('fin_reports_v1', r); }
+  var activeReportIdx = -1;
+
+  /* --- CSV Parsing --- */
+  function parseCSV(text){
+    // ZenMoney CSV: semicolon or comma separated, first row is headers
+    var lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    if(lines.length < 2) return null;
+
+    // Detect delimiter
+    var firstLine = lines[0];
+    var delim = firstLine.indexOf(';') !== -1 ? ';' : ',';
+
+    // Parse header
+    var headers = splitCSVLine(firstLine, delim);
+    headers = headers.map(function(h){ return h.replace(/^["']|["']$/g,'').trim().toLowerCase(); });
+
+    // Find column indices
+    var colMap = {};
+    var knownCols = ['date','categoryname','payee','comment','outcomeaccountname','outcome',
+      'outcomecurrencyshorttitle','incomeaccountname','income','incomecurrencyshorttitle'];
+    // Also support Russian headers
+    var ruMap = {
+      'дата':'date','категория':'categoryname','получатель':'payee','комментарий':'comment',
+      'счёт расхода':'outcomeaccountname','расход':'outcome','валюта расхода':'outcomecurrencyshorttitle',
+      'счёт дохода':'incomeaccountname','доход':'income','валюта дохода':'incomecurrencyshorttitle'
+    };
+
+    headers.forEach(function(h, i){
+      var norm = h.replace(/["\s]/g,'');
+      if(knownCols.indexOf(norm) !== -1) colMap[norm] = i;
+      if(ruMap[norm]) colMap[ruMap[norm]] = i;
+      // fuzzy match
+      if(norm === 'category' || norm === 'категория') colMap.categoryname = i;
+    });
+
+    var rows = [];
+    for(var i = 1; i < lines.length; i++){
+      var line = lines[i].trim();
+      if(!line) continue;
+      var cells = splitCSVLine(line, delim);
+      var dateStr = getCol(cells, colMap, 'date');
+      if(!dateStr) continue;
+
+      var outcome = parseFloat((getCol(cells, colMap, 'outcome')||'0').replace(/\s/g,'').replace(',','.')) || 0;
+      var income = parseFloat((getCol(cells, colMap, 'income')||'0').replace(/\s/g,'').replace(',','.')) || 0;
+      var category = getCol(cells, colMap, 'categoryname') || 'Без категории';
+      var payee = getCol(cells, colMap, 'payee') || '';
+      var comment = getCol(cells, colMap, 'comment') || '';
+
+      rows.push({
+        date: dateStr,
+        category: category,
+        payee: payee,
+        comment: comment,
+        outcome: outcome,
+        income: income
+      });
+    }
+    return rows.length ? rows : null;
+  }
+
+  function splitCSVLine(line, delim){
+    var result = [];
+    var current = '';
+    var inQuotes = false;
+    for(var i = 0; i < line.length; i++){
+      var ch = line[i];
+      if(ch === '"'){
+        if(inQuotes && i+1 < line.length && line[i+1] === '"'){
+          current += '"'; i++;
+        } else { inQuotes = !inQuotes; }
+      } else if(ch === delim && !inQuotes){
+        result.push(current); current = '';
+      } else { current += ch; }
+    }
+    result.push(current);
+    return result;
+  }
+
+  function getCol(cells, colMap, name){
+    var idx = colMap[name];
+    if(idx === undefined || idx >= cells.length) return '';
+    return cells[idx].replace(/^["']|["']$/g,'').trim();
+  }
+
+  /* --- Process parsed rows into report data --- */
+  function buildReport(rows){
+    var totalIncome = 0, totalExpense = 0;
+    var expCats = {}, incCats = {};
+    var dates = [];
+
+    rows.forEach(function(r){
+      if(r.outcome > 0){
+        totalExpense += r.outcome;
+        expCats[r.category] = (expCats[r.category]||0) + r.outcome;
+      }
+      if(r.income > 0){
+        totalIncome += r.income;
+        incCats[r.category] = (incCats[r.category]||0) + r.income;
+      }
+      dates.push(r.date);
+    });
+
+    // Sort categories by amount desc
+    var expList = Object.keys(expCats).map(function(k){ return {name:k, amount:expCats[k]}; })
+      .sort(function(a,b){ return b.amount - a.amount; });
+    var incList = Object.keys(incCats).map(function(k){ return {name:k, amount:incCats[k]}; })
+      .sort(function(a,b){ return b.amount - a.amount; });
+
+    // Date range
+    dates.sort();
+    var dateFrom = dates[0] || '';
+    var dateTo = dates[dates.length-1] || '';
+
+    return {
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      totalIncome: totalIncome,
+      totalExpense: totalExpense,
+      net: totalIncome - totalExpense,
+      txnCount: rows.length,
+      expenseCategories: expList,
+      incomeCategories: incList,
+      uploadedAt: new Date().toISOString()
+    };
+  }
+
+  /* --- Render report --- */
+  function renderReport(report){
+    if(!report){
+      document.getElementById('uploadCard').style.display = '';
+      document.getElementById('reportCard').style.display = 'none';
+      return;
+    }
+    document.getElementById('uploadCard').style.display = 'none';
+    document.getElementById('reportCard').style.display = '';
+
+    document.getElementById('reportPeriod').textContent = report.dateFrom + ' — ' + report.dateTo;
+
+    var sum = document.getElementById('reportSummary');
+    sum.innerHTML =
+      '<div class="report-box"><div class="report-box-label">Доходы</div>' +
+      '<div class="report-box-value income">+' + formatNum(Math.round(report.totalIncome)) + '</div></div>' +
+      '<div class="report-box"><div class="report-box-label">Расходы</div>' +
+      '<div class="report-box-value expense">-' + formatNum(Math.round(report.totalExpense)) + '</div></div>' +
+      '<div class="report-box"><div class="report-box-label">Баланс</div>' +
+      '<div class="report-box-value net">' + (report.net >= 0 ? '+' : '') + formatNum(Math.round(report.net)) + '</div></div>' +
+      '<div class="report-box"><div class="report-box-label">Операций</div>' +
+      '<div class="report-box-value txn">' + report.txnCount + '</div></div>';
+
+    renderCatList('expenseCats', report.expenseCategories, report.totalExpense, 'exp');
+    renderCatList('incomeCats', report.incomeCategories, report.totalIncome, 'inc');
+
+    document.getElementById('expenseSection').style.display = report.expenseCategories.length ? '' : 'none';
+    document.getElementById('incomeSection').style.display = report.incomeCategories.length ? '' : 'none';
+  }
+
+  function renderCatList(containerId, cats, total, type){
+    var el = document.getElementById(containerId);
+    el.innerHTML = '';
+    var max = cats.length ? cats[0].amount : 1;
+    cats.forEach(function(c){
+      var pct = total > 0 ? (c.amount / total * 100) : 0;
+      var barW = max > 0 ? (c.amount / max * 100) : 0;
+      var row = document.createElement('div');
+      row.className = 'cat-row';
+      row.innerHTML =
+        '<span class="cat-name" title="'+c.name+'">'+c.name+'</span>' +
+        '<div class="cat-bar-wrap"><div class="cat-bar '+type+'" style="width:'+barW+'%"></div></div>' +
+        '<span class="cat-amount '+type+'">' +
+        (type === 'exp' ? '-' : '+') + formatNum(Math.round(c.amount)) +
+        ' <small style="color:var(--text-tertiary);font-size:10px">'+Math.round(pct)+'%</small></span>';
+      el.appendChild(row);
+    });
+  }
+
+  /* --- Saved reports sidebar --- */
+  function renderSavedReports(){
+    var reports = getReports();
+    var container = document.getElementById('savedReportsList');
+    container.innerHTML = '';
+    if(reports.length === 0) return;
+
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = 'Загруженные отчёты';
+    container.appendChild(title);
+
+    reports.forEach(function(r, i){
+      var el = document.createElement('div');
+      el.className = 'saved-report-item' + (i === activeReportIdx ? ' active' : '');
+      var uploaded = new Date(r.uploadedAt);
+      var uploadedStr = uploaded.toLocaleDateString('ru-RU', {day:'numeric',month:'short'});
+      el.innerHTML =
+        '<span class="sr-icon">📋</span>' +
+        '<div class="sr-info">' +
+        '<div class="sr-dates">'+r.dateFrom+' — '+r.dateTo+'</div>' +
+        '<div class="sr-meta">'+r.txnCount+' операций &middot; загружен '+uploadedStr+'</div>' +
+        '</div>' +
+        '<button class="sr-del" data-idx="'+i+'" aria-label="Удалить отчёт">×</button>';
+      el.addEventListener('click', function(e){
+        if(e.target.classList.contains('sr-del')) return;
+        activeReportIdx = i;
+        renderReport(r);
+        renderSavedReports();
+      });
+      container.appendChild(el);
+    });
+
+    container.querySelectorAll('.sr-del').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var reports = getReports();
+        var idx = parseInt(btn.dataset.idx, 10);
+        reports.splice(idx, 1);
+        setReports(reports);
+        if(activeReportIdx === idx){
+          activeReportIdx = -1;
+          renderReport(null);
+        } else if(activeReportIdx > idx){
+          activeReportIdx--;
+        }
+        renderSavedReports();
+      });
+    });
+  }
+
+  /* --- File handling --- */
+  function handleFile(file){
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      // Try UTF-8 first, if garbage try windows-1251
+      processText(e.target.result, file);
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  function processText(text, file){
+    // Check if text looks like garbage (common with windows-1251 CSVs)
+    if(text.indexOf('�') !== -1 || (text.charCodeAt(0) > 127 && text.indexOf('date') === -1 && text.indexOf('Date') === -1 && text.indexOf('дата') === -1)){
+      // Re-read as windows-1251
+      var reader2 = new FileReader();
+      reader2.onload = function(e2){
+        finishProcess(e2.target.result);
+      };
+      reader2.readAsText(file, 'windows-1251');
+      return;
+    }
+    finishProcess(text);
+  }
+
+  function finishProcess(text){
+    var rows = parseCSV(text);
+    if(!rows){
+      alert('Не удалось распарсить CSV. Проверь формат файла.');
+      return;
+    }
+    var report = buildReport(rows);
+    var reports = getReports();
+    reports.unshift(report);
+    setReports(reports);
+    activeReportIdx = 0;
+    renderReport(report);
+    renderSavedReports();
+  }
+
+  /* Upload zone events */
+  var uploadZone = document.getElementById('uploadZone');
+  var csvInput = document.getElementById('csvInput');
+
+  csvInput.addEventListener('change', function(){
+    if(csvInput.files.length) handleFile(csvInput.files[0]);
+    csvInput.value = '';
+  });
+
+  uploadZone.addEventListener('dragover', function(e){
+    e.preventDefault(); uploadZone.classList.add('drag');
+  });
+  uploadZone.addEventListener('dragleave', function(){
+    uploadZone.classList.remove('drag');
+  });
+  uploadZone.addEventListener('drop', function(e){
+    e.preventDefault(); uploadZone.classList.remove('drag');
+    if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+
+  document.getElementById('reportClear').addEventListener('click', function(){
+    activeReportIdx = -1;
+    renderReport(null);
+    renderSavedReports();
+  });
+
+  // Load latest report on page open
+  var reports = getReports();
+  if(reports.length > 0){
+    activeReportIdx = 0;
+    renderReport(reports[0]);
+  }
+  renderSavedReports();
+
+
+  /* ══════════════════════════════════════
+       NET WORTH
+     ══════════════════════════════════════ */
+  function getAccounts(){ return G.storeGet('fin_accounts_v1') || []; }
+  function setAccounts(a){ G.storeSet('fin_accounts_v1', a); }
+
+  function renderNW(){
+    var accounts = getAccounts();
+    var container = document.getElementById('nwAccounts');
+    var empty = document.getElementById('nwEmpty');
+    container.innerHTML = '';
+    var total = 0;
+    if(accounts.length === 0){ empty.style.display = ''; }
+    else {
+      empty.style.display = 'none';
+      accounts.forEach(function(a, i){
+        total += a.amount || 0;
+        var el = document.createElement('div');
+        el.className = 'nw-account';
+        el.innerHTML =
+          '<span class="nw-acc-icon">'+(a.icon||'🏦')+'</span>' +
+          '<span class="nw-acc-name">'+escHtml(a.name)+'</span>' +
+          '<span class="nw-acc-amount">'+formatNum(a.amount)+' ₽</span>' +
+          '<button class="nw-acc-del" data-idx="'+i+'">×</button>';
+        container.appendChild(el);
+      });
+    }
+    document.getElementById('nwTotal').textContent = formatNum(total) + ' ₽';
+    container.querySelectorAll('.nw-acc-del').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var a = getAccounts();
+        a.splice(parseInt(btn.dataset.idx,10),1);
+        setAccounts(a);
+        renderNW();
+      });
+    });
+  }
+
+  document.getElementById('nwAddBtn').addEventListener('click', function(){
+    var name = document.getElementById('nwName').value.trim();
+    var amount = parseFloat(document.getElementById('nwAmount').value)||0;
+    if(!name) return;
+    var icon = document.getElementById('nwIcon').value.trim()||'🏦';
+    var a = getAccounts();
+    a.push({name:name, amount:amount, icon:icon});
+    setAccounts(a);
+    document.getElementById('nwName').value='';
+    document.getElementById('nwAmount').value='';
+    document.getElementById('nwIcon').value='';
+    renderNW();
+  });
+
+  /* ══════════════════════════════════════
+       SUBSCRIPTIONS
+     ══════════════════════════════════════ */
+  function getSubs(){ return G.storeGet('fin_subs_v1') || []; }
+  function setSubs(s){ G.storeSet('fin_subs_v1', s); }
+
+  function renderSubs(){
+    var subs = getSubs();
+    var container = document.getElementById('subsList');
+    var empty = document.getElementById('subsEmpty');
+    container.innerHTML = '';
+    var total = 0;
+    if(subs.length === 0){ empty.style.display = ''; }
+    else {
+      empty.style.display = 'none';
+      subs.forEach(function(s, i){
+        total += s.price || 0;
+        var el = document.createElement('div');
+        el.className = 'sub-item';
+        el.innerHTML =
+          '<span class="sub-icon">'+(s.icon||'📦')+'</span>' +
+          '<div class="sub-info"><div class="sub-name">'+escHtml(s.name)+'</div>' +
+          '<div class="sub-cycle">ежемесячно</div></div>' +
+          '<span class="sub-price">'+formatNum(s.price)+' ₽</span>' +
+          '<button class="sub-del" data-idx="'+i+'">×</button>';
+        container.appendChild(el);
+      });
+    }
+    document.getElementById('subsTotal').textContent = formatNum(total);
+    container.querySelectorAll('.sub-del').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var s = getSubs();
+        s.splice(parseInt(btn.dataset.idx,10),1);
+        setSubs(s);
+        renderSubs();
+      });
+    });
+  }
+
+  document.getElementById('subAddBtn').addEventListener('click', function(){
+    var name = document.getElementById('subName').value.trim();
+    var price = parseFloat(document.getElementById('subPrice').value)||0;
+    if(!name) return;
+    var icon = document.getElementById('subIcon').value.trim()||'📦';
+    var s = getSubs();
+    s.push({name:name, price:price, icon:icon});
+    setSubs(s);
+    document.getElementById('subName').value='';
+    document.getElementById('subPrice').value='';
+    document.getElementById('subIcon').value='';
+    renderSubs();
+  });
+
+  /* ══════════════════════════════════════
+       WISHLIST
+     ══════════════════════════════════════ */
+  function getWish(){ return G.storeGet('fin_wishlist_v1') || []; }
+  function setWish(w){ G.storeSet('fin_wishlist_v1', w); }
+
+  function renderWish(){
+    var wish = getWish();
+    var container = document.getElementById('wishList');
+    var empty = document.getElementById('wishEmpty');
+    container.innerHTML = '';
+    if(wish.length === 0){ empty.style.display = ''; }
+    else {
+      empty.style.display = 'none';
+      wish.forEach(function(w, i){
+        var el = document.createElement('div');
+        el.className = 'wish-item';
+        el.innerHTML =
+          '<span class="wish-name">'+escHtml(w.name)+'</span>' +
+          (w.price ? '<span class="wish-price">'+formatNum(w.price)+' ₽</span>' : '') +
+          (w.link ? '<a class="wish-link" href="'+escHtml(w.link)+'" target="_blank" rel="noopener">🔗</a>' : '') +
+          '<button class="wish-del" data-idx="'+i+'">×</button>';
+        container.appendChild(el);
+      });
+    }
+    container.querySelectorAll('.wish-del').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var w = getWish();
+        w.splice(parseInt(btn.dataset.idx,10),1);
+        setWish(w);
+        renderWish();
+      });
+    });
+  }
+
+  document.getElementById('wishAddBtn').addEventListener('click', function(){
+    var name = document.getElementById('wishName').value.trim();
+    if(!name) return;
+    var price = parseFloat(document.getElementById('wishPrice').value)||0;
+    var link = document.getElementById('wishLink').value.trim();
+    var w = getWish();
+    w.push({name:name, price:price, link:link});
+    setWish(w);
+    document.getElementById('wishName').value='';
+    document.getElementById('wishPrice').value='';
+    document.getElementById('wishLink').value='';
+    renderWish();
+  });
+
+  /* ── Helpers ── */
+  function formatNum(n){
+    return (n||0).toLocaleString('ru-RU');
+  }
+  function escHtml(s){
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  renderNW();
+  renderSubs();
+  renderWish();
+})();
+</script>
+</body>
+</html>

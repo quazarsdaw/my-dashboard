@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Dashboard</title>
+<script src="gamification.js"></script>
+<script src="topbar.js?v=6" defer></script>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-primary: #FAFAFA;
+  --text-secondary: #B8B6B0;
+  --text-tertiary: #76746E;
+  --success: #6BE3A4;
+  --warning: #F2C063;
+  --danger: #FF6B6B;
+  --card-bg: rgba(255,255,255,0.04);
+  --card-radius: 16px;
+}
+html { background: #050506; }
+body {
+  font-family: var(--font-sans); color: var(--text-primary); background: #050506;
+  min-height: 100vh; max-width: 1100px; margin: 0 auto; padding: 0 16px 40px;
+  -webkit-font-smoothing: antialiased; position: relative;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background:
+    radial-gradient(ellipse 50% 50% at 82% 14%, rgba(224,118,88,0.16), transparent),
+    radial-gradient(ellipse 50% 50% at 18% 90%, rgba(180,180,200,0.06), transparent);
+  filter: blur(40px); animation: bgDrift 36s ease-in-out infinite alternate;
+}
+@keyframes bgDrift { 0% { transform: translate(0,0); } 100% { transform: translate(-12px,8px); } }
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='3' height='3' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='white' fill-opacity='0.014'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+.dash-title {
+  font-size: 28px; font-weight: 700; letter-spacing: -0.025em;
+  background: linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  margin: 16px 0 14px;
+}
+
+/* --- Ticker --- */
+.ticker-row { margin-bottom: 18px; }
+.goal-ticker {
+  display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 12px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.30) 100%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 3px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); position: relative; overflow: hidden;
+}
+.goal-ticker::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+  width: 30%; height: 100%; animation: tickerSweep 8s linear infinite; pointer-events: none;
+}
+@keyframes tickerSweep { 0% { transform: translateX(-140%); } 100% { transform: translateX(440%); } }
+.goal-ticker-led-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: #6BE3A4;
+  box-shadow: 0 0 8px rgba(107,227,164,0.7); animation: ledPulse 1.6s ease-in-out infinite;
+}
+@keyframes ledPulse { 50% { opacity: 0.45; transform: scale(0.85); } }
+.goal-ticker-label { font-family: var(--font-mono); font-size: 9.5px; font-weight: 800; letter-spacing: 0.18em; color: var(--text-tertiary); text-transform: uppercase; flex-shrink: 0; }
+.goal-ticker-stage { flex: 1; height: 22px; position: relative; overflow: hidden; }
+.goal-ticker-row { position: absolute; inset: 0; display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-primary); white-space: nowrap; opacity: 1; transition: opacity 0.22s ease; }
+.goal-ticker-row.is-fading { opacity: 0; }
+.goal-ticker-status { width: 18px; text-align: center; flex-shrink: 0; }
+.goal-ticker-status[data-status="done"] { color: var(--success); }
+.goal-ticker-status[data-status="pending"] { color: var(--text-tertiary); }
+.goal-ticker-text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.goal-ticker-meta { font-family: var(--font-mono); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-secondary); letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,0.04); flex-shrink: 0; }
+
+/* --- Pomodoro counter --- */
+.pomo-card {
+  background: var(--card-bg); border-radius: var(--card-radius); padding: 16px 18px;
+  margin-bottom: 18px; display: flex; align-items: center; gap: 16px;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.pomo-icon { font-size: 28px; }
+.pomo-info { flex: 1; }
+.pomo-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.pomo-count-row { display: flex; align-items: baseline; gap: 6px; margin-top: 2px; }
+.pomo-num { font-size: 28px; font-weight: 800; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.pomo-reward-text { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); }
+.pomo-controls { display: flex; gap: 6px; align-items: center; }
+.pomo-btn {
+  width: 42px; height: 42px; border-radius: 12px; border: none; cursor: pointer;
+  font-size: 20px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  transition: transform 0.1s; -webkit-tap-highlight-color: transparent;
+}
+.pomo-btn:active { transform: scale(0.9); }
+.pomo-minus { background: rgba(255,107,107,0.1); color: var(--danger); border: 1px solid rgba(255,107,107,0.15); }
+.pomo-plus { background: rgba(107,227,164,0.15); color: var(--success); border: 1px solid rgba(107,227,164,0.2); }
+
+/* --- Penalty card --- */
+.penalty-card {
+  background: rgba(255,107,107,0.04); border-radius: var(--card-radius); padding: 16px 18px;
+  margin-bottom: 18px; border: 1px solid rgba(255,107,107,0.1);
+}
+.penalty-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.penalty-icon { font-size: 22px; }
+.penalty-title { font-size: 13px; font-weight: 700; color: var(--danger); }
+.penalty-row { display: flex; gap: 8px; align-items: center; }
+.penalty-input {
+  flex: 1; padding: 9px 12px; border-radius: 10px; background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,107,107,0.12); color: var(--text-primary); font-size: 13px;
+  font-family: var(--font-sans); outline: none;
+}
+.penalty-input:focus { border-color: rgba(255,107,107,0.3); }
+.penalty-input::placeholder { color: var(--text-tertiary); }
+.penalty-amount {
+  width: 70px; text-align: center; padding: 9px 8px; border-radius: 10px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,107,107,0.12);
+  color: var(--danger); font-size: 14px; font-weight: 700;
+  font-family: var(--font-mono); outline: none;
+}
+.penalty-amount:focus { border-color: rgba(255,107,107,0.3); }
+.penalty-btn {
+  padding: 9px 16px; border-radius: 10px; border: none; cursor: pointer;
+  background: rgba(255,107,107,0.15); color: var(--danger);
+  font-size: 13px; font-weight: 700; font-family: var(--font-sans);
+  transition: transform 0.1s, background 0.15s; white-space: nowrap;
+}
+.penalty-btn:hover { background: rgba(255,107,107,0.25); }
+.penalty-btn:active { transform: scale(0.95); }
+.penalty-log { margin-top: 10px; }
+.penalty-log-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  font-size: 12px; color: var(--text-tertiary);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.penalty-log-item:last-child { border-bottom: none; }
+.penalty-log-amount { font-family: var(--font-mono); font-weight: 700; color: var(--danger); }
+.penalty-log-reason { flex: 1; color: var(--text-secondary); }
+.penalty-log-time { font-family: var(--font-mono); font-size: 10px; }
+
+/* Day-skip notice */
+.dayskip-notice {
+  padding: 12px 16px; border-radius: 12px; margin-bottom: 14px;
+  background: rgba(255,107,107,0.06); border: 1px solid rgba(255,107,107,0.12);
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; font-weight: 600; color: var(--danger);
+}
+.dayskip-notice-icon { font-size: 18px; }
+.dayskip-notice-close {
+  margin-left: auto; background: none; border: none; color: var(--text-tertiary);
+  font-size: 16px; cursor: pointer; padding: 0 4px;
+}
+
+/* --- Day Ring --- */
+.day-ring-wrap { display: flex; align-items: center; justify-content: center; gap: 26px; flex-wrap: wrap; margin-bottom: 24px; }
+.day-ring-container { width: 168px; height: 168px; position: relative; }
+.day-ring-svg { width: 100%; height: 100%; }
+.day-ring-track { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 8; }
+.day-ring-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 0.7s cubic-bezier(0.22,1,0.36,1), stroke 0.7s cubic-bezier(0.22,1,0.36,1); }
+.day-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.day-ring-pct { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
+.day-ring-phase { font-family: var(--font-mono); font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-tertiary); margin-top: 5px; }
+.day-ring-clock { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); }
+.day-ring-info { max-width: 280px; display: flex; flex-direction: column; gap: 6px; }
+.day-ring-status { font-size: 14px; font-weight: 700; }
+.day-ring-remaining { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.day-ring-range { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+
+/* --- Spheres --- */
+.spheres-section { margin-bottom: 24px; }
+.radar-wrap { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.radar-chart { width: 220px; height: 220px; flex-shrink: 0; }
+.radar-list { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 6px; }
+.radar-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--card-bg); border-radius: 10px; border: 1px solid rgba(255,255,255,0.04); cursor: pointer; transition: background 0.15s; }
+.radar-item:hover { background: rgba(255,255,255,0.06); }
+.radar-item-icon { font-size: 16px; line-height: 1; }
+.radar-item-name { font-size: 12px; font-weight: 700; color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radar-item-lvl { font-family: var(--font-mono); font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 6px; }
+.radar-item-xp { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); white-space: nowrap; }
+.radar-item-bar { width: 100%; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.06); overflow: hidden; margin-top: 4px; }
+.radar-item-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s; }
+.sphere-add-btn { width: 100%; padding: 8px; margin-top: 6px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.1); border-radius: 10px; color: var(--text-tertiary); font-size: 11px; font-weight: 600; cursor: pointer; transition: border-color 0.15s; }
+.sphere-add-btn:hover { border-color: rgba(255,255,255,0.2); color: var(--text-secondary); }
+
+/* Sphere edit modal */
+.sphere-edit-overlay { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
+.sphere-edit-overlay.show { display: flex; }
+.sphere-edit-box { background: #1a1a1d; border-radius: 16px; padding: 20px; max-width: 320px; width: 90%; border: 1px solid rgba(255,255,255,0.08); }
+.sphere-edit-box h3 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
+.sphere-edit-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.sphere-edit-input { flex: 1; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-size: 14px; font-family: var(--font-sans); outline: none; }
+.sphere-edit-input:focus { border-color: rgba(255,255,255,0.2); }
+.sphere-edit-icons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.sphere-edit-icon-btn { width: 36px; height: 36px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.03); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.sphere-edit-icon-btn.selected { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
+.sphere-edit-actions { display: flex; gap: 8px; }
+.sphere-edit-save { flex: 1; padding: 10px; border-radius: 10px; border: none; cursor: pointer; background: linear-gradient(180deg,#FFF,#E8E5DD); color: #0A0A0B; font-size: 13px; font-weight: 700; }
+.sphere-edit-del { padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,107,107,0.2); background: rgba(255,107,107,0.08); color: var(--danger); font-size: 13px; font-weight: 700; cursor: pointer; }
+
+/* Old sphere grid (keep for mobile fallback) */
+.spheres-grid { display: none; }
+
+/* --- Section --- */
+.section { margin-bottom: 24px; }
+.section-title { font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-tertiary); display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.section-title::before { content: ''; width: 18px; height: 1px; background: var(--text-tertiary); opacity: 0.6; }
+.section-title::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent); }
+
+/* --- Card --- */
+.gm-card { background: var(--card-bg); border-radius: var(--card-radius); padding: 18px 22px; backdrop-filter: blur(24px) saturate(1.2); box-shadow: 0 12px 40px rgba(0,0,0,0.45); margin-bottom: 16px; }
+.gm-card.gm-all-done { background: radial-gradient(ellipse at 50% 0%, rgba(107,227,164,0.08) 0%, transparent 60%), var(--card-bg); }
+.gm-card.gm-all-done .gm-progress-num, .gm-card.gm-all-done .gm-progress-label { color: var(--success); }
+.gm-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin-bottom: 14px; gap: 8px; }
+.gm-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 6px; }
+.gm-progress-row { display: flex; align-items: baseline; gap: 6px; }
+.gm-progress-num { font-size: 42px; font-weight: 700; letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
+.gm-progress-total { font-family: var(--font-mono); font-size: 18px; color: var(--text-tertiary); }
+.gm-progress-label { font-size: 11px; font-weight: 600; letter-spacing: 0.10em; text-transform: uppercase; color: var(--text-tertiary); }
+.gm-streak { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,0.04); color: var(--text-tertiary); font-size: 11px; font-weight: 600; letter-spacing: 0.10em; text-transform: uppercase; font-variant-numeric: tabular-nums; border: 1px solid transparent; }
+.gm-streak.gm-streak-active { background: rgba(242,192,99,0.10); color: #F2C063; border-color: rgba(242,192,99,0.32); }
+.gm-streak-icon { font-size: 13px; line-height: 1; }
+.gm-streak.gm-streak-active .gm-streak-icon { filter: drop-shadow(0 0 6px rgba(242,192,99,0.6)); }
+.gm-streak-num { font-family: var(--font-mono); font-weight: 700; }
+.gm-bar { display: flex; gap: 4px; height: 6px; margin-bottom: 16px; }
+.gm-bar:empty { display: none; }
+.gm-bar-seg { flex: 1; border-radius: 3px; background: rgba(255,255,255,0.08); transition: background 0.3s; }
+.gm-bar-seg-done { background: #6BE3A4; box-shadow: 0 0 6px rgba(107,227,164,0.40); }
+
+/* --- Goal list --- */
+.goal-list { list-style: none; }
+.goal-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 6px; background: rgba(255,255,255,0.035); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); transition: background 0.15s; flex-wrap: wrap; }
+.goal-row:hover { background: rgba(255,255,255,0.055); }
+.goal-row:hover .goal-drag, .goal-row:hover .goal-delete { opacity: 1; }
+.goal-drag { width: 14px; cursor: grab; color: var(--text-tertiary); font-size: 14px; letter-spacing: -2px; opacity: 0; transition: opacity 0.15s; user-select: none; flex-shrink: 0; }
+.goal-cb-wrap { position: relative; width: 22px; height: 22px; flex-shrink: 0; }
+.goal-cb { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; z-index: 1; }
+.goal-cb-visual { width: 22px; height: 22px; border-radius: 7px; border: 1.5px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; transition: background 0.2s, border-color 0.2s; }
+.goal-cb:checked + .goal-cb-visual { background: #6BE3A4; border-color: #6BE3A4; box-shadow: 0 0 12px rgba(107,227,164,0.40); }
+.goal-cb:checked + .goal-cb-visual::after { content: ''; display: block; width: 6px; height: 10px; border: solid #050506; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px,-1px); animation: cbPop 0.28s cubic-bezier(0.34,1.56,0.64,1); }
+@keyframes cbPop { 0% { transform: rotate(45deg) scale(0); } 100% { transform: rotate(45deg) translate(-1px,-1px) scale(1); } }
+.goal-text { flex: 1; font-size: 14px; color: var(--text-primary); outline: none; min-width: 0; word-break: break-word; }
+.goal-text:focus { outline: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 2px 4px; }
+.goal-badges { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.goal-sphere-badge { font-size: 14px; line-height: 1; flex-shrink: 0; cursor: pointer; opacity: 0.6; transition: opacity 0.15s; }
+.goal-sphere-badge:hover { opacity: 1; }
+.goal-time-badge { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-tertiary); padding: 3px 7px; border-radius: 6px; background: rgba(255,255,255,0.04); white-space: nowrap; }
+.goal-diff-badge { font-family: var(--font-mono); font-size: 9px; font-weight: 800; padding: 3px 7px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+.goal-diff-badge.easy { color: var(--success); background: rgba(107,227,164,0.1); }
+.goal-diff-badge.medium { color: var(--warning); background: rgba(242,192,99,0.1); }
+.goal-diff-badge.hard { color: var(--danger); background: rgba(255,107,107,0.1); }
+.goal-delete { background: none; border: none; color: var(--text-tertiary); font-size: 16px; cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s; padding: 0 4px; }
+.goal-delete:hover { color: var(--danger); }
+.goal-row.done { opacity: 0.45; background: rgba(107,227,164,0.04); }
+.goal-row.done .goal-text { text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.4); }
+.goal-actual-row { width: 100%; display: flex; align-items: center; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.04); }
+.goal-actual-label { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; }
+.goal-actual-input { width: 60px; padding: 5px 8px; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-size: 12px; font-family: var(--font-mono); text-align: center; outline: none; }
+.goal-actual-input:focus { border-color: rgba(255,255,255,0.2); }
+.goal-confirm-btn { padding: 5px 14px; border-radius: 8px; border: none; cursor: pointer; background: rgba(107,227,164,0.15); color: var(--success); font-size: 11px; font-weight: 700; font-family: var(--font-sans); transition: transform 0.1s; }
+.goal-reward-text { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); }
+.empty-state { font-size: 12px; color: var(--text-tertiary); font-style: italic; padding: 14px 0; text-align: center; }
+
+/* --- Push / Add --- */
+.gm-push-btn { width: 100%; padding: 10px; margin-top: 10px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.12); border-radius: 12px; color: var(--text-tertiary); font-size: 12px; font-weight: 600; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+.gm-push-btn:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.25); }
+.gm-input-wrap { display: flex; gap: 8px; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px; margin-top: 14px; flex-wrap: wrap; }
+.gm-input { flex: 1; min-width: 120px; padding: 11px 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-size: 14px; font-family: var(--font-sans); outline: none; transition: border-color 0.15s; }
+.gm-input:focus { border-color: rgba(255,255,255,0.2); }
+.gm-input::placeholder { color: var(--text-tertiary); }
+.gm-input-small { width: 70px; min-width: 70px; flex: 0; text-align: center; font-family: var(--font-mono); }
+.gm-sphere-select, .gm-diff-select { padding: 10px 8px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-size: 13px; cursor: pointer; outline: none; -webkit-appearance: none; }
+.gm-add-btn { padding: 11px 20px; border-radius: 12px; border: none; cursor: pointer; background: linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%); color: #0A0A0B; font-size: 13px; font-weight: 700; font-family: var(--font-sans); box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.3); transition: transform 0.1s; white-space: nowrap; }
+.gm-add-btn:hover { transform: translateY(-1px); }
+
+/* --- Tomorrow --- */
+.gm-card-tomorrow .gm-progress-row { display: none; }
+.gm-tomorrow-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
+.gm-tomorrow-count { font-family: var(--font-mono); font-size: 11px; font-weight: 700; text-transform: uppercase; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+
+/* --- Sphere picker --- */
+.sphere-picker-overlay { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
+.sphere-picker-overlay.show { display: flex; }
+.sphere-picker { background: #1a1a1d; border-radius: 16px; padding: 20px; max-width: 320px; width: 90%; border: 1px solid rgba(255,255,255,0.08); }
+.sphere-picker h3 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
+.sphere-picker-list { display: flex; flex-direction: column; gap: 6px; }
+.sphere-picker-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); transition: background 0.15s; }
+.sphere-picker-item:hover { background: rgba(255,255,255,0.08); }
+.sphere-picker-item span:first-child { font-size: 18px; }
+.sphere-picker-item span:last-child { font-size: 13px; font-weight: 600; }
+
+/* --- Achievement toast --- */
+.ach-toast { position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-20px); z-index: 200; background: rgba(26,26,29,0.95); border: 1px solid rgba(242,192,99,0.3); border-radius: 14px; padding: 12px 20px; display: flex; align-items: center; gap: 10px; opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none; backdrop-filter: blur(12px); }
+.ach-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.ach-toast-icon { font-size: 28px; }
+.ach-toast-text { font-size: 13px; font-weight: 700; color: var(--warning); }
+.ach-toast-name { font-size: 11px; color: var(--text-secondary); }
+
+.attribution { text-align: center; font-size: 11px; color: var(--text-tertiary); padding: 24px 0 8px; opacity: 0.5; }
+
+@media (max-width: 480px) {
+  .dash-title { font-size: 22px; }
+  .goal-ticker { padding: 9px 12px; }
+  .goal-ticker-label { font-size: 9px; }
+  .goal-ticker-row { font-size: 12px; }
+  .goal-ticker-meta { font-size: 10px; padding: 2px 7px; }
+  .timer-display { font-size: 24px; min-width: 80px; }
+  .timer-card { padding: 12px 14px; gap: 10px; }
+  .day-ring-container { width: 144px; height: 144px; }
+  .day-ring-pct { font-size: 32px; }
+  .day-ring-status { font-size: 13px; }
+  .radar-wrap { flex-direction: column; align-items: center; }
+  .radar-chart { width: 180px; height: 180px; }
+  .gm-card { padding: 16px; }
+  .gm-progress-num { font-size: 36px; }
+  .goal-row { padding: 10px 12px; gap: 8px; }
+  .goal-text { font-size: 13px; }
+}
+</style>
+</head>
+<body>
+
+<h1 class="dash-title">My Dashboard</h1>
+
+<!-- Ticker -->
+<div class="ticker-row">
+  <div class="goal-ticker" id="goalTicker" aria-live="polite">
+    <div class="goal-ticker-led"><span class="goal-ticker-led-dot"></span></div>
+    <div class="goal-ticker-label">GOALS</div>
+    <div class="goal-ticker-stage" id="goalTickerStage">
+      <div class="goal-ticker-row"><span class="goal-ticker-status">—</span><span class="goal-ticker-text">Загрузка…</span></div>
+    </div>
+    <div class="goal-ticker-meta" id="goalTickerMeta">0/0</div>
+  </div>
+</div>
+
+<!-- Pomodoro counter (manual, syncs with TickTick count) -->
+<div class="pomo-card" id="pomoCard">
+  <div class="pomo-icon">🍅</div>
+  <div class="pomo-info">
+    <div class="pomo-label">Помодорки сегодня</div>
+    <div class="pomo-count-row">
+      <span class="pomo-num" id="pomoNum">0</span>
+      <span class="pomo-reward-text" id="pomoReward"></span>
+    </div>
+  </div>
+  <div class="pomo-controls">
+    <button class="pomo-btn pomo-minus" id="pomoMinus">−</button>
+    <button class="pomo-btn pomo-plus" id="pomoPlus">+</button>
+  </div>
+</div>
+
+<!-- Day-skip penalty notice (injected by JS if needed) -->
+<div id="dayskipNotice" style="display:none"></div>
+
+<!-- Manual penalty -->
+<div class="penalty-card" id="penaltyCard">
+  <div class="penalty-header">
+    <span class="penalty-icon">💀</span>
+    <span class="penalty-title">Выписать штраф</span>
+  </div>
+  <div class="penalty-row">
+    <input class="penalty-input" id="penaltyReason" type="text" placeholder="За что…" autocomplete="off">
+    <input class="penalty-amount" id="penaltyAmount" type="number" placeholder="10" min="1" max="999">
+    <button class="penalty-btn" id="penaltyBtn">Штраф</button>
+  </div>
+  <div class="penalty-log" id="penaltyLog"></div>
+</div>
+
+<!-- Day Ring -->
+<div class="day-ring-wrap">
+  <div class="day-ring-container">
+    <svg class="day-ring-svg" viewBox="0 0 120 120">
+      <defs><filter id="ringGlow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+      <circle class="day-ring-track" cx="60" cy="60" r="52"/>
+      <circle class="day-ring-fill" id="ringFill" cx="60" cy="60" r="52" transform="rotate(-90 60 60)" filter="url(#ringGlow)"/>
+    </svg>
+    <div class="day-ring-center">
+      <div class="day-ring-pct" id="ringPct">—</div>
+      <div class="day-ring-phase" id="ringPhase">LOADING</div>
+      <div class="day-ring-clock" id="ringClock">--:--</div>
+    </div>
+  </div>
+  <div class="day-ring-info">
+    <div class="day-ring-status" id="ringStatus">…</div>
+    <div class="day-ring-remaining" id="ringRemaining">…</div>
+    <div class="day-ring-range">8:00 — 0:00</div>
+  </div>
+</div>
+
+<!-- Spheres -->
+<div class="section">
+  <div class="section-title">Сферы развития</div>
+  <div class="spheres-section">
+    <div class="radar-wrap">
+      <svg class="radar-chart" id="radarChart" viewBox="-20 -20 240 240"></svg>
+      <div class="radar-list" id="radarList"></div>
+    </div>
+    <button class="sphere-add-btn" id="sphereAddBtn">+ Добавить сферу</button>
+  </div>
+</div>
+
+<!-- Sphere edit modal -->
+<div class="sphere-edit-overlay" id="sphereEditOverlay">
+  <div class="sphere-edit-box">
+    <h3 id="sphereEditTitle">Редактировать сферу</h3>
+    <div class="sphere-edit-row">
+      <input class="sphere-edit-input" id="sphereEditName" type="text" placeholder="Название…" autocomplete="off">
+    </div>
+    <div class="sphere-edit-icons" id="sphereEditIcons"></div>
+    <div class="sphere-edit-actions">
+      <button class="sphere-edit-save" id="sphereEditSave">Сохранить</button>
+      <button class="sphere-edit-del" id="sphereEditDel">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Today -->
+<div class="section">
+  <div class="section-title">Задачи</div>
+  <div class="gm-card" id="todayCard">
+    <div class="gm-header">
+      <div>
+        <div class="gm-eyebrow" id="todayLabel">Сегодня</div>
+        <div class="gm-progress-row">
+          <span class="gm-progress-num" id="gmProgressNum">0</span>
+          <span class="gm-progress-total" id="gmProgressTotal">/ 0</span>
+          <span class="gm-progress-label" id="gmProgressLabel">задач пока нет</span>
+        </div>
+      </div>
+      <div class="gm-streak" id="gmStreak">
+        <span class="gm-streak-icon">⚡</span>
+        <span class="gm-streak-num" id="gmStreakNum">0</span>
+        <span>day streak</span>
+      </div>
+    </div>
+    <div class="gm-bar" id="gmBar"></div>
+    <ul class="goal-list" id="goalList"></ul>
+    <div class="empty-state" id="emptyState">Задач на сегодня нет — добавь первую.</div>
+    <button class="gm-push-btn" id="gmPushBtn" style="display:none">Перенести незавершённые на завтра ▸</button>
+    <div class="gm-input-wrap">
+      <input class="gm-input" id="goalInput" type="text" placeholder="Новая задача…" autocomplete="off">
+      <input class="gm-input gm-input-small" id="goalTimeInput" type="number" placeholder="мин" min="1" title="Планируемое время (мин)">
+      <select class="gm-sphere-select" id="goalSphere" title="Сфера"></select>
+      <select class="gm-diff-select" id="goalDiff" title="Сложность">
+        <option value="easy">Лёгкая</option>
+        <option value="medium" selected>Средняя</option>
+        <option value="hard">Сложная</option>
+      </select>
+      <button class="gm-add-btn" id="goalAddBtn">+ Добавить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tomorrow -->
+<div class="section">
+  <div class="gm-card gm-card-tomorrow" id="tomorrowCard">
+    <div class="gm-header">
+      <div>
+        <div class="gm-eyebrow" id="tomorrowLabel">Завтра</div>
+        <div class="gm-tomorrow-sub">Планируй вечером, активируется в 6:00</div>
+      </div>
+      <div class="gm-tomorrow-count" id="gmTomorrowCount">0 запланировано</div>
+    </div>
+    <ul class="goal-list" id="tomorrowList"></ul>
+    <div class="empty-state" id="tomorrowEmpty">На завтра пока ничего не запланировано.</div>
+    <div class="gm-input-wrap">
+      <input class="gm-input" id="tomorrowInput" type="text" placeholder="Задача на завтра…" autocomplete="off">
+      <input class="gm-input gm-input-small" id="tomorrowTimeInput" type="number" placeholder="мин" min="1">
+      <select class="gm-sphere-select" id="tomorrowSphere"></select>
+      <select class="gm-diff-select" id="tomorrowDiff">
+        <option value="easy">Лёгкая</option>
+        <option value="medium" selected>Средняя</option>
+        <option value="hard">Сложная</option>
+      </select>
+      <button class="gm-add-btn" id="tomorrowAddBtn">+ Добавить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sphere picker -->
+<div class="sphere-picker-overlay" id="spherePickerOverlay">
+  <div class="sphere-picker">
+    <h3>Выбери сферу</h3>
+    <div class="sphere-picker-list" id="spherePickerList"></div>
+  </div>
+</div>
+
+<!-- Achievement toast -->
+<div class="ach-toast" id="achToast">
+  <span class="ach-toast-icon" id="achToastIcon"></span>
+  <div>
+    <div class="ach-toast-text">Достижение!</div>
+    <div class="ach-toast-name" id="achToastName"></div>
+  </div>
+</div>
+
+<div class="attribution">// данные хранятся только в твоём браузере</div>
+
+<script>
+(function () {
+  'use strict';
+  var G = window.Gamification;
+  var WAKE_HOUR = 8, SLEEP_HOUR = 24;
+
+  // --- Date helpers ---
+  function getActiveDateString() {
+    var now = new Date();
+    if (now.getHours() < 6) now.setDate(now.getDate() - 1);
+    return now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+  }
+  function getTomorrowDateString() {
+    var now = new Date();
+    if (now.getHours() < 6) return now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+    var t = new Date(now); t.setDate(t.getDate()+1);
+    return t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0');
+  }
+  function formatDate(dateStr) {
+    var d = new Date(dateStr + 'T12:00:00');
+    var days = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+    var months = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+    return days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()];
+  }
+  function storeGet(key) { return G.storeGet(key); }
+  function storeSet(key, val) { G.storeSet(key, val); window.dispatchEvent(new CustomEvent('goals-changed')); }
+
+  // --- Sphere selects ---
+  function populateSphereSelect(sel) {
+    sel.innerHTML = '';
+    G.SPHERES.forEach(function (s) {
+      var opt = document.createElement('option');
+      opt.value = s.id; opt.textContent = s.icon + ' ' + s.name;
+      sel.appendChild(opt);
+    });
+  }
+  populateSphereSelect(document.getElementById('goalSphere'));
+  populateSphereSelect(document.getElementById('tomorrowSphere'));
+  // --- Sphere picker ---
+  var pickerOverlay = document.getElementById('spherePickerOverlay');
+  var pickerList = document.getElementById('spherePickerList');
+  var pickerCallback = null;
+  pickerList.innerHTML = '';
+  G.SPHERES.forEach(function (s) {
+    var item = document.createElement('div');
+    item.className = 'sphere-picker-item';
+    item.innerHTML = '<span>' + s.icon + '</span><span>' + s.name + '</span>';
+    item.addEventListener('click', function () {
+      pickerOverlay.classList.remove('show');
+      if (pickerCallback) pickerCallback(s.id);
+      pickerCallback = null;
+    });
+    pickerList.appendChild(item);
+  });
+  pickerOverlay.addEventListener('click', function (e) { if (e.target === pickerOverlay) { pickerOverlay.classList.remove('show'); pickerCallback = null; } });
+  function openSpherePicker(cb) { pickerCallback = cb; pickerOverlay.classList.add('show'); }
+
+  // --- Achievement toast ---
+  var achToastTimer = null;
+  window.addEventListener('achievement-unlocked', function (e) {
+    var list = e.detail || [];
+    if (list.length === 0) return;
+    var a = list[0];
+    document.getElementById('achToastIcon').textContent = a.icon || '🏅';
+    document.getElementById('achToastName').textContent = a.name || a.id;
+    var toast = document.getElementById('achToast');
+    toast.classList.add('show');
+    clearTimeout(achToastTimer);
+    achToastTimer = setTimeout(function () { toast.classList.remove('show'); }, 3500);
+  });
+
+  // --- Pomodoro counter ---
+  var POMO_XP = 40; // XP per pomodoro to career
+  var POMO_COINS = 5; // coins per pomodoro, rounded from the proportional 4.8
+  function getPomoKey() { return 'pomo:' + getActiveDateString(); }
+  function getPomoCount() { return storeGet(getPomoKey()) || 0; }
+  function setPomoCount(n) { storeSet(getPomoKey(), n); }
+  function renderPomo() {
+    var count = getPomoCount();
+    document.getElementById('pomoNum').textContent = count;
+    document.getElementById('pomoReward').textContent = count > 0 ? ('+' + (count * POMO_COINS) + ' 🪙 заработано') : '';
+  }
+  document.getElementById('pomoPlus').addEventListener('click', function () {
+    var count = getPomoCount() + 1;
+    setPomoCount(count);
+    G.earnCoins(POMO_COINS, '🍅 Помодорка #' + count);
+    G.addXpToSphere('career', POMO_XP);
+    renderPomo();
+    window.dispatchEvent(new CustomEvent('gamification-update'));
+  });
+  document.getElementById('pomoMinus').addEventListener('click', function () {
+    var count = getPomoCount();
+    if (count <= 0) return;
+    setPomoCount(count - 1);
+    // Reverse the coins & XP that were earned
+    G.spendCoins(POMO_COINS, '🍅 Отмена помодорки', true);
+    G.addXpToSphere('career', -POMO_XP);
+    renderPomo();
+    window.dispatchEvent(new CustomEvent('gamification-update'));
+  });
+  renderPomo();
+
+  // --- Manual penalty ---
+  function getPenaltyLog() { return storeGet('penalty_log_v1') || []; }
+  function setPenaltyLog(l) { storeSet('penalty_log_v1', l); }
+
+  function renderPenaltyLog() {
+    var log = getPenaltyLog();
+    var today = getActiveDateString();
+    var todayItems = log.filter(function(item) { return item.date && item.date.startsWith(today); });
+    var el = document.getElementById('penaltyLog');
+    if (todayItems.length === 0) { el.innerHTML = ''; return; }
+    el.innerHTML = todayItems.slice(0, 5).map(function(item) {
+      var t = new Date(item.date);
+      var time = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+      return '<div class="penalty-log-item">' +
+        '<span class="penalty-log-amount">−' + item.amount + '🪙</span>' +
+        '<span class="penalty-log-reason">' + (item.reason || 'Штраф') + '</span>' +
+        '<span class="penalty-log-time">' + time + '</span></div>';
+    }).join('');
+  }
+
+  document.getElementById('penaltyBtn').addEventListener('click', function() {
+    var reason = document.getElementById('penaltyReason').value.trim();
+    var amount = parseInt(document.getElementById('penaltyAmount').value, 10);
+    if (!amount || amount < 1) amount = 10;
+    if (!reason) reason = 'Ручной штраф';
+    G.spendCoins(amount, '💀 ' + reason, true);
+    var log = getPenaltyLog();
+    log.unshift({ reason: reason, amount: amount, date: new Date().toISOString() });
+    if (log.length > 100) log.length = 100;
+    setPenaltyLog(log);
+    document.getElementById('penaltyReason').value = '';
+    document.getElementById('penaltyAmount').value = '';
+    renderPenaltyLog();
+    window.dispatchEvent(new CustomEvent('gamification-update'));
+  });
+  document.getElementById('penaltyReason').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') document.getElementById('penaltyBtn').click();
+  });
+  renderPenaltyLog();
+
+  // --- Day-skip penalty ---
+  (function checkDaySkip() {
+    var DAYSKIP_PENALTY = 15;
+    var lastCheck = storeGet('dayskip_last_check_v1');
+    var todayStr = getActiveDateString();
+    if (lastCheck === todayStr) return; // already checked today
+
+    // Check yesterday
+    var yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    var yKey = yesterday.getFullYear() + '-' +
+      String(yesterday.getMonth() + 1).padStart(2, '0') + '-' +
+      String(yesterday.getDate()).padStart(2, '0');
+
+    var trackerData = G.storeGet('tracker_v1');
+    if (!trackerData || !trackerData.good || trackerData.good.length === 0) {
+      storeSet('dayskip_last_check_v1', todayStr);
+      return;
+    }
+
+    // Count how many good habits were done yesterday
+    var doneCount = 0;
+    trackerData.good.forEach(function(h) {
+      var mk = h.id + ':' + yKey;
+      if (trackerData.marks && trackerData.marks[mk]) doneCount++;
+    });
+
+    storeSet('dayskip_last_check_v1', todayStr);
+
+    if (doneCount === 0) {
+      // Apply penalty
+      G.spendCoins(DAYSKIP_PENALTY, '⏭️ Пропуск дня (' + yKey + ')', true);
+      window.dispatchEvent(new CustomEvent('gamification-update'));
+
+      // Show notice
+      var notice = document.getElementById('dayskipNotice');
+      notice.style.display = '';
+      notice.innerHTML = '<div class="dayskip-notice">' +
+        '<span class="dayskip-notice-icon">⚠️</span>' +
+        'Вчера 0 хороших привычек — штраф −' + DAYSKIP_PENALTY + '🪙' +
+        '<button class="dayskip-notice-close" id="dayskipClose">×</button></div>';
+      document.getElementById('dayskipClose').addEventListener('click', function() {
+        notice.style.display = 'none';
+      });
+    }
+  })();
+
+  // --- Day Ring ---
+  var SUN_PALETTE = [[255,216,158],[255,205,121],[255,227,143],[255,183,106],[255,149,89],[243,111,79],[226,93,122],[123,91,176],[47,58,102]];
+  function lerpColor(pct) {
+    var p = Math.max(0, Math.min(100, pct));
+    var idx = p / 100 * (SUN_PALETTE.length - 1);
+    var lo = Math.floor(idx), hi = Math.min(lo+1, SUN_PALETTE.length-1), t = idx - lo;
+    var a = SUN_PALETTE[lo], b = SUN_PALETTE[hi];
+    return 'rgb(' + Math.round(a[0]+(b[0]-a[0])*t) + ',' + Math.round(a[1]+(b[1]-a[1])*t) + ',' + Math.round(a[2]+(b[2]-a[2])*t) + ')';
+  }
+  var C = 2 * Math.PI * 52;
+  var ringFill = document.getElementById('ringFill');
+  ringFill.setAttribute('stroke-dasharray', C);
+  function updateDayRing() {
+    var now = new Date();
+    var hours = now.getHours() + now.getMinutes()/60 + now.getSeconds()/3600;
+    var pctEl = document.getElementById('ringPct'), phaseEl = document.getElementById('ringPhase');
+    var clockEl = document.getElementById('ringClock'), statusEl = document.getElementById('ringStatus');
+    var remainEl = document.getElementById('ringRemaining');
+    var h12 = now.getHours() % 12 || 12;
+    clockEl.textContent = h12 + ':' + String(now.getMinutes()).padStart(2,'0') + ' ' + (now.getHours()<12?'AM':'PM');
+    if (hours < WAKE_HOUR) {
+      ringFill.setAttribute('stroke-dashoffset', C); ringFill.setAttribute('stroke', '#4D4B47');
+      pctEl.textContent = '—'; phaseEl.textContent = 'SLEEPING'; statusEl.textContent = '😴 Ещё спишь';
+      var mins = Math.round((WAKE_HOUR - hours) * 60);
+      remainEl.textContent = Math.floor(mins/60) + 'ч ' + (mins%60) + 'м до подъёма';
+    } else if (hours >= SLEEP_HOUR) {
+      ringFill.setAttribute('stroke-dashoffset', 0); ringFill.setAttribute('stroke', '#E25D7A');
+      pctEl.textContent = '100%'; phaseEl.textContent = 'PAST BEDTIME'; statusEl.textContent = '⚠️ Пора спать'; remainEl.textContent = 'Спать!';
+    } else {
+      var pct = (hours - WAKE_HOUR) / (SLEEP_HOUR - WAKE_HOUR) * 100;
+      ringFill.setAttribute('stroke-dashoffset', C * (1 - pct/100)); ringFill.setAttribute('stroke', lerpColor(pct));
+      pctEl.textContent = Math.round(pct) + '%';
+      var left = Math.round((SLEEP_HOUR - hours) * 60);
+      remainEl.textContent = Math.floor(left/60) + 'ч ' + (left%60) + 'м бодрствования';
+      if (pct < 25) { phaseEl.textContent = 'MORNING'; statusEl.textContent = '☀️ Утро — свежий старт'; }
+      else if (pct < 50) { phaseEl.textContent = 'MIDDAY'; statusEl.textContent = '⚡ День — не сбавляй'; }
+      else if (pct < 75) { phaseEl.textContent = 'AFTERNOON'; statusEl.textContent = '🔥 Вторая половина — жми'; }
+      else if (pct < 90) { phaseEl.textContent = 'EVENING'; statusEl.textContent = '⏳ Вечер — закругляйся'; }
+      else { phaseEl.textContent = 'BEDTIME'; statusEl.textContent = '🌙 Скоро спать'; }
+    }
+  }
+  updateDayRing(); setInterval(updateDayRing, 60000);
+
+  // --- Spheres: Radar Chart + List ---
+  var SPHERE_EMOJIS = ['🏃','💼','💰','💛','📚','🎮','🧠','⚡','🎯','🔥','🌱','💎','🎨','🏋️','📊','🌍','💻','🎵','🧘','❤️','🚀','📖','🛡️','⭐'];
+  var editingSphereId = null;
+
+  function renderRadar() {
+    var svg = document.getElementById('radarChart');
+    var list = document.getElementById('radarList');
+    var spheres = G.SPHERES;
+    var data = G.getSpheres();
+    var n = spheres.length;
+    if (n === 0) { svg.innerHTML = ''; list.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:14px;">Добавь первую сферу</div>'; return; }
+
+    var cx = 100, cy = 100, R = 65;
+    var parts = [];
+
+    // Grid rings
+    for (var ring = 1; ring <= 4; ring++) {
+      var r = R * ring / 4;
+      var pts = [];
+      for (var i = 0; i < n; i++) {
+        var angle = -Math.PI / 2 + (2 * Math.PI / n) * i;
+        pts.push((cx + r * Math.cos(angle)).toFixed(1) + ',' + (cy + r * Math.sin(angle)).toFixed(1));
+      }
+      parts.push('<polygon points="' + pts.join(' ') + '" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="0.5"/>');
+    }
+
+    // Axis lines
+    for (var i = 0; i < n; i++) {
+      var angle = -Math.PI / 2 + (2 * Math.PI / n) * i;
+      var x2 = cx + R * Math.cos(angle), y2 = cy + R * Math.sin(angle);
+      parts.push('<line x1="' + cx + '" y1="' + cy + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="rgba(255,255,255,0.06)" stroke-width="0.5"/>');
+    }
+
+    // Data polygon + dots
+    var values = [];
+    var maxLevel = 1;
+    spheres.forEach(function (s) {
+      var info = G.getLevelInfo((data[s.id] || { xp: 0 }).xp);
+      values.push(info);
+      if (info.level > maxLevel) maxLevel = info.level;
+    });
+    var scale = Math.max(10, maxLevel + 2); // auto-scale
+
+    var dataPts = [], dotParts = [];
+    for (var i = 0; i < n; i++) {
+      var angle = -Math.PI / 2 + (2 * Math.PI / n) * i;
+      var val = values[i].level + (values[i].xpNeeded > 0 ? values[i].xpInLevel / values[i].xpNeeded : 0);
+      var r = Math.max(R * 0.08, R * val / scale);
+      var x = cx + r * Math.cos(angle), y = cy + r * Math.sin(angle);
+      dataPts.push(x.toFixed(1) + ',' + y.toFixed(1));
+      dotParts.push('<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4" fill="' + spheres[i].color + '" stroke="#050506" stroke-width="1.5"/>');
+    }
+    parts.push('<polygon points="' + dataPts.join(' ') + '" fill="rgba(125,211,252,0.08)" stroke="rgba(125,211,252,0.3)" stroke-width="1.5" stroke-linejoin="round"/>');
+    parts.push(dotParts.join(''));
+
+    // Labels
+    for (var i = 0; i < n; i++) {
+      var angle = -Math.PI / 2 + (2 * Math.PI / n) * i;
+      var lx = cx + (R + 20) * Math.cos(angle), ly = cy + (R + 20) * Math.sin(angle);
+      var anchor = Math.abs(Math.cos(angle)) < 0.2 ? 'middle' : Math.cos(angle) > 0 ? 'start' : 'end';
+      var dy = Math.sin(angle) > 0.3 ? '1em' : Math.sin(angle) < -0.3 ? '-0.5em' : '0.35em';
+      var label = spheres[i].name.length > 10 ? spheres[i].name.slice(0,9) + '…' : spheres[i].name;
+      parts.push('<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" fill="' + spheres[i].color + '" font-size="7.5" font-weight="700" font-family="var(--font-sans)" text-anchor="' + anchor + '" dy="' + dy + '">' + label.toUpperCase() + '</text>');
+      parts.push('<text x="' + lx.toFixed(1) + '" y="' + (ly + 9).toFixed(1) + '" fill="rgba(255,255,255,0.35)" font-size="7" font-family="var(--font-mono)" text-anchor="' + anchor + '" dy="' + dy + '">' + values[i].level + '</text>');
+    }
+
+    svg.innerHTML = parts.join('');
+
+    // List
+    list.innerHTML = '';
+    spheres.forEach(function (s, i) {
+      var info = values[i];
+      var pct = info.xpNeeded > 0 ? Math.min(100, info.xpInLevel / info.xpNeeded * 100) : 100;
+      var item = document.createElement('div');
+      item.className = 'radar-item';
+      item.innerHTML =
+        '<span class="radar-item-icon">' + s.icon + '</span>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<span class="radar-item-name">' + s.name + '</span>' +
+            '<span class="radar-item-lvl" style="color:' + s.color + ';background:' + s.color + '18">Lv.' + info.level + '</span>' +
+            '<span class="radar-item-xp">' + info.xpInLevel + '/' + info.xpNeeded + '</span>' +
+          '</div>' +
+          '<div class="radar-item-bar"><div class="radar-item-bar-fill" style="width:' + pct + '%;background:' + s.color + '"></div></div>' +
+        '</div>';
+      item.addEventListener('click', function () { openSphereEdit(s.id); });
+      list.appendChild(item);
+    });
+  }
+
+  function openSphereEdit(id) {
+    editingSphereId = id;
+    var sphere = null;
+    for (var i = 0; i < G.SPHERES.length; i++) { if (G.SPHERES[i].id === id) { sphere = G.SPHERES[i]; break; } }
+    if (!sphere && id !== '__new__') return;
+    var isNew = id === '__new__';
+    document.getElementById('sphereEditTitle').textContent = isNew ? 'Новая сфера' : 'Редактировать сферу';
+    document.getElementById('sphereEditName').value = isNew ? '' : sphere.name;
+    document.getElementById('sphereEditDel').style.display = isNew ? 'none' : '';
+    var iconsDiv = document.getElementById('sphereEditIcons');
+    iconsDiv.innerHTML = '';
+    var currentIcon = isNew ? '🔵' : sphere.icon;
+    SPHERE_EMOJIS.forEach(function (e) {
+      var btn = document.createElement('button');
+      btn.className = 'sphere-edit-icon-btn' + (e === currentIcon ? ' selected' : '');
+      btn.textContent = e;
+      btn.addEventListener('click', function () {
+        iconsDiv.querySelectorAll('.sphere-edit-icon-btn').forEach(function (b) { b.classList.remove('selected'); });
+        btn.classList.add('selected');
+      });
+      iconsDiv.appendChild(btn);
+    });
+    document.getElementById('sphereEditOverlay').classList.add('show');
+    document.getElementById('sphereEditName').focus();
+  }
+
+  document.getElementById('sphereAddBtn').addEventListener('click', function () { openSphereEdit('__new__'); });
+
+  document.getElementById('sphereEditOverlay').addEventListener('click', function (e) {
+    if (e.target === this) this.classList.remove('show');
+  });
+
+  document.getElementById('sphereEditSave').addEventListener('click', function () {
+    var name = document.getElementById('sphereEditName').value.trim();
+    if (!name) return;
+    var sel = document.querySelector('.sphere-edit-icon-btn.selected');
+    var icon = sel ? sel.textContent : '🔵';
+    if (editingSphereId === '__new__') {
+      G.addSphere(name, icon);
+    } else {
+      G.renameSphere(editingSphereId, name, icon);
+    }
+    document.getElementById('sphereEditOverlay').classList.remove('show');
+    renderRadar();
+    populateSphereSelect(document.getElementById('goalSphere'));
+    populateSphereSelect(document.getElementById('tomorrowSphere'));
+    rebuildSpherePicker();
+  });
+
+  document.getElementById('sphereEditDel').addEventListener('click', function () {
+    if (!editingSphereId || editingSphereId === '__new__') return;
+    var sphere = null;
+    for (var i = 0; i < G.SPHERES.length; i++) { if (G.SPHERES[i].id === editingSphereId) { sphere = G.SPHERES[i]; break; } }
+    if (!confirm('Удалить сферу «' + (sphere ? sphere.name : '') + '»? XP в ней сохранится.')) return;
+    G.removeSphere(editingSphereId);
+    document.getElementById('sphereEditOverlay').classList.remove('show');
+    renderRadar();
+    populateSphereSelect(document.getElementById('goalSphere'));
+    populateSphereSelect(document.getElementById('tomorrowSphere'));
+    rebuildSpherePicker();
+  });
+
+  function rebuildSpherePicker() {
+    pickerList.innerHTML = '';
+    G.SPHERES.forEach(function (s) {
+      var item = document.createElement('div');
+      item.className = 'sphere-picker-item';
+      item.innerHTML = '<span>' + s.icon + '</span><span>' + s.name + '</span>';
+      item.addEventListener('click', function () {
+        pickerOverlay.classList.remove('show');
+        if (pickerCallback) pickerCallback(s.id);
+        pickerCallback = null;
+      });
+      pickerList.appendChild(item);
+    });
+  }
+
+  renderRadar();
+
+  // --- Ticker ---
+  var tickerStage = document.getElementById('goalTickerStage');
+  var tickerMeta = document.getElementById('goalTickerMeta');
+  var cycleIdx = 0, firstTick = true;
+  function statusGlyph(s) { return s === 'done' ? '✓' : s === 'pending' ? '○' : '·'; }
+  function buildTickerItems() {
+    var goals = storeGet('goals:' + getActiveDateString()) || [];
+    var total = goals.length, done = goals.filter(function (g) { return g.done; }).length;
+    var items = [];
+    if (total === 0) items.push({ status: 'empty', text: 'Задач нет — добавь первую.' });
+    else if (done === total) items.push({ status: 'done', text: '✓ Все задачи выполнены!' });
+    else goals.forEach(function (g) { if (!g.done) items.push({ status: 'pending', text: g.text }); });
+    return { items: items, done: done, total: total };
+  }
+  function tick() {
+    var r = buildTickerItems();
+    if (cycleIdx >= r.items.length) cycleIdx = 0;
+    var item = r.items[cycleIdx]; cycleIdx = (cycleIdx + 1) % r.items.length;
+    tickerMeta.textContent = r.done + '/' + r.total;
+    var row = tickerStage.querySelector('.goal-ticker-row');
+    if (!row) { row = document.createElement('div'); row.className = 'goal-ticker-row'; row.innerHTML = '<span class="goal-ticker-status"></span><span class="goal-ticker-text"></span>'; tickerStage.appendChild(row); }
+    var sEl = row.querySelector('.goal-ticker-status'), tEl = row.querySelector('.goal-ticker-text');
+    var apply = function () { sEl.setAttribute('data-status', item.status); sEl.textContent = statusGlyph(item.status); tEl.textContent = item.text; row.classList.remove('is-fading'); };
+    if (firstTick) { apply(); firstTick = false; return; }
+    row.classList.add('is-fading'); setTimeout(apply, 220);
+  }
+  tick(); setInterval(tick, 5000);
+  window.addEventListener('goals-changed', function () { cycleIdx = 0; tick(); });
+
+  // --- Rollover ---
+  (function () {
+    var today = getActiveDateString();
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+      var k = localStorage.key(i);
+      if (!k || k.indexOf('goals:') !== 0) continue;
+      var dateStr = k.slice(6); if (dateStr >= today) continue;
+      var old = storeGet(k) || [];
+      var undone = old.filter(function (g) { return !g.done; });
+      if (undone.length > 0) {
+        var current = storeGet('goals:' + today) || [];
+        var exist = {}; current.forEach(function (g) { exist[g.text] = true; });
+        undone.forEach(function (g) { if (!exist[g.text]) current.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin }); });
+        storeSet('goals:' + today, current);
+      }
+      localStorage.removeItem(k);
+    }
+  })();
+
+  // --- Streak ---
+  function checkStreak() {
+    var streak = storeGet('goal_streak_v1') || { count: 0, lastProcessedDate: null };
+    var today = getActiveDateString();
+    var keys = [];
+    for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf('goals:') === 0 && k.slice(6) < today) keys.push(k.slice(6)); }
+    keys.sort();
+    var startFrom = streak.lastProcessedDate || '0000-00-00';
+    for (var j = 0; j < keys.length; j++) {
+      if (keys[j] <= startFrom) continue;
+      var goals = storeGet('goals:' + keys[j]) || [];
+      if (goals.length === 0) continue;
+      if (goals.every(function (g) { return g.done; })) streak.count++; else streak.count = 0;
+      streak.lastProcessedDate = keys[j];
+    }
+    storeSet('goal_streak_v1', streak); return streak;
+  }
+  checkStreak();
+  function renderStreak() {
+    var s = storeGet('goal_streak_v1') || { count: 0 };
+    document.getElementById('gmStreakNum').textContent = s.count;
+    document.getElementById('gmStreak').classList.toggle('gm-streak-active', s.count > 0);
+  }
+  renderStreak();
+
+  // --- Today ---
+  function getSphereById(id) { for (var i = 0; i < G.SPHERES.length; i++) { if (G.SPHERES[i].id === id) return G.SPHERES[i]; } return null; }
+
+  function renderTodayHeader() {
+    var goals = storeGet('goals:' + getActiveDateString()) || [];
+    var total = goals.length, done = goals.filter(function (g) { return g.done; }).length;
+    document.getElementById('gmProgressNum').textContent = done;
+    document.getElementById('gmProgressTotal').textContent = '/ ' + total;
+    var label = document.getElementById('gmProgressLabel');
+    if (total === 0) label.textContent = 'задач пока нет';
+    else if (done === total) label.textContent = 'всё сделано!';
+    else label.textContent = 'выполнено';
+    document.getElementById('todayCard').classList.toggle('gm-all-done', total > 0 && done === total);
+    var bar = document.getElementById('gmBar'); bar.innerHTML = '';
+    goals.forEach(function (g) { var seg = document.createElement('div'); seg.className = 'gm-bar-seg' + (g.done ? ' gm-bar-seg-done' : ''); bar.appendChild(seg); });
+    document.getElementById('gmPushBtn').style.display = goals.some(function (g) { return !g.done; }) ? '' : 'none';
+  }
+
+  function buildGoalRow(goal, idx, key, readOnly) {
+    var li = document.createElement('li');
+    li.className = 'goal-row' + (goal.done ? ' done' : '');
+    li.draggable = !readOnly;
+
+    if (!readOnly) { var drag = document.createElement('span'); drag.className = 'goal-drag'; drag.textContent = '⋮⋮'; li.appendChild(drag); }
+
+    var cbWrap = document.createElement('label'); cbWrap.className = 'goal-cb-wrap';
+    var cb = document.createElement('input'); cb.type = 'checkbox'; cb.className = 'goal-cb'; cb.checked = goal.done;
+    if (readOnly) { cb.disabled = true; cb.title = 'Активируется в 6:00 завтра'; }
+    var cbVis = document.createElement('div'); cbVis.className = 'goal-cb-visual';
+    cbWrap.appendChild(cb); cbWrap.appendChild(cbVis); li.appendChild(cbWrap);
+
+    var text = document.createElement('span'); text.className = 'goal-text'; text.textContent = goal.text;
+    if (!readOnly) {
+      text.addEventListener('click', function () {
+        text.contentEditable = 'true'; text.focus();
+        var range = document.createRange(); range.selectNodeContents(text); range.collapse(false);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      });
+      text.addEventListener('blur', function () {
+        text.contentEditable = 'false';
+        var nt = text.textContent.trim();
+        if (nt && nt !== goal.text) { var goals = storeGet(key) || []; if (goals[idx]) { goals[idx].text = nt; storeSet(key, goals); } }
+        else text.textContent = goal.text;
+      });
+      text.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } if (e.key === 'Escape') { text.textContent = goal.text; text.blur(); } });
+    }
+    li.appendChild(text);
+
+    var badges = document.createElement('div'); badges.className = 'goal-badges';
+    var sphere = getSphereById(goal.sphere);
+    var badge = document.createElement('span'); badge.className = 'goal-sphere-badge';
+    badge.textContent = sphere ? sphere.icon : '📌'; badge.title = sphere ? sphere.name : 'Выбери сферу';
+    if (!readOnly) { badge.addEventListener('click', function () { openSpherePicker(function (ns) { var goals = storeGet(key) || []; if (goals[idx]) { goals[idx].sphere = ns; storeSet(key, goals); loadToday(); } }); }); }
+    badges.appendChild(badge);
+    if (goal.estimatedMin) { var tb = document.createElement('span'); tb.className = 'goal-time-badge'; tb.textContent = goal.estimatedMin + ' мин'; badges.appendChild(tb); }
+    if (goal.difficulty) { var db = document.createElement('span'); db.className = 'goal-diff-badge ' + goal.difficulty; db.textContent = G.DIFFICULTY_LABELS[goal.difficulty] || goal.difficulty; badges.appendChild(db); }
+    li.appendChild(badges);
+
+    if (!readOnly) { var del = document.createElement('button'); del.className = 'goal-delete'; del.textContent = '×'; del.addEventListener('click', function () { var goals = storeGet(key) || []; goals.splice(idx, 1); storeSet(key, goals); loadToday(); }); li.appendChild(del); }
+
+    // Checkbox: on check → show actual time input, on confirm → reward
+    if (!readOnly) {
+      cb.addEventListener('change', function () {
+        var goals = storeGet(key) || [];
+        if (!goals[idx]) return;
+        if (cb.checked && !goals[idx].done) {
+          // Show actual time input
+          var actualRow = li.querySelector('.goal-actual-row');
+          if (!actualRow) {
+            actualRow = document.createElement('div'); actualRow.className = 'goal-actual-row';
+            var est = goals[idx].estimatedMin || 15;
+            var mult = G.DIFFICULTY_COIN_MULT[goals[idx].difficulty || 'medium'] || 1;
+            var previewCoins = Math.max(1, Math.floor(est * mult));
+            actualRow.innerHTML =
+              '<span class="goal-actual-label">Факт. время:</span>' +
+              '<input class="goal-actual-input" type="number" value="' + est + '" min="1"> мин' +
+              '<button class="goal-confirm-btn">✓ Готово</button>' +
+              '<span class="goal-reward-text">+' + est + ' XP • +' + previewCoins + ' 🪙</span>';
+            li.appendChild(actualRow);
+            var inp = actualRow.querySelector('.goal-actual-input');
+            var rewardText = actualRow.querySelector('.goal-reward-text');
+            inp.addEventListener('input', function () {
+              var m = parseInt(inp.value, 10) || 1;
+              var c = Math.max(1, Math.floor(m * mult));
+              rewardText.textContent = '+' + m + ' XP • +' + c + ' 🪙';
+            });
+            actualRow.querySelector('.goal-confirm-btn').addEventListener('click', function () {
+              var actualMin = parseInt(inp.value, 10) || est;
+              goals[idx].done = true;
+              goals[idx].doneAt = Date.now();
+              goals[idx].actualMin = actualMin;
+              storeSet(key, goals);
+              G.completeTask(goals[idx].sphere, goals[idx].difficulty, actualMin);
+              loadToday(); renderRadar();
+            });
+            inp.focus();
+          }
+          cb.checked = false; // don't check yet, wait for confirm
+        } else if (!cb.checked && goals[idx].done) {
+          // Positive reinforcement: unchecking just unchecks, no penalty
+          goals[idx].done = false;
+          delete goals[idx].doneAt;
+          delete goals[idx].actualMin;
+          storeSet(key, goals);
+          loadToday();
+        }
+      });
+    }
+
+    // Drag
+    if (!readOnly) {
+      li.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', idx); li.style.opacity = '0.5'; });
+      li.addEventListener('dragend', function () { li.style.opacity = '1'; });
+      li.addEventListener('dragover', function (e) { e.preventDefault(); li.style.borderTop = '2px solid rgba(255,255,255,0.3)'; });
+      li.addEventListener('dragleave', function () { li.style.borderTop = ''; });
+      li.addEventListener('drop', function (e) {
+        e.preventDefault(); li.style.borderTop = '';
+        var fi = parseInt(e.dataTransfer.getData('text/plain'), 10);
+        var goals = storeGet(key) || []; var item = goals.splice(fi, 1)[0]; goals.splice(idx, 0, item);
+        storeSet(key, goals); loadToday();
+      });
+    }
+    return li;
+  }
+
+  function loadToday() {
+    var key = 'goals:' + getActiveDateString();
+    var goals = storeGet(key) || [];
+    var list = document.getElementById('goalList'), empty = document.getElementById('emptyState');
+    list.innerHTML = '';
+    if (goals.length === 0) { empty.style.display = ''; } else {
+      empty.style.display = 'none';
+      goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, false)); });
+    }
+    renderTodayHeader(); renderStreak();
+    document.getElementById('todayLabel').textContent = 'Сегодня — ' + formatDate(getActiveDateString());
+  }
+
+  function loadTomorrow() {
+    var key = 'goals:' + getTomorrowDateString();
+    var goals = storeGet(key) || [];
+    var list = document.getElementById('tomorrowList'), empty = document.getElementById('tomorrowEmpty');
+    list.innerHTML = '';
+    if (goals.length === 0) { empty.style.display = ''; } else {
+      empty.style.display = 'none';
+      goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, true)); });
+    }
+    document.getElementById('gmTomorrowCount').textContent = goals.length + ' запланировано';
+    document.getElementById('tomorrowLabel').textContent = 'Завтра — ' + formatDate(getTomorrowDateString());
+  }
+
+  // --- Add ---
+  function wireAdd(inputId, timeId, sphereId, diffId, btnId, key, reloadFn) {
+    var input = document.getElementById(inputId);
+    var timeInput = document.getElementById(timeId);
+    var sphere = document.getElementById(sphereId);
+    var diff = document.getElementById(diffId);
+    var btn = document.getElementById(btnId);
+    function add() {
+      var text = input.value.trim(); if (!text) return;
+      var mins = parseInt(timeInput.value, 10) || 15;
+      var goals = storeGet(key) || [];
+      goals.push({ text: text, done: false, sphere: sphere.value, difficulty: diff.value, estimatedMin: mins });
+      storeSet(key, goals);
+      input.value = ''; timeInput.value = '';
+      reloadFn();
+    }
+    btn.addEventListener('click', add);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') add(); });
+  }
+  wireAdd('goalInput', 'goalTimeInput', 'goalSphere', 'goalDiff', 'goalAddBtn', 'goals:' + getActiveDateString(), function () { loadToday(); renderRadar(); });
+  wireAdd('tomorrowInput', 'tomorrowTimeInput', 'tomorrowSphere', 'tomorrowDiff', 'tomorrowAddBtn', 'goals:' + getTomorrowDateString(), loadTomorrow);
+
+  // --- Push ---
+  document.getElementById('gmPushBtn').addEventListener('click', function () {
+    if (!confirm('Перенести все незавершённые задачи на завтра?')) return;
+    var todayKey = 'goals:' + getActiveDateString(), tomorrowKey = 'goals:' + getTomorrowDateString();
+    var today = storeGet(todayKey) || [], tomorrow = storeGet(tomorrowKey) || [];
+    var exist = {}; tomorrow.forEach(function (g) { exist[g.text] = true; });
+    var kept = [];
+    today.forEach(function (g) { if (g.done) kept.push(g); else if (!exist[g.text]) tomorrow.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin }); });
+    storeSet(todayKey, kept); storeSet(tomorrowKey, tomorrow);
+    loadToday(); loadTomorrow();
+  });
+
+  loadToday(); loadTomorrow();
+  window.addEventListener('gamification-update', function () { renderRadar(); populateSphereSelect(document.getElementById('goalSphere')); populateSphereSelect(document.getElementById('tomorrowSphere')); });
+})();
+</script>
+</body>
+</html>
