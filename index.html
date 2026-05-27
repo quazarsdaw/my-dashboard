@@ -246,6 +246,7 @@ body::after {
 .goal-text:focus { outline: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 2px 4px; }
 .goal-badges { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .goal-sphere-badge { font-size: 14px; line-height: 1; flex-shrink: 0; cursor: pointer; opacity: 0.6; transition: opacity 0.15s; }
+.goal-sphere-badge.empty { font-family: var(--font-mono); font-weight: 800; color: var(--text-tertiary); }
 .goal-sphere-badge:hover { opacity: 1; }
 .goal-time-badge { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-tertiary); padding: 3px 7px; border-radius: 6px; background: rgba(255,255,255,0.04); white-space: nowrap; }
 .goal-diff-badge { font-family: var(--font-mono); font-size: 9px; font-weight: 800; padding: 3px 7px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
@@ -505,6 +506,8 @@ body::after {
   'use strict';
   var G = window.Gamification;
   var WAKE_HOUR = 8, SLEEP_HOUR = 24;
+  var NO_SPHERE_LABEL = 'Без сектора';
+  var NO_SPHERE_ICON = '—';
 
   // --- Date helpers ---
   function getActiveDateString() {
@@ -528,13 +531,26 @@ body::after {
   function storeSet(key, val) { G.storeSet(key, val); window.dispatchEvent(new CustomEvent('goals-changed')); }
 
   // --- Sphere selects ---
+  function appendNoSphereOption(sel) {
+    var opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = NO_SPHERE_ICON + ' ' + NO_SPHERE_LABEL;
+    sel.appendChild(opt);
+  }
   function populateSphereSelect(sel) {
+    var hadValue = sel.options.length > 0;
+    var previous = sel.value;
     sel.innerHTML = '';
+    appendNoSphereOption(sel);
     G.SPHERES.forEach(function (s) {
       var opt = document.createElement('option');
       opt.value = s.id; opt.textContent = s.icon + ' ' + s.name;
       sel.appendChild(opt);
     });
+    var previousExists = G.SPHERES.some(function (s) { return s.id === previous; });
+    if (hadValue && previous === '') sel.value = '';
+    else if (previous && previousExists) sel.value = previous;
+    else if (G.SPHERES.length) sel.value = G.SPHERES[0].id;
   }
   populateSphereSelect(document.getElementById('goalSphere'));
   populateSphereSelect(document.getElementById('tomorrowSphere'));
@@ -542,7 +558,19 @@ body::after {
   var pickerOverlay = document.getElementById('spherePickerOverlay');
   var pickerList = document.getElementById('spherePickerList');
   var pickerCallback = null;
+  function appendNoSpherePickerItem() {
+    var item = document.createElement('div');
+    item.className = 'sphere-picker-item';
+    item.innerHTML = '<span>' + NO_SPHERE_ICON + '</span><span>' + NO_SPHERE_LABEL + '</span>';
+    item.addEventListener('click', function () {
+      pickerOverlay.classList.remove('show');
+      if (pickerCallback) pickerCallback('');
+      pickerCallback = null;
+    });
+    pickerList.appendChild(item);
+  }
   pickerList.innerHTML = '';
+  appendNoSpherePickerItem();
   G.SPHERES.forEach(function (s) {
     var item = document.createElement('div');
     item.className = 'sphere-picker-item';
@@ -886,6 +914,7 @@ body::after {
 
   function rebuildSpherePicker() {
     pickerList.innerHTML = '';
+    appendNoSpherePickerItem();
     G.SPHERES.forEach(function (s) {
       var item = document.createElement('div');
       item.className = 'sphere-picker-item';
@@ -1024,8 +1053,8 @@ body::after {
 
     var badges = document.createElement('div'); badges.className = 'goal-badges';
     var sphere = getSphereById(goal.sphere);
-    var badge = document.createElement('span'); badge.className = 'goal-sphere-badge';
-    badge.textContent = sphere ? sphere.icon : '📌'; badge.title = sphere ? sphere.name : 'Выбери сферу';
+    var badge = document.createElement('span'); badge.className = 'goal-sphere-badge' + (sphere ? '' : ' empty');
+    badge.textContent = sphere ? sphere.icon : NO_SPHERE_ICON; badge.title = sphere ? sphere.name : NO_SPHERE_LABEL;
     if (!readOnly) { badge.addEventListener('click', function () { openSpherePicker(function (ns) { var goals = storeGet(key) || []; if (goals[idx]) { goals[idx].sphere = ns; storeSet(key, goals); loadToday(); } }); }); }
     badges.appendChild(badge);
     if (goal.estimatedMin) { var tb = document.createElement('span'); tb.className = 'goal-time-badge'; tb.textContent = goal.estimatedMin + ' мин'; badges.appendChild(tb); }
@@ -1047,18 +1076,20 @@ body::after {
             var est = goals[idx].estimatedMin || 15;
             var mult = G.DIFFICULTY_COIN_MULT[goals[idx].difficulty || 'medium'] || 1;
             var previewCoins = Math.max(1, Math.floor(est * mult));
+            var goalHasSphere = !!getSphereById(goals[idx].sphere);
+            var rewardPrefix = goalHasSphere ? ('+' + est + ' XP • ') : '';
             actualRow.innerHTML =
               '<span class="goal-actual-label">Факт. время:</span>' +
               '<input class="goal-actual-input" type="number" value="' + est + '" min="1"> мин' +
               '<button class="goal-confirm-btn">✓ Готово</button>' +
-              '<span class="goal-reward-text">+' + est + ' XP • +' + previewCoins + ' 🪙</span>';
+              '<span class="goal-reward-text">' + rewardPrefix + '+' + previewCoins + ' 🪙</span>';
             li.appendChild(actualRow);
             var inp = actualRow.querySelector('.goal-actual-input');
             var rewardText = actualRow.querySelector('.goal-reward-text');
             inp.addEventListener('input', function () {
               var m = parseInt(inp.value, 10) || 1;
               var c = Math.max(1, Math.floor(m * mult));
-              rewardText.textContent = '+' + m + ' XP • +' + c + ' 🪙';
+              rewardText.textContent = (goalHasSphere ? ('+' + m + ' XP • ') : '') + '+' + c + ' 🪙';
             });
             actualRow.querySelector('.goal-confirm-btn').addEventListener('click', function () {
               var actualMin = parseInt(inp.value, 10) || est;

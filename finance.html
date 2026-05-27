@@ -290,19 +290,9 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
     // Strip UTF-8 BOM if present
     if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
 
-    // ZenMoney CSV: semicolon or comma separated, first row is headers
+    // ZenMoney CSV may contain dump metadata before the actual header row.
     var lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     if(lines.length < 2) return null;
-
-    // Detect delimiter: count semicolons vs commas in first line
-    var firstLine = lines[0];
-    var semis = (firstLine.match(/;/g) || []).length;
-    var commas = (firstLine.match(/,/g) || []).length;
-    var delim = semis >= commas ? ';' : ',';
-
-    // Parse header
-    var headers = splitCSVLine(firstLine, delim);
-    headers = headers.map(function(h){ return h.replace(/^["']|["']$/g,'').trim().toLowerCase(); });
 
     // Find column indices — match both English and Russian headers
     var colMap = {};
@@ -325,16 +315,32 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
       'валюта дохода':'incomecurrencyshorttitle'
     };
 
+    var headerInfo = null;
+    for(var headerIdx = 0; headerIdx < lines.length; headerIdx++){
+      var candidate = lines[headerIdx].trim();
+      if(!candidate) continue;
+      var candidateDelim = detectDelimiter(candidate);
+      var candidateHeaders = splitCSVLine(candidate, candidateDelim).map(cleanHeader);
+      var candidateMap = {};
+      candidateHeaders.forEach(function(h, i){
+        mapHeader(h, i, candidateMap, headerAliases);
+      });
+      if(candidateMap.date !== undefined && (candidateMap.outcome !== undefined || candidateMap.income !== undefined)){
+        headerInfo = { idx: headerIdx, delim: candidateDelim, headers: candidateHeaders };
+        break;
+      }
+    }
+    if(!headerInfo) return null;
+
+    var delim = headerInfo.delim;
+    var headers = headerInfo.headers;
+
     headers.forEach(function(h, i){
-      // Try exact match first (preserving spaces)
-      if(headerAliases[h]) colMap[headerAliases[h]] = i;
-      // Try without spaces (for camelCase English headers like categoryName)
-      var noSpace = h.replace(/\s/g,'');
-      if(headerAliases[noSpace]) colMap[headerAliases[noSpace]] = i;
+      mapHeader(h, i, colMap, headerAliases);
     });
 
     var rows = [];
-    for(var i = 1; i < lines.length; i++){
+    for(var i = headerInfo.idx + 1; i < lines.length; i++){
       var line = lines[i].trim();
       if(!line) continue;
       var cells = splitCSVLine(line, delim);
@@ -357,6 +363,39 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
       });
     }
     return rows.length ? rows : null;
+  }
+
+  function cleanHeader(header){
+    return header.replace(/^["']|["']$/g,'').trim().toLowerCase();
+  }
+
+  function mapHeader(header, idx, target, aliases){
+    // Try exact match first (preserving spaces)
+    if(aliases[header]) target[aliases[header]] = idx;
+    // Try without spaces (for camelCase English headers like categoryName)
+    var noSpace = header.replace(/\s/g,'');
+    if(aliases[noSpace]) target[aliases[noSpace]] = idx;
+  }
+
+  function detectDelimiter(line){
+    var semis = countDelimiter(line, ';');
+    var commas = countDelimiter(line, ',');
+    return semis > commas ? ';' : ',';
+  }
+
+  function countDelimiter(line, delim){
+    var count = 0;
+    var inQuotes = false;
+    for(var i = 0; i < line.length; i++){
+      var ch = line[i];
+      if(ch === '"'){
+        if(inQuotes && i+1 < line.length && line[i+1] === '"') i++;
+        else inQuotes = !inQuotes;
+      } else if(ch === delim && !inQuotes){
+        count++;
+      }
+    }
+    return count;
   }
 
   function splitCSVLine(line, delim){

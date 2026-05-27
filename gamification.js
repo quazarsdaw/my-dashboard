@@ -193,9 +193,10 @@
     var xp = mins;
     var mult = DIFFICULTY_COIN_MULT[diff] || 0.35;
     var coins = Math.max(1, Math.floor(mins * mult));
-    var sphereName = (SPHERES.find(function (s) { return s.id === sphereId; }) || { name: 'Общее' }).name;
+    var sphere = SPHERES.find(function (s) { return s.id === sphereId; });
+    var sphereName = sphere ? sphere.name : 'без сектора';
     earnCoins(coins, 'Задача (' + sphereName + ')');
-    if (sphereId) addXpToSphere(sphereId, xp);
+    if (sphere) addXpToSphere(sphereId, xp);
     addTotalStats(mins, 1);
     checkAchievements();
     window.dispatchEvent(new CustomEvent('gamification-update'));
