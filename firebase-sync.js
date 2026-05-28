@@ -45,6 +45,7 @@
   var syncDebounceTimer = null;
   var SYNC_DEBOUNCE_MS = 2000;
   var isSyncing = false;      // true while applying cloud data to localStorage
+  var hasPendingLocalChanges = false; // local edits waiting to be pushed must not be overwritten by stale snapshots
   var unsubSnapshot = null;    // onSnapshot unsubscribe function
   var origSetItem = null;      // original localStorage.setItem before interception
 
@@ -158,6 +159,11 @@
 
         } else {
           // ── SUBSEQUENT SNAPSHOTS: real-time from other devices ──
+          if (hasPendingLocalChanges) {
+            isSyncing = false;
+            return;
+          }
+
           // Cloud wins — apply all changes
           Object.keys(cloudData).forEach(function (sanitized) {
             var originalKey = unsanitizeKey(sanitized);
@@ -272,6 +278,7 @@
   /* ── Push local → Cloud ── */
   function schedulePush() {
     if (!syncEnabled || !currentUser || isSyncing) return;
+    hasPendingLocalChanges = true;
     clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
   }
@@ -295,12 +302,14 @@
 
     if (!hasData) {
       // Nothing to push — just start listening
+      hasPendingLocalChanges = false;
       if (callback) callback();
       return;
     }
 
     db.collection('users').doc(currentUser.uid).set(updates, { merge: true })
       .then(function () {
+        hasPendingLocalChanges = false;
         showSyncIndicator('pushed');
         if (callback) callback();
       }).catch(function (err) {
