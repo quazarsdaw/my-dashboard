@@ -102,28 +102,63 @@
 
   /* ═══════════════════════════════════════════════════════
      REALTIME SYNC — onSnapshot listener
-     Instead of one-time .get(), this keeps a live connection.
-     When ANY device pushes changes, ALL other devices get
-     the update instantly via this listener.
      ═══════════════════════════════════════════════════════ */
+  var initialSnapshotDone = false;
+
   function startRealtimeSync() {
     if (unsubSnapshot) unsubSnapshot();
     if (!currentUser || !db) return;
+    initialSnapshotDone = false;
 
-    // Step 1: Push local data FIRST — ensures local changes reach cloud
-    // before we start accepting cloud data. This prevents cloud (stale)
-    // from overwriting local (fresh) changes.
-    pushToCloudThen(function () {
-      // Step 2: NOW start listening for real-time updates
-      unsubSnapshot = db.collection('users').doc(currentUser.uid)
-        .onSnapshot(function (doc) {
-          if (!doc.exists || !doc.data() || !doc.data().data) return;
+    unsubSnapshot = db.collection('users').doc(currentUser.uid)
+      .onSnapshot(function (doc) {
+        if (!doc.exists || !doc.data() || !doc.data().data) {
+          // No cloud data — push everything local
+          pushToCloud();
+          initialSnapshotDone = true;
+          return;
+        }
 
-          isSyncing = true;
-          var cloudData = doc.data().data;
-          var changed = false;
+        isSyncing = true;
+        var cloudData = doc.data().data;
+        var changed = false;
 
-          // Apply cloud → localStorage (only keys that differ)
+        if (!initialSnapshotDone) {
+          // ── FIRST SNAPSHOT: local wins ──
+          // Only import cloud keys we DON'T have locally.
+          // Never overwrite existing local data.
+          Object.keys(cloudData).forEach(function (sanitized) {
+            var originalKey = unsanitizeKey(sanitized);
+            var cloudVal = cloudData[sanitized];
+            if (cloudVal !== null && cloudVal !== undefined) {
+              var localVal = localStorage.getItem(originalKey);
+              if (localVal === null) {
+                // Key missing locally — import from cloud
+                origSetItem(originalKey, cloudVal);
+                changed = true;
+              }
+            }
+          });
+          initialSnapshotDone = true;
+          isSyncing = false;
+
+          // Push local data to cloud (merges, doesn't delete cloud keys)
+          pushToCloud();
+
+          if (changed) {
+            // Imported new keys — reload to render them
+            var lastReload = parseInt(sessionStorage.getItem('_sync_reload_at') || '0', 10);
+            if (Date.now() - lastReload > 3000) {
+              sessionStorage.setItem('_sync_reload_at', String(Date.now()));
+              window.location.reload();
+              return;
+            }
+          }
+          showSyncIndicator('synced');
+
+        } else {
+          // ── SUBSEQUENT SNAPSHOTS: real-time from other devices ──
+          // Cloud wins — apply all changes
           Object.keys(cloudData).forEach(function (sanitized) {
             var originalKey = unsanitizeKey(sanitized);
             var cloudVal = cloudData[sanitized];
@@ -135,23 +170,22 @@
               }
             }
           });
-
           isSyncing = false;
 
           if (changed) {
-            var lastReload = parseInt(sessionStorage.getItem('_sync_reload_at') || '0', 10);
-            if (Date.now() - lastReload > 3000) {
+            var lastReload2 = parseInt(sessionStorage.getItem('_sync_reload_at') || '0', 10);
+            if (Date.now() - lastReload2 > 3000) {
               sessionStorage.setItem('_sync_reload_at', String(Date.now()));
               window.location.reload();
               return;
             }
             showSyncIndicator('synced');
           }
+        }
 
-        }, function (err) {
-          console.error('Realtime sync error:', err);
-        });
-    });
+      }, function (err) {
+        console.error('Realtime sync error:', err);
+      });
   }
 
   function stopRealtimeSync() {
