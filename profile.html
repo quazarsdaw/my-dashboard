@@ -243,6 +243,31 @@ body::after {
 .modal-btn-cancel { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
 .modal-btn-save { background: linear-gradient(180deg, #C084FC 0%, #9333EA 100%); color: #fff; }
 
+/* Data transfer */
+.transfer-zone {
+  margin-top: 32px; padding: 20px; border-radius: var(--card-radius);
+  border: 1px solid rgba(107,227,164,0.15); background: rgba(107,227,164,0.04);
+}
+.transfer-title { font-size: 13px; font-weight: 700; color: var(--success); margin-bottom: 4px; }
+.transfer-text { font-size: 12px; color: var(--text-tertiary); margin-bottom: 14px; line-height: 1.5; }
+.transfer-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.transfer-btn {
+  padding: 10px 20px; border-radius: 10px; border: 1px solid rgba(107,227,164,0.3);
+  background: rgba(107,227,164,0.1); color: var(--success); font-size: 13px;
+  font-weight: 700; font-family: var(--font-sans); cursor: pointer;
+  display: flex; align-items: center; gap: 6px; transition: transform 0.1s, background 0.15s;
+}
+.transfer-btn:active { transform: scale(0.96); }
+.transfer-btn:hover { background: rgba(107,227,164,0.15); }
+.transfer-btn svg { flex-shrink: 0; }
+.transfer-status {
+  margin-top: 12px; font-size: 12px; color: var(--success);
+  display: none; padding: 8px 12px; border-radius: 8px;
+  background: rgba(107,227,164,0.08);
+}
+.transfer-status.error { color: var(--danger); background: rgba(255,107,107,0.08); }
+.transfer-status.visible { display: block; }
+
 /* Reset data */
 .danger-zone {
   margin-top: 32px; padding: 20px; border-radius: var(--card-radius);
@@ -324,6 +349,24 @@ body::after {
 <!-- Coin history -->
 <div class="section-eyebrow">История монет</div>
 <div id="coinHistory"></div>
+
+<!-- Data transfer -->
+<div class="transfer-zone">
+  <div class="transfer-title">Перенос данных</div>
+  <div class="transfer-text">Экспортируй данные на одном устройстве, импортируй на другом. Работает через файл — никакого облака.</div>
+  <div class="transfer-btns">
+    <button class="transfer-btn" id="exportBtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Экспорт
+    </button>
+    <button class="transfer-btn" id="importBtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Импорт
+    </button>
+  </div>
+  <input type="file" id="importFile" accept=".json" style="display:none">
+  <div class="transfer-status" id="transferStatus"></div>
+</div>
 
 <!-- Danger zone -->
 <div class="danger-zone">
@@ -620,6 +663,70 @@ body::after {
     var allKeys = Object.keys(localStorage);
     allKeys.forEach(function (k) { localStorage.removeItem(k); });
     window.location.reload();
+  });
+
+  // --- Data transfer: Export / Import ---
+  function showTransferStatus(msg, isError) {
+    var el = document.getElementById('transferStatus');
+    el.textContent = msg;
+    el.className = 'transfer-status visible' + (isError ? ' error' : '');
+    if (!isError) setTimeout(function () { el.classList.remove('visible'); }, 4000);
+  }
+
+  document.getElementById('exportBtn').addEventListener('click', function () {
+    var data = {};
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      data[key] = localStorage.getItem(key);
+    }
+    var json = JSON.stringify(data, null, 2);
+    var blob = new Blob([json], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    var date = new Date();
+    var stamp = date.getFullYear() + '-' +
+      String(date.getMonth() + 1).padStart(2, '0') + '-' +
+      String(date.getDate()).padStart(2, '0');
+    a.download = 'dashboard-backup-' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showTransferStatus('Файл скачан. Перекинь его на другое устройство и нажми «Импорт».');
+  });
+
+  document.getElementById('importBtn').addEventListener('click', function () {
+    document.getElementById('importFile').click();
+  });
+
+  document.getElementById('importFile').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      try {
+        var data = JSON.parse(ev.target.result);
+        if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+          throw new Error('Неверный формат');
+        }
+        var keys = Object.keys(data);
+        if (keys.length === 0) {
+          throw new Error('Файл пустой');
+        }
+        if (!confirm('Импортировать ' + keys.length + ' записей?\n\nТекущие данные будут перезаписаны.')) return;
+        keys.forEach(function (key) {
+          localStorage.setItem(key, data[key]);
+        });
+        showTransferStatus('Импорт завершён! Обновляю страницу...');
+        setTimeout(function () { window.location.reload(); }, 800);
+      } catch (err) {
+        showTransferStatus('Ошибка: ' + err.message, true);
+      }
+    };
+    reader.readAsText(file);
+    // Reset so same file can be re-selected
+    e.target.value = '';
   });
 
   function renderAll() {
