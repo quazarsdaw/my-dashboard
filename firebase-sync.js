@@ -207,6 +207,18 @@
       }
     });
 
+    getAllSyncKeys().forEach(function (key) {
+      if (key === SYNC_META_KEY || SKIP_KEYS.indexOf(key) !== -1) return;
+      var localVal = localStorage.getItem(key);
+      if (localVal !== null && cloudData[sanitizeKey(key)] === undefined) {
+        if (!localMeta[key]) {
+          localMeta[key] = Date.now();
+          metaChanged = true;
+        }
+        shouldPushLocal = true;
+      }
+    });
+
     if (metaChanged) writeLocalMeta(localMeta);
     return { changed: changed, shouldPushLocal: shouldPushLocal };
   }

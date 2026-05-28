@@ -259,3 +259,22 @@ test('newer cloud data with sync metadata can update an existing local key', () 
   assert.equal(h.localStorage.getItem('store_v1'), remoteStore);
   assert.equal(JSON.parse(h.localStorage.getItem('_sync_meta_v1')).store_v1, 2000);
 });
+
+test('initial sync pushes local-only store data into an existing cloud document', async () => {
+  const h = loadFirebaseSync();
+  const localStore = JSON.stringify({
+    rewards: [{ id: 'custom_sync', name: 'Кастом', price: 42, icon: '🎁' }],
+    purchases: [],
+  });
+
+  h.localStorage.rawSetItem('store_v1', localStore);
+  h.localStorage.rawSetItem('_sync_meta_v1', JSON.stringify({ store_v1: 1000 }));
+  h.signIn();
+  h.snapshot({ coins_v1: JSON.stringify({ balance: 10, earned: 10, spent: 0, history: [] }) });
+  await Promise.resolve();
+
+  assert.ok(h.sets.length > 0);
+  const lastSet = h.sets[h.sets.length - 1];
+  assert.equal(lastSet['data.store_v1'], localStore);
+  assert.match(lastSet['data._sync_meta_v1'], /store_v1/);
+});
