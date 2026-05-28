@@ -347,11 +347,22 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
       var dateStr = getCol(cells, colMap, 'date');
       if(!dateStr) continue;
 
+      // Skip balance corrections (1970-01-01 = ZenMoney dummy date)
+      if(dateStr.indexOf('1970') === 0) continue;
+
       var outcome = parseFloat((getCol(cells, colMap, 'outcome')||'0').replace(/\s/g,'').replace(',','.')) || 0;
       var income = parseFloat((getCol(cells, colMap, 'income')||'0').replace(/\s/g,'').replace(',','.')) || 0;
-      var category = getCol(cells, colMap, 'categoryname') || 'Без категории';
+      var category = getCol(cells, colMap, 'categoryname') || '';
       var payee = getCol(cells, colMap, 'payee') || '';
       var comment = getCol(cells, colMap, 'comment') || '';
+
+      // Skip transfers between own accounts (both outcome and income present)
+      if(outcome > 0 && income > 0) continue;
+
+      // Skip zero transactions
+      if(outcome === 0 && income === 0) continue;
+
+      if(!category) category = payee || 'Без категории';
 
       rows.push({
         date: dateStr,
