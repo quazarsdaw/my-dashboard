@@ -107,69 +107,51 @@
      the update instantly via this listener.
      ═══════════════════════════════════════════════════════ */
   function startRealtimeSync() {
-    // Clean up previous listener if any
     if (unsubSnapshot) unsubSnapshot();
     if (!currentUser || !db) return;
 
-    unsubSnapshot = db.collection('users').doc(currentUser.uid)
-      .onSnapshot(function (doc) {
-        if (!doc.exists || !doc.data() || !doc.data().data) {
-          // No cloud data yet — do initial push of local data
-          pushToCloud();
-          return;
-        }
+    // Step 1: Push local data FIRST — ensures local changes reach cloud
+    // before we start accepting cloud data. This prevents cloud (stale)
+    // from overwriting local (fresh) changes.
+    pushToCloudThen(function () {
+      // Step 2: NOW start listening for real-time updates
+      unsubSnapshot = db.collection('users').doc(currentUser.uid)
+        .onSnapshot(function (doc) {
+          if (!doc.exists || !doc.data() || !doc.data().data) return;
 
-        isSyncing = true;
-        var cloudData = doc.data().data;
-        var changed = false;
+          isSyncing = true;
+          var cloudData = doc.data().data;
+          var changed = false;
 
-        // Apply cloud → localStorage
-        Object.keys(cloudData).forEach(function (sanitized) {
-          var originalKey = unsanitizeKey(sanitized);
-          var cloudVal = cloudData[sanitized];
-          if (cloudVal !== null && cloudVal !== undefined) {
-            var localVal = localStorage.getItem(originalKey);
-            if (localVal !== cloudVal) {
-              origSetItem(originalKey, cloudVal); // bypass interceptor
-              changed = true;
+          // Apply cloud → localStorage (only keys that differ)
+          Object.keys(cloudData).forEach(function (sanitized) {
+            var originalKey = unsanitizeKey(sanitized);
+            var cloudVal = cloudData[sanitized];
+            if (cloudVal !== null && cloudVal !== undefined) {
+              var localVal = localStorage.getItem(originalKey);
+              if (localVal !== cloudVal) {
+                origSetItem(originalKey, cloudVal);
+                changed = true;
+              }
             }
+          });
+
+          isSyncing = false;
+
+          if (changed) {
+            var lastReload = parseInt(sessionStorage.getItem('_sync_reload_at') || '0', 10);
+            if (Date.now() - lastReload > 3000) {
+              sessionStorage.setItem('_sync_reload_at', String(Date.now()));
+              window.location.reload();
+              return;
+            }
+            showSyncIndicator('synced');
           }
+
+        }, function (err) {
+          console.error('Realtime sync error:', err);
         });
-
-        // Check if local has keys that cloud doesn't know about
-        var localKeys = getAllSyncKeys();
-        var hasLocalOnly = false;
-        localKeys.forEach(function (key) {
-          var val = localStorage.getItem(key);
-          if (val !== null && !(sanitizeKey(key) in cloudData)) {
-            hasLocalOnly = true;
-          }
-        });
-
-        isSyncing = false;
-
-        if (changed) {
-          // Data from cloud was applied — reload so ALL page sections re-render.
-          // After reload, onSnapshot fires again but localVal===cloudVal
-          // for all keys, so changed=false → no further reload. No loop.
-          // Guard: don't reload if we just reloaded within 3 seconds
-          var lastReload = parseInt(sessionStorage.getItem('_sync_reload_at') || '0', 10);
-          if (Date.now() - lastReload > 3000) {
-            sessionStorage.setItem('_sync_reload_at', String(Date.now()));
-            window.location.reload();
-            return;
-          }
-          showSyncIndicator('synced');
-        }
-
-        // Merge local-only keys into cloud
-        if (hasLocalOnly) {
-          pushToCloud();
-        }
-
-      }, function (err) {
-        console.error('Realtime sync error:', err);
-      });
+    });
   }
 
   function stopRealtimeSync() {
@@ -260,29 +242,42 @@
     syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
   }
 
-  function pushToCloud() {
-    if (!syncEnabled || !currentUser || !db) return;
+  function pushToCloudThen(callback) {
+    if (!currentUser || !db) { if (callback) callback(); return; }
 
-    // Use dot notation so we only UPDATE keys we have locally,
-    // without deleting cloud keys we don't have on this device.
     var updates = {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       email: currentUser.email
     };
     var keys = getAllSyncKeys();
+    var hasData = false;
     keys.forEach(function (key) {
       var val = localStorage.getItem(key);
       if (val !== null) {
         updates['data.' + sanitizeKey(key)] = val;
+        hasData = true;
       }
     });
+
+    if (!hasData) {
+      // Nothing to push — just start listening
+      if (callback) callback();
+      return;
+    }
 
     db.collection('users').doc(currentUser.uid).set(updates, { merge: true })
       .then(function () {
         showSyncIndicator('pushed');
+        if (callback) callback();
       }).catch(function (err) {
         console.error('Push failed:', err);
+        // Still start listening even if push fails
+        if (callback) callback();
       });
+  }
+
+  function pushToCloud() {
+    pushToCloudThen(null);
   }
 
   /* ── Firestore key sanitization ── */
