@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 function loadGamification() {
   const storage = new Map();
+  const events = [];
   const context = {
     CustomEvent: function CustomEvent(type, init) {
       this.type = type;
@@ -20,7 +21,9 @@ function loadGamification() {
       },
     },
     window: {
-      dispatchEvent() {},
+      dispatchEvent(event) {
+        events.push(event);
+      },
     },
   };
   context.window.CustomEvent = context.CustomEvent;
@@ -28,7 +31,7 @@ function loadGamification() {
   vm.createContext(context);
   const source = fs.readFileSync(path.join(__dirname, '..', 'gamification.js'), 'utf8');
   vm.runInContext(source, context);
-  return { G: context.window.Gamification, storage };
+  return { G: context.window.Gamification, storage, events };
 }
 
 test('completing a task without a sector gives coins but no sphere XP', () => {
@@ -50,4 +53,14 @@ test('task UI offers an explicit no-sector choice', () => {
   assert.match(html, /Без сектора/);
   assert.match(html, /appendNoSphereOption\(sel\)/);
   assert.match(html, /pickerCallback\(''\)/);
+});
+
+test('storeSet emits a local data change event for sync', () => {
+  const { G, events } = loadGamification();
+
+  G.storeSet('store_v1', { rewards: [], purchases: [] });
+
+  const event = events.find(function (e) { return e.type === 'dashboard-data-changed'; });
+  assert.ok(event);
+  assert.equal(event.detail.key, 'store_v1');
 });

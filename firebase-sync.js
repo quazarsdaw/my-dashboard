@@ -47,7 +47,7 @@
   var isSyncing = false;      // true while applying cloud data to localStorage
   var hasPendingLocalChanges = false; // local edits waiting to be pushed must not be overwritten by stale snapshots
   var unsubSnapshot = null;    // onSnapshot unsubscribe function
-  var origSetItem = null;      // original localStorage.setItem before interception
+  var rawSetItem = null;       // native localStorage writer used when applying cloud data
 
   // Sync ALL localStorage keys — no whitelist, nothing gets missed
   var SKIP_KEYS = ['_sync_reload_at']; // internal keys to skip
@@ -69,12 +69,7 @@
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
 
-    // Intercept localStorage.setItem to detect same-tab writes
-    origSetItem = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = function (key, value) {
-      origSetItem(key, value);
-      if (!isSyncing) schedulePush();
-    };
+    installStorageHook();
 
     // Auth state listener
     firebase.auth().onAuthStateChanged(function (user) {
@@ -93,6 +88,10 @@
       if (!isSyncing) schedulePush();
     });
 
+    window.addEventListener('dashboard-data-changed', function () {
+      if (!isSyncing) schedulePush();
+    });
+
     // Gamification.js events (backup in case setItem interception misses)
     window.addEventListener('gamification-update', function () {
       if (!isSyncing) schedulePush();
@@ -105,6 +104,49 @@
      REALTIME SYNC — onSnapshot listener
      ═══════════════════════════════════════════════════════ */
   var initialSnapshotDone = false;
+
+  function installStorageHook() {
+    try {
+      if (window.Storage && window.Storage.prototype && window.Storage.prototype.setItem) {
+        var nativeSetItem = window.Storage.prototype.setItem;
+        rawSetItem = function (key, value) { nativeSetItem.call(localStorage, key, value); };
+        window.Storage.prototype.setItem = function (key, value) {
+          nativeSetItem.call(this, key, value);
+          if (this === localStorage && !isSyncing) schedulePush();
+        };
+        return;
+      }
+    } catch (e) {}
+
+    var nativeLocalSetItem = localStorage.setItem.bind(localStorage);
+    rawSetItem = function (key, value) { nativeLocalSetItem(key, value); };
+    try {
+      localStorage.setItem = function (key, value) {
+        nativeLocalSetItem(key, value);
+        if (!isSyncing) schedulePush();
+      };
+    } catch (e) {}
+  }
+
+  function setLocalStorageRaw(key, value) {
+    if (rawSetItem) {
+      rawSetItem(key, value);
+    } else {
+      localStorage.setItem(key, value);
+    }
+  }
+
+  function cloudMatchesLocal(cloudData) {
+    var keys = getAllSyncKeys();
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var localVal = localStorage.getItem(key);
+      if (localVal !== null && cloudData[sanitizeKey(key)] !== localVal) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   function startRealtimeSync() {
     if (unsubSnapshot) unsubSnapshot();
@@ -135,7 +177,7 @@
               var localVal = localStorage.getItem(originalKey);
               if (localVal === null) {
                 // Key missing locally — import from cloud
-                origSetItem(originalKey, cloudVal);
+                setLocalStorageRaw(originalKey, cloudVal);
                 changed = true;
               }
             }
@@ -160,6 +202,10 @@
         } else {
           // ── SUBSEQUENT SNAPSHOTS: real-time from other devices ──
           if (hasPendingLocalChanges) {
+            if (cloudMatchesLocal(cloudData)) {
+              hasPendingLocalChanges = false;
+              showSyncIndicator('synced');
+            }
             isSyncing = false;
             return;
           }
@@ -171,7 +217,7 @@
             if (cloudVal !== null && cloudVal !== undefined) {
               var localVal = localStorage.getItem(originalKey);
               if (localVal !== cloudVal) {
-                origSetItem(originalKey, cloudVal);
+                setLocalStorageRaw(originalKey, cloudVal);
                 changed = true;
               }
             }
@@ -307,9 +353,9 @@
       return;
     }
 
+    hasPendingLocalChanges = true;
     db.collection('users').doc(currentUser.uid).set(updates, { merge: true })
       .then(function () {
-        hasPendingLocalChanges = false;
         showSyncIndicator('pushed');
         if (callback) callback();
       }).catch(function (err) {

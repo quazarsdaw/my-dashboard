@@ -86,8 +86,15 @@
     try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
   }
 
+  function notifyDataChanged(key) {
+    try {
+      window.dispatchEvent(new CustomEvent('dashboard-data-changed', { detail: { key: key } }));
+    } catch (e) {}
+  }
+
   function storeSet(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
+    notifyDataChanged(key);
   }
 
   // --- Spheres ---
