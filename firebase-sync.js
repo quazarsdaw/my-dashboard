@@ -263,24 +263,26 @@
   function pushToCloud() {
     if (!syncEnabled || !currentUser || !db) return;
 
-    var data = {};
+    // Use dot notation so we only UPDATE keys we have locally,
+    // without deleting cloud keys we don't have on this device.
+    var updates = {
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      email: currentUser.email
+    };
     var keys = getAllSyncKeys();
     keys.forEach(function (key) {
       var val = localStorage.getItem(key);
       if (val !== null) {
-        data[sanitizeKey(key)] = val;
+        updates['data.' + sanitizeKey(key)] = val;
       }
     });
 
-    db.collection('users').doc(currentUser.uid).set({
-      data: data,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      email: currentUser.email
-    }, { merge: true }).then(function () {
-      showSyncIndicator('pushed');
-    }).catch(function (err) {
-      console.error('Push failed:', err);
-    });
+    db.collection('users').doc(currentUser.uid).set(updates, { merge: true })
+      .then(function () {
+        showSyncIndicator('pushed');
+      }).catch(function (err) {
+        console.error('Push failed:', err);
+      });
   }
 
   /* ── Firestore key sanitization ── */

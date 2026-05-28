@@ -146,8 +146,9 @@
   function getStore() {
     var data = storeGet('store_v1');
     if (!data) {
-      data = { rewards: DEFAULT_REWARDS, purchases: [] };
-      storeSet('store_v1', data);
+      // Return defaults in memory but DON'T write to localStorage.
+      // This prevents default data from overwriting custom data during sync.
+      return { rewards: DEFAULT_REWARDS, purchases: [] };
     }
     return data;
   }
