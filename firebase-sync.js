@@ -46,6 +46,7 @@
   var syncDebounceTimer = null;
   var SYNC_DEBOUNCE_MS = 2000;
   var isSyncing = false;
+  var pushBlockedUntil = 0; // timestamp: block pushes after pull
 
   // Keys we sync to Firestore
   var SYNC_KEYS = [
@@ -73,10 +74,12 @@
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
 
-    // If we just reloaded after sync (?synced=1), clean URL and skip pull
+    // If we just reloaded after sync (?synced=1), clean URL, skip pull,
+    // and block pushes for 15s so page init doesn't overwrite cloud data
     var justSynced = window.location.search.indexOf('synced=1') !== -1;
     if (justSynced) {
       history.replaceState(null, '', window.location.pathname);
+      pushBlockedUntil = Date.now() + 15000;
     }
 
     // Auth state listener
@@ -186,6 +189,7 @@
   /* ── Sync: Push local → Cloud ── */
   function schedulePush() {
     if (!syncEnabled || !currentUser) return;
+    if (Date.now() < pushBlockedUntil) return; // Don't push right after pull
     clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
   }
@@ -240,10 +244,11 @@
         isSyncing = false;
 
         if (changed) {
+          // Block pushes so stale local data doesn't overwrite cloud
+          pushBlockedUntil = Date.now() + 15000;
           // Auto-reload with ?synced=1 flag — on next load this flag
           // prevents pullFromCloud, breaking the loop
-          var sep = window.location.search ? '&' : '?';
-          window.location.href = window.location.pathname + sep + 'synced=1';
+          window.location.href = window.location.pathname + '?synced=1';
           return;
         }
       } else {
