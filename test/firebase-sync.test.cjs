@@ -223,3 +223,39 @@ test('stale snapshots after a push promise resolves still cannot undo local edit
   assert.equal(h.localStorage.getItem('store_v1'), localStoreAfterDelete);
   assert.equal(h.reloadCount, 0);
 });
+
+test('unversioned stale cloud data never overwrites an existing local key', () => {
+  const h = loadFirebaseSync();
+  const staleCloudStore = JSON.stringify({
+    rewards: [{ id: 'series_1h', name: '1 час сериала', price: 50, icon: '📺' }],
+    purchases: [],
+  });
+  const localStore = JSON.stringify({ rewards: [], purchases: [] });
+
+  h.localStorage.rawSetItem('store_v1', localStore);
+  h.signIn();
+  h.snapshot({ store_v1: staleCloudStore });
+  h.snapshot({ store_v1: staleCloudStore });
+
+  assert.equal(h.localStorage.getItem('store_v1'), localStore);
+  assert.equal(h.reloadCount, 0);
+});
+
+test('newer cloud data with sync metadata can update an existing local key', () => {
+  const h = loadFirebaseSync();
+  const localStore = JSON.stringify({ rewards: [], purchases: [] });
+  const remoteStore = JSON.stringify({
+    rewards: [{ id: 'series_1h', name: '1 час сериала', price: 50, icon: '📺' }],
+    purchases: [],
+  });
+  const remoteMeta = JSON.stringify({ store_v1: 2000 });
+
+  h.localStorage.rawSetItem('store_v1', localStore);
+  h.localStorage.rawSetItem('_sync_meta_v1', JSON.stringify({ store_v1: 1000 }));
+  h.signIn();
+  h.snapshot({ store_v1: localStore, _sync_meta_v1: JSON.stringify({ store_v1: 1000 }) });
+  h.snapshot({ store_v1: remoteStore, _sync_meta_v1: remoteMeta });
+
+  assert.equal(h.localStorage.getItem('store_v1'), remoteStore);
+  assert.equal(JSON.parse(h.localStorage.getItem('_sync_meta_v1')).store_v1, 2000);
+});

@@ -51,6 +51,7 @@
 
   // Sync ALL localStorage keys — no whitelist, nothing gets missed
   var SKIP_KEYS = ['_sync_reload_at']; // internal keys to skip
+  var SYNC_META_KEY = '_sync_meta_v1';
 
   function getAllSyncKeys() {
     var keys = [];
@@ -84,12 +85,12 @@
     });
 
     // Cross-tab changes
-    window.addEventListener('storage', function () {
-      if (!isSyncing) schedulePush();
+    window.addEventListener('storage', function (e) {
+      if (!isSyncing) schedulePush(e && e.key);
     });
 
-    window.addEventListener('dashboard-data-changed', function () {
-      if (!isSyncing) schedulePush();
+    window.addEventListener('dashboard-data-changed', function (e) {
+      if (!isSyncing) schedulePush(e && e.detail && e.detail.key);
     });
 
     // Gamification.js events (backup in case setItem interception misses)
@@ -112,7 +113,7 @@
         rawSetItem = function (key, value) { nativeSetItem.call(localStorage, key, value); };
         window.Storage.prototype.setItem = function (key, value) {
           nativeSetItem.call(this, key, value);
-          if (this === localStorage && !isSyncing) schedulePush();
+          if (this === localStorage && !isSyncing) schedulePush(key);
         };
         return;
       }
@@ -123,7 +124,7 @@
     try {
       localStorage.setItem = function (key, value) {
         nativeLocalSetItem(key, value);
-        if (!isSyncing) schedulePush();
+        if (!isSyncing) schedulePush(key);
       };
     } catch (e) {}
   }
@@ -148,6 +149,68 @@
     return true;
   }
 
+  function readLocalMeta() {
+    try { return JSON.parse(localStorage.getItem(SYNC_META_KEY)) || {}; } catch (e) { return {}; }
+  }
+
+  function writeLocalMeta(meta) {
+    setLocalStorageRaw(SYNC_META_KEY, JSON.stringify(meta));
+  }
+
+  function readCloudMeta(cloudData) {
+    try { return JSON.parse(cloudData[sanitizeKey(SYNC_META_KEY)] || '{}') || {}; } catch (e) { return {}; }
+  }
+
+  function touchLocalKey(key) {
+    if (!key || key === SYNC_META_KEY || SKIP_KEYS.indexOf(key) !== -1) return;
+    var meta = readLocalMeta();
+    meta[key] = Date.now();
+    writeLocalMeta(meta);
+  }
+
+  function mergeCloudData(cloudData) {
+    var changed = false;
+    var shouldPushLocal = false;
+    var localMeta = readLocalMeta();
+    var cloudMeta = readCloudMeta(cloudData);
+    var metaChanged = false;
+
+    Object.keys(cloudData).forEach(function (sanitized) {
+      var originalKey = unsanitizeKey(sanitized);
+      if (originalKey === SYNC_META_KEY || SKIP_KEYS.indexOf(originalKey) !== -1) return;
+
+      var cloudVal = cloudData[sanitized];
+      if (cloudVal === null || cloudVal === undefined) return;
+
+      var localVal = localStorage.getItem(originalKey);
+      var localTime = localMeta[originalKey] || 0;
+      var cloudTime = cloudMeta[originalKey] || 0;
+
+      if (localVal === null || cloudTime > localTime) {
+        if (localVal !== cloudVal) {
+          setLocalStorageRaw(originalKey, cloudVal);
+          changed = true;
+        }
+        if (cloudTime && localMeta[originalKey] !== cloudTime) {
+          localMeta[originalKey] = cloudTime;
+          metaChanged = true;
+        }
+        return;
+      }
+
+      if (localVal !== cloudVal) {
+        if (!localTime) {
+          localMeta[originalKey] = Date.now();
+          metaChanged = true;
+        }
+        shouldPushLocal = true;
+      }
+    });
+
+    if (metaChanged) writeLocalMeta(localMeta);
+    return { changed: changed, shouldPushLocal: shouldPushLocal };
+  }
+
   function startRealtimeSync() {
     if (unsubSnapshot) unsubSnapshot();
     if (!currentUser || !db) return;
@@ -164,29 +227,14 @@
 
         isSyncing = true;
         var cloudData = doc.data().data;
-        var changed = false;
+        var result = mergeCloudData(cloudData);
+        var changed = result.changed;
 
         if (!initialSnapshotDone) {
-          // ── FIRST SNAPSHOT: local wins ──
-          // Only import cloud keys we DON'T have locally.
-          // Never overwrite existing local data.
-          Object.keys(cloudData).forEach(function (sanitized) {
-            var originalKey = unsanitizeKey(sanitized);
-            var cloudVal = cloudData[sanitized];
-            if (cloudVal !== null && cloudVal !== undefined) {
-              var localVal = localStorage.getItem(originalKey);
-              if (localVal === null) {
-                // Key missing locally — import from cloud
-                setLocalStorageRaw(originalKey, cloudVal);
-                changed = true;
-              }
-            }
-          });
           initialSnapshotDone = true;
           isSyncing = false;
 
-          // Push local data to cloud (merges, doesn't delete cloud keys)
-          pushToCloud();
+          if (result.shouldPushLocal) pushToCloud();
 
           if (changed) {
             // Imported new keys — reload to render them
@@ -200,28 +248,11 @@
           showSyncIndicator('synced');
 
         } else {
-          // ── SUBSEQUENT SNAPSHOTS: real-time from other devices ──
-          if (hasPendingLocalChanges) {
-            if (cloudMatchesLocal(cloudData)) {
-              hasPendingLocalChanges = false;
-              showSyncIndicator('synced');
-            }
-            isSyncing = false;
-            return;
+          if (result.shouldPushLocal) pushToCloud();
+          if (hasPendingLocalChanges && cloudMatchesLocal(cloudData)) {
+            hasPendingLocalChanges = false;
+            showSyncIndicator('synced');
           }
-
-          // Cloud wins — apply all changes
-          Object.keys(cloudData).forEach(function (sanitized) {
-            var originalKey = unsanitizeKey(sanitized);
-            var cloudVal = cloudData[sanitized];
-            if (cloudVal !== null && cloudVal !== undefined) {
-              var localVal = localStorage.getItem(originalKey);
-              if (localVal !== cloudVal) {
-                setLocalStorageRaw(originalKey, cloudVal);
-                changed = true;
-              }
-            }
-          });
           isSyncing = false;
 
           if (changed) {
@@ -322,8 +353,9 @@
   }
 
   /* ── Push local → Cloud ── */
-  function schedulePush() {
+  function schedulePush(key) {
     if (!syncEnabled || !currentUser || isSyncing) return;
+    touchLocalKey(key);
     hasPendingLocalChanges = true;
     clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
