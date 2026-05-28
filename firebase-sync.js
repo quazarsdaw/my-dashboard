@@ -79,7 +79,9 @@
     var justSynced = window.location.search.indexOf('synced=1') !== -1;
     if (justSynced) {
       history.replaceState(null, '', window.location.pathname);
-      pushBlockedUntil = Date.now() + 15000;
+      pushBlockedUntil = Date.now() + 10000;
+      // After cooldown, push local data that might not be in cloud yet
+      setTimeout(pushToCloud, 11000);
     }
 
     // Auth state listener
