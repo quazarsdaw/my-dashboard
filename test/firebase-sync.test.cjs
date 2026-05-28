@@ -19,8 +19,14 @@ function makeStorage() {
     setItem(key, value) {
       data.set(key, String(value));
     },
+    removeItem(key) {
+      data.delete(key);
+    },
     rawSetItem(key, value) {
       data.set(key, String(value));
+    },
+    rawRemoveItem(key) {
+      data.delete(key);
     },
     dump() {
       return Object.fromEntries(data.entries());
@@ -275,6 +281,82 @@ test('initial sync pushes local-only store data into an existing cloud document'
 
   assert.ok(h.sets.length > 0);
   const lastSet = h.sets[h.sets.length - 1];
-  assert.equal(lastSet['data.store_v1'], localStore);
-  assert.match(lastSet['data._sync_meta_v1'], /store_v1/);
+  assert.equal(lastSet.data.store_v1, localStore);
+  assert.match(lastSet.data._sync_meta_v1, /store_v1/);
+});
+
+test('push writes a nested data map instead of dynamic field paths for special localStorage keys', async () => {
+  const h = loadFirebaseSync();
+  const key = 'goals:2026-05-28';
+  const goals = JSON.stringify([{ text: 'Разобрать стол', done: false }]);
+
+  h.localStorage.rawSetItem(key, goals);
+  h.signIn();
+  h.snapshot({ coins_v1: JSON.stringify({ balance: 10, earned: 10, spent: 0, history: [] }) });
+  await Promise.resolve();
+
+  assert.ok(h.sets.length > 0);
+  const lastSet = h.sets[h.sets.length - 1];
+  assert.ok(lastSet.data);
+  assert.equal(lastSet.data[key], goals);
+  assert.equal(Object.prototype.hasOwnProperty.call(lastSet, 'data.' + key), false);
+});
+
+test('local key deletion is pushed and not restored by a stale cloud snapshot', async () => {
+  const h = loadFirebaseSync();
+  const key = 'goals:2026-05-28';
+  const goals = JSON.stringify([{ text: 'Разобрать стол', done: false }]);
+  const oldMeta = JSON.stringify({ [key]: 1000 });
+
+  h.localStorage.rawSetItem(key, goals);
+  h.localStorage.rawSetItem('_sync_meta_v1', oldMeta);
+  h.signIn();
+  h.snapshot({ [key]: goals, _sync_meta_v1: oldMeta });
+  h.localStorage.rawRemoveItem(key);
+  h.dispatch('dashboard-data-changed', { key });
+  h.runTimers();
+  await Promise.resolve();
+  h.snapshot({ [key]: goals, _sync_meta_v1: oldMeta });
+
+  assert.equal(h.localStorage.getItem(key), null);
+  const lastSet = h.sets[h.sets.length - 1];
+  assert.ok(lastSet.data);
+  assert.equal(Object.prototype.hasOwnProperty.call(lastSet.data, key), false);
+  assert.match(lastSet.data._sync_deleted_v1, /goals:2026-05-28/);
+});
+
+test('removeItem records a deletion for sync', async () => {
+  const h = loadFirebaseSync();
+  const key = 'goals:2026-05-28';
+  const goals = JSON.stringify([{ text: 'Разобрать стол', done: false }]);
+  const oldMeta = JSON.stringify({ [key]: 1000 });
+
+  h.localStorage.rawSetItem(key, goals);
+  h.localStorage.rawSetItem('_sync_meta_v1', oldMeta);
+  h.signIn();
+  h.snapshot({ [key]: goals, _sync_meta_v1: oldMeta });
+  h.localStorage.removeItem(key);
+  h.runTimers();
+  await Promise.resolve();
+
+  assert.equal(h.localStorage.getItem(key), null);
+  const lastSet = h.sets[h.sets.length - 1];
+  assert.ok(lastSet.data);
+  assert.match(lastSet.data._sync_deleted_v1, /goals:2026-05-28/);
+});
+
+test('newer cloud deletion removes an existing local key', () => {
+  const h = loadFirebaseSync();
+  const key = 'goals:2026-05-28';
+  const goals = JSON.stringify([{ text: 'Разобрать стол', done: false }]);
+
+  h.localStorage.rawSetItem(key, goals);
+  h.localStorage.rawSetItem('_sync_meta_v1', JSON.stringify({ [key]: 1000 }));
+  h.signIn();
+  h.snapshot({
+    _sync_meta_v1: JSON.stringify({ [key]: 1000 }),
+    _sync_deleted_v1: JSON.stringify({ [key]: 2000 }),
+  });
+
+  assert.equal(h.localStorage.getItem(key), null);
 });

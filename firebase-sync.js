@@ -48,10 +48,16 @@
   var hasPendingLocalChanges = false; // local edits waiting to be pushed must not be overwritten by stale snapshots
   var unsubSnapshot = null;    // onSnapshot unsubscribe function
   var rawSetItem = null;       // native localStorage writer used when applying cloud data
+  var rawRemoveItem = null;    // native localStorage remover used when applying cloud data
 
   // Sync ALL localStorage keys — no whitelist, nothing gets missed
   var SKIP_KEYS = ['_sync_reload_at']; // internal keys to skip
   var SYNC_META_KEY = '_sync_meta_v1';
+  var DELETE_META_KEY = '_sync_deleted_v1';
+
+  function isInternalSyncKey(key) {
+    return !key || key === SYNC_META_KEY || key === DELETE_META_KEY || SKIP_KEYS.indexOf(key) !== -1;
+  }
 
   function getAllSyncKeys() {
     var keys = [];
@@ -110,22 +116,58 @@
     try {
       if (window.Storage && window.Storage.prototype && window.Storage.prototype.setItem) {
         var nativeSetItem = window.Storage.prototype.setItem;
+        var nativeRemoveItem = window.Storage.prototype.removeItem;
+        var nativeClear = window.Storage.prototype.clear;
         rawSetItem = function (key, value) { nativeSetItem.call(localStorage, key, value); };
+        rawRemoveItem = function (key) { nativeRemoveItem.call(localStorage, key); };
         window.Storage.prototype.setItem = function (key, value) {
           nativeSetItem.call(this, key, value);
           if (this === localStorage && !isSyncing) schedulePush(key);
+        };
+        window.Storage.prototype.removeItem = function (key) {
+          nativeRemoveItem.call(this, key);
+          if (this === localStorage && !isSyncing) schedulePush(key);
+        };
+        window.Storage.prototype.clear = function () {
+          if (this !== localStorage || isSyncing) {
+            nativeClear.call(this);
+            return;
+          }
+          var keys = getAllSyncKeys().filter(function (key) { return !isInternalSyncKey(key); });
+          nativeClear.call(this);
+          keys.forEach(function (key) { touchDeletedKey(key); });
+          schedulePush();
         };
         return;
       }
     } catch (e) {}
 
     var nativeLocalSetItem = localStorage.setItem.bind(localStorage);
+    var nativeLocalRemoveItem = localStorage.removeItem.bind(localStorage);
+    var nativeLocalClear = localStorage.clear ? localStorage.clear.bind(localStorage) : null;
     rawSetItem = function (key, value) { nativeLocalSetItem(key, value); };
+    rawRemoveItem = function (key) { nativeLocalRemoveItem(key); };
     try {
       localStorage.setItem = function (key, value) {
         nativeLocalSetItem(key, value);
         if (!isSyncing) schedulePush(key);
       };
+      localStorage.removeItem = function (key) {
+        nativeLocalRemoveItem(key);
+        if (!isSyncing) schedulePush(key);
+      };
+      if (nativeLocalClear) {
+        localStorage.clear = function () {
+          if (isSyncing) {
+            nativeLocalClear();
+            return;
+          }
+          var keys = getAllSyncKeys().filter(function (key) { return !isInternalSyncKey(key); });
+          nativeLocalClear();
+          keys.forEach(function (key) { touchDeletedKey(key); });
+          schedulePush();
+        };
+      }
     } catch (e) {}
   }
 
@@ -137,14 +179,34 @@
     }
   }
 
-  function cloudMatchesLocal(cloudData) {
+  function removeLocalStorageRaw(key) {
+    if (rawRemoveItem) {
+      rawRemoveItem(key);
+    } else {
+      localStorage.removeItem(key);
+    }
+  }
+
+  function collectLocalData() {
+    var data = {};
     var keys = getAllSyncKeys();
-    for (var i = 0; i < keys.length; i++) {
-      var key = keys[i];
-      var localVal = localStorage.getItem(key);
-      if (localVal !== null && cloudData[sanitizeKey(key)] !== localVal) {
-        return false;
-      }
+    keys.forEach(function (key) {
+      var val = localStorage.getItem(key);
+      if (val !== null) data[sanitizeKey(key)] = val;
+    });
+    return data;
+  }
+
+  function cloudMatchesLocal(cloudData) {
+    var localData = collectLocalData();
+    var localKeys = Object.keys(localData);
+    var cloudKeys = Object.keys(cloudData || {}).filter(function (key) {
+      return SKIP_KEYS.indexOf(unsanitizeKey(key)) === -1;
+    });
+    if (localKeys.length !== cloudKeys.length) return false;
+    for (var i = 0; i < localKeys.length; i++) {
+      var key = localKeys[i];
+      if (cloudData[key] !== localData[key]) return false;
     }
     return true;
   }
@@ -161,11 +223,40 @@
     try { return JSON.parse(cloudData[sanitizeKey(SYNC_META_KEY)] || '{}') || {}; } catch (e) { return {}; }
   }
 
+  function readDeleteMeta() {
+    try { return JSON.parse(localStorage.getItem(DELETE_META_KEY)) || {}; } catch (e) { return {}; }
+  }
+
+  function writeDeleteMeta(meta) {
+    setLocalStorageRaw(DELETE_META_KEY, JSON.stringify(meta));
+  }
+
+  function readCloudDeleteMeta(cloudData) {
+    try { return JSON.parse(cloudData[sanitizeKey(DELETE_META_KEY)] || '{}') || {}; } catch (e) { return {}; }
+  }
+
   function touchLocalKey(key) {
-    if (!key || key === SYNC_META_KEY || SKIP_KEYS.indexOf(key) !== -1) return;
+    if (isInternalSyncKey(key)) return;
     var meta = readLocalMeta();
     meta[key] = Date.now();
     writeLocalMeta(meta);
+    var deleted = readDeleteMeta();
+    if (deleted[key]) {
+      delete deleted[key];
+      writeDeleteMeta(deleted);
+    }
+  }
+
+  function touchDeletedKey(key) {
+    if (isInternalSyncKey(key)) return;
+    var deleted = readDeleteMeta();
+    deleted[key] = Date.now();
+    writeDeleteMeta(deleted);
+    var meta = readLocalMeta();
+    if (meta[key]) {
+      delete meta[key];
+      writeLocalMeta(meta);
+    }
   }
 
   function mergeCloudData(cloudData) {
@@ -173,11 +264,36 @@
     var shouldPushLocal = false;
     var localMeta = readLocalMeta();
     var cloudMeta = readCloudMeta(cloudData);
+    var deletedMeta = readDeleteMeta();
+    var cloudDeletedMeta = readCloudDeleteMeta(cloudData);
     var metaChanged = false;
+    var deletedMetaChanged = false;
+
+    function clearDeletedMeta(key) {
+      if (deletedMeta[key]) {
+        delete deletedMeta[key];
+        deletedMetaChanged = true;
+      }
+    }
+
+    function applyCloudDeletion(key, deletedTime) {
+      if (localStorage.getItem(key) !== null) {
+        removeLocalStorageRaw(key);
+        changed = true;
+      }
+      if (localMeta[key]) {
+        delete localMeta[key];
+        metaChanged = true;
+      }
+      if (deletedTime && deletedMeta[key] !== deletedTime) {
+        deletedMeta[key] = deletedTime;
+        deletedMetaChanged = true;
+      }
+    }
 
     Object.keys(cloudData).forEach(function (sanitized) {
       var originalKey = unsanitizeKey(sanitized);
-      if (originalKey === SYNC_META_KEY || SKIP_KEYS.indexOf(originalKey) !== -1) return;
+      if (isInternalSyncKey(originalKey)) return;
 
       var cloudVal = cloudData[sanitized];
       if (cloudVal === null || cloudVal === undefined) return;
@@ -185,12 +301,35 @@
       var localVal = localStorage.getItem(originalKey);
       var localTime = localMeta[originalKey] || 0;
       var cloudTime = cloudMeta[originalKey] || 0;
+      var deleteTime = deletedMeta[originalKey] || 0;
+      var cloudDeleteTime = cloudDeletedMeta[originalKey] || 0;
 
-      if (localVal === null || cloudTime > localTime) {
+      if (cloudDeleteTime && cloudDeleteTime >= cloudTime && cloudDeleteTime > localTime) {
+        applyCloudDeletion(originalKey, cloudDeleteTime);
+        return;
+      }
+
+      if (localVal === null) {
+        if (deleteTime && deleteTime >= cloudTime) {
+          shouldPushLocal = true;
+          return;
+        }
+        setLocalStorageRaw(originalKey, cloudVal);
+        changed = true;
+        clearDeletedMeta(originalKey);
+        if (cloudTime && localMeta[originalKey] !== cloudTime) {
+          localMeta[originalKey] = cloudTime;
+          metaChanged = true;
+        }
+        return;
+      }
+
+      if (cloudTime > Math.max(localTime, deleteTime)) {
         if (localVal !== cloudVal) {
           setLocalStorageRaw(originalKey, cloudVal);
           changed = true;
         }
+        clearDeletedMeta(originalKey);
         if (cloudTime && localMeta[originalKey] !== cloudTime) {
           localMeta[originalKey] = cloudTime;
           metaChanged = true;
@@ -208,9 +347,15 @@
     });
 
     getAllSyncKeys().forEach(function (key) {
-      if (key === SYNC_META_KEY || SKIP_KEYS.indexOf(key) !== -1) return;
+      if (isInternalSyncKey(key)) return;
       var localVal = localStorage.getItem(key);
       if (localVal !== null && cloudData[sanitizeKey(key)] === undefined) {
+        var cloudDeleteTime = cloudDeletedMeta[key] || 0;
+        var localTime = localMeta[key] || 0;
+        if (cloudDeleteTime && cloudDeleteTime > localTime) {
+          applyCloudDeletion(key, cloudDeleteTime);
+          return;
+        }
         if (!localMeta[key]) {
           localMeta[key] = Date.now();
           metaChanged = true;
@@ -219,7 +364,18 @@
       }
     });
 
+    Object.keys(deletedMeta).forEach(function (key) {
+      if (isInternalSyncKey(key)) return;
+      var deleteTime = deletedMeta[key] || 0;
+      var cloudTime = cloudMeta[key] || 0;
+      var cloudDeleteTime = cloudDeletedMeta[key] || 0;
+      if (deleteTime > cloudDeleteTime || (cloudData[sanitizeKey(key)] !== undefined && deleteTime >= cloudTime)) {
+        shouldPushLocal = true;
+      }
+    });
+
     if (metaChanged) writeLocalMeta(localMeta);
+    if (deletedMetaChanged) writeDeleteMeta(deletedMeta);
     return { changed: changed, shouldPushLocal: shouldPushLocal };
   }
 
@@ -232,8 +388,8 @@
       .onSnapshot(function (doc) {
         if (!doc.exists || !doc.data() || !doc.data().data) {
           // No cloud data — push everything local
-          pushToCloud();
           initialSnapshotDone = true;
+          pushToCloud();
           return;
         }
 
@@ -367,7 +523,10 @@
   /* ── Push local → Cloud ── */
   function schedulePush(key) {
     if (!syncEnabled || !currentUser || isSyncing) return;
-    touchLocalKey(key);
+    if (key) {
+      if (localStorage.getItem(key) === null) touchDeletedKey(key);
+      else touchLocalKey(key);
+    }
     hasPendingLocalChanges = true;
     clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
@@ -375,20 +534,19 @@
 
   function pushToCloudThen(callback) {
     if (!currentUser || !db) { if (callback) callback(); return; }
+    if (!initialSnapshotDone) {
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
+      if (callback) callback();
+      return;
+    }
 
     var updates = {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      email: currentUser.email
+      email: currentUser.email,
+      data: collectLocalData()
     };
-    var keys = getAllSyncKeys();
-    var hasData = false;
-    keys.forEach(function (key) {
-      var val = localStorage.getItem(key);
-      if (val !== null) {
-        updates['data.' + sanitizeKey(key)] = val;
-        hasData = true;
-      }
-    });
+    var hasData = Object.keys(updates.data).length > 0;
 
     if (!hasData) {
       // Nothing to push — just start listening
@@ -398,7 +556,7 @@
     }
 
     hasPendingLocalChanges = true;
-    db.collection('users').doc(currentUser.uid).set(updates, { merge: true })
+    db.collection('users').doc(currentUser.uid).set(updates)
       .then(function () {
         showSyncIndicator('pushed');
         if (callback) callback();
