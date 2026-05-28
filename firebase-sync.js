@@ -54,14 +54,24 @@
     'tracker_v1', 'po_water_v1', 'pomo_history_v1',
     'fin_accounts_v1', 'fin_subs_v1', 'fin_wishlist_v1', 'fin_reports_v1',
     'yearly_goals_v1', 'rewards_v1', 'penalty_log_v1',
-    'dayskip_last_check_v1', 'gym_v1', 'health_v1'
+    'dayskip_last_check_v1', 'gym_v1', 'health_v1',
+    // Previously missing keys:
+    'store_v1', 'profile_v1', 'total_stats_v1', 'activity_log_v1',
+    'timer_v1', 'gym_history_v1', 'gym_program_v1', 'gym_weights_v1',
+    'habits_v1', 'calories_v1', 'weight_v1', 'goal_streak_v1'
   ];
 
+  // Dynamic key prefixes: pomo:*, tasks:*, timer_*, goals:*
   function getAllSyncKeys() {
     var keys = SYNC_KEYS.slice();
     for (var i = 0; i < localStorage.length; i++) {
       var k = localStorage.key(i);
-      if (k && (k.indexOf('pomo:') === 0 || k.indexOf('tasks:') === 0 || k.indexOf('timer_') === 0)) {
+      if (k && (
+        k.indexOf('pomo:') === 0 ||
+        k.indexOf('tasks:') === 0 ||
+        k.indexOf('timer_') === 0 ||
+        k.indexOf('goals:') === 0
+      )) {
         keys.push(k);
       }
     }
