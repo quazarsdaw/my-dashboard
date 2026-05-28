@@ -162,13 +162,21 @@
           }
         });
 
+        isSyncing = false;
+
         if (changed) {
-          // Tell all page scripts to re-render (no page reload needed!)
-          window.dispatchEvent(new Event('gamification-update'));
+          // Data from cloud was applied — reload so ALL page sections re-render.
+          // After reload, onSnapshot fires again but localVal===cloudVal
+          // for all keys, so changed=false → no further reload. No loop.
+          // Guard: don't reload if we just reloaded within 3 seconds
+          var lastReload = parseInt(sessionStorage.getItem('_sync_reload_at') || '0', 10);
+          if (Date.now() - lastReload > 3000) {
+            sessionStorage.setItem('_sync_reload_at', String(Date.now()));
+            window.location.reload();
+            return;
+          }
           showSyncIndicator('synced');
         }
-
-        isSyncing = false;
 
         // Merge local-only keys into cloud
         if (hasLocalOnly) {
