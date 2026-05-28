@@ -11,7 +11,7 @@
     appId: "1:510766320600:web:671d7003be1aead6b500ad"
   };
 
-  /* ── Load Firebase SDK (compat version for simplicity) ── */
+  /* ── Load Firebase SDK (compat) ── */
   var sdkBase = 'https://www.gstatic.com/firebasejs/10.12.2/';
   var scriptsToLoad = [
     sdkBase + 'firebase-app-compat.js',
@@ -32,7 +32,6 @@
     s.onload = function () { loaded++; loadNext(); };
     s.onerror = function () {
       console.error('Firebase SDK load failed:', scriptsToLoad[loaded]);
-      // Still try to inject the button so user sees something
       injectAuthUI();
     };
     document.head.appendChild(s);
@@ -45,7 +44,9 @@
   var syncEnabled = false;
   var syncDebounceTimer = null;
   var SYNC_DEBOUNCE_MS = 2000;
-  var isSyncing = false;
+  var isSyncing = false;      // true while applying cloud data to localStorage
+  var unsubSnapshot = null;    // onSnapshot unsubscribe function
+  var origSetItem = null;      // original localStorage.setItem before interception
 
   // Keys we sync to Firestore
   var SYNC_KEYS = [
@@ -55,7 +56,7 @@
     'yearly_goals_v1', 'rewards_v1', 'penalty_log_v1',
     'dayskip_last_check_v1', 'gym_v1', 'health_v1'
   ];
-  // Also sync any key starting with 'pomo:' (daily pomo counts)
+
   function getAllSyncKeys() {
     var keys = SYNC_KEYS.slice();
     for (var i = 0; i < localStorage.length; i++) {
@@ -73,35 +74,110 @@
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
 
+    // Intercept localStorage.setItem to detect same-tab writes
+    origSetItem = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = function (key, value) {
+      origSetItem(key, value);
+      if (!isSyncing) schedulePush();
+    };
+
     // Auth state listener
     firebase.auth().onAuthStateChanged(function (user) {
       currentUser = user;
       syncEnabled = !!user;
       updateAuthUI();
       if (user) {
-        // Pull only once per tab session
-        if (!sessionStorage.getItem('_sync_pulled')) {
-          pullFromCloud();
-        }
+        startRealtimeSync();
+      } else {
+        stopRealtimeSync();
       }
     });
 
-    // Listen for localStorage changes (from other tabs or gamification.js writes)
-    window.addEventListener('storage', schedulePush);
-    window.addEventListener('gamification-update', schedulePush);
-
-    // Intercept localStorage.setItem to catch same-tab writes
-    var origSetItem = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = function (key, value) {
-      origSetItem(key, value);
+    // Cross-tab changes
+    window.addEventListener('storage', function () {
       if (!isSyncing) schedulePush();
-    };
+    });
 
-    // Update UI now that SDK is loaded
+    // Gamification.js events (backup in case setItem interception misses)
+    window.addEventListener('gamification-update', function () {
+      if (!isSyncing) schedulePush();
+    });
+
     updateAuthUI();
   }
 
-  /* ── Auth UI — injected immediately, doesn't wait for SDK ── */
+  /* ═══════════════════════════════════════════════════════
+     REALTIME SYNC — onSnapshot listener
+     Instead of one-time .get(), this keeps a live connection.
+     When ANY device pushes changes, ALL other devices get
+     the update instantly via this listener.
+     ═══════════════════════════════════════════════════════ */
+  function startRealtimeSync() {
+    // Clean up previous listener if any
+    if (unsubSnapshot) unsubSnapshot();
+    if (!currentUser || !db) return;
+
+    unsubSnapshot = db.collection('users').doc(currentUser.uid)
+      .onSnapshot(function (doc) {
+        if (!doc.exists || !doc.data() || !doc.data().data) {
+          // No cloud data yet — do initial push of local data
+          pushToCloud();
+          return;
+        }
+
+        isSyncing = true;
+        var cloudData = doc.data().data;
+        var changed = false;
+
+        // Apply cloud → localStorage
+        Object.keys(cloudData).forEach(function (sanitized) {
+          var originalKey = unsanitizeKey(sanitized);
+          var cloudVal = cloudData[sanitized];
+          if (cloudVal !== null && cloudVal !== undefined) {
+            var localVal = localStorage.getItem(originalKey);
+            if (localVal !== cloudVal) {
+              origSetItem(originalKey, cloudVal); // bypass interceptor
+              changed = true;
+            }
+          }
+        });
+
+        // Check if local has keys that cloud doesn't know about
+        var localKeys = getAllSyncKeys();
+        var hasLocalOnly = false;
+        localKeys.forEach(function (key) {
+          var val = localStorage.getItem(key);
+          if (val !== null && !(sanitizeKey(key) in cloudData)) {
+            hasLocalOnly = true;
+          }
+        });
+
+        if (changed) {
+          // Tell all page scripts to re-render (no page reload needed!)
+          window.dispatchEvent(new Event('gamification-update'));
+          showSyncIndicator('synced');
+        }
+
+        isSyncing = false;
+
+        // Merge local-only keys into cloud
+        if (hasLocalOnly) {
+          pushToCloud();
+        }
+
+      }, function (err) {
+        console.error('Realtime sync error:', err);
+      });
+  }
+
+  function stopRealtimeSync() {
+    if (unsubSnapshot) {
+      unsubSnapshot();
+      unsubSnapshot = null;
+    }
+  }
+
+  /* ── Auth UI ── */
   function waitForTopbar() {
     var topbar = document.getElementById('topbar');
     if (topbar) {
@@ -111,7 +187,6 @@
     }
   }
 
-  // Start looking for topbar right away (don't wait for SDK)
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', waitForTopbar, { once: true });
   } else {
@@ -120,10 +195,7 @@
 
   function injectAuthUI() {
     var topbar = document.getElementById('topbar');
-    if (!topbar) return;
-
-    // Check if already injected
-    if (document.getElementById('syncAuthBtn')) return;
+    if (!topbar || document.getElementById('syncAuthBtn')) return;
 
     var btn = document.createElement('button');
     btn.id = 'syncAuthBtn';
@@ -136,7 +208,7 @@
 
     btn.addEventListener('click', function () {
       if (!sdkReady) {
-        alert('Firebase загружается, подождите пару секунд...');
+        alert('Firebase loading...');
         return;
       }
       if (currentUser) {
@@ -146,12 +218,11 @@
       } else {
         var provider = new firebase.auth.GoogleAuthProvider();
         firebase.auth().signInWithPopup(provider).catch(function (err) {
-          // Popup blocked? Try redirect
           if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user') {
             firebase.auth().signInWithRedirect(provider);
           } else {
             console.error('Auth error:', err);
-            alert('Ошибка входа: ' + err.message);
+            alert('Auth error: ' + err.message);
           }
         });
       }
@@ -172,17 +243,17 @@
         btn.style.color = '#6BE3A4';
         btn.style.borderColor = 'rgba(107,227,164,0.3)';
       }
-      btn.title = 'Синхронизация: ' + currentUser.email;
+      btn.title = 'Sync: ' + currentUser.email;
     } else {
       btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="rgba(255,255,255,0.5)" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>';
-      btn.title = 'Войти для синхронизации';
+      btn.title = 'Sign in to sync';
       btn.style.borderColor = 'rgba(255,255,255,0.15)';
     }
   }
 
-  /* ── Sync: Push local → Cloud ── */
+  /* ── Push local → Cloud ── */
   function schedulePush() {
-    if (!syncEnabled || !currentUser) return;
+    if (!syncEnabled || !currentUser || isSyncing) return;
     clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
   }
@@ -199,7 +270,6 @@
       }
     });
 
-    // Store as a single document per user (simple, avoids complex merging)
     db.collection('users').doc(currentUser.uid).set({
       data: data,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -211,51 +281,7 @@
     });
   }
 
-  /* ── Sync: Pull cloud → Local ── */
-  function pullFromCloud() {
-    if (!currentUser || !db) return;
-
-    db.collection('users').doc(currentUser.uid).get().then(function (doc) {
-      if (doc.exists && doc.data().data) {
-        isSyncing = true;
-        var cloudData = doc.data().data;
-        var changed = false;
-
-        // Apply cloud data, track if anything actually changed
-        Object.keys(cloudData).forEach(function (sanitized) {
-          var originalKey = unsanitizeKey(sanitized);
-          var cloudVal = cloudData[sanitized];
-          if (cloudVal !== null && cloudVal !== undefined) {
-            var localVal = localStorage.getItem(originalKey);
-            if (localVal !== cloudVal) {
-              localStorage.setItem(originalKey, cloudVal);
-              changed = true;
-            }
-          }
-        });
-
-        isSyncing = false;
-
-        if (changed) {
-          // Mark as pulled BEFORE reload so the next load skips pull
-          sessionStorage.setItem('_sync_pulled', '1');
-          // Small delay to ensure localStorage writes are flushed
-          setTimeout(function () { window.location.reload(); }, 100);
-          return;
-        }
-        // Even if nothing changed, mark as pulled
-        sessionStorage.setItem('_sync_pulled', '1');
-      } else {
-        // No cloud data yet — push current local data
-        pushToCloud();
-      }
-      showSyncIndicator('synced');
-    }).catch(function (err) {
-      console.error('Pull failed:', err);
-    });
-  }
-
-  /* ── Firestore key sanitization (dots and slashes not allowed) ── */
+  /* ── Firestore key sanitization ── */
   function sanitizeKey(key) {
     return key.replace(/\./g, '__DOT__').replace(/\//g, '__SLASH__');
   }
@@ -263,7 +289,7 @@
     return key.replace(/__DOT__/g, '.').replace(/__SLASH__/g, '/');
   }
 
-  /* ── Visual sync indicator ── */
+  /* ── Sync indicator ── */
   function showSyncIndicator(type) {
     var btn = document.getElementById('syncAuthBtn');
     if (!btn) return;
@@ -277,8 +303,7 @@
   window.FirebaseSync = {
     isSignedIn: function () { return !!currentUser; },
     getUser: function () { return currentUser; },
-    pushNow: pushToCloud,
-    pullNow: pullFromCloud
+    pushNow: pushToCloud
   };
 
 })();
