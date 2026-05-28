@@ -73,12 +73,18 @@
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
 
+    // If we just reloaded after sync (?synced=1), clean URL and skip pull
+    var justSynced = window.location.search.indexOf('synced=1') !== -1;
+    if (justSynced) {
+      history.replaceState(null, '', window.location.pathname);
+    }
+
     // Auth state listener
     firebase.auth().onAuthStateChanged(function (user) {
       currentUser = user;
       syncEnabled = !!user;
       updateAuthUI();
-      if (user) {
+      if (user && !justSynced) {
         pullFromCloud();
       }
     });
@@ -234,8 +240,11 @@
         isSyncing = false;
 
         if (changed) {
-          window.dispatchEvent(new CustomEvent('gamification-update'));
-          showSyncBanner();
+          // Auto-reload with ?synced=1 flag — on next load this flag
+          // prevents pullFromCloud, breaking the loop
+          var sep = window.location.search ? '&' : '?';
+          window.location.href = window.location.pathname + sep + 'synced=1';
+          return;
         }
       } else {
         // No cloud data yet — push current local data
@@ -253,32 +262,6 @@
   }
   function unsanitizeKey(key) {
     return key.replace(/__DOT__/g, '.').replace(/__SLASH__/g, '/');
-  }
-
-  /* ── Sync banner (shown once after cloud pull) ── */
-  function showSyncBanner() {
-    if (document.getElementById('syncBanner')) return;
-    var bar = document.createElement('div');
-    bar.id = 'syncBanner';
-    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;' +
-      'background:linear-gradient(135deg,rgba(107,227,164,0.15),rgba(99,179,237,0.15));' +
-      'backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
-      'border-bottom:1px solid rgba(107,227,164,0.25);' +
-      'padding:14px 20px;display:flex;align-items:center;justify-content:center;gap:12px;' +
-      'font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;font-size:14px;color:#fff;';
-    bar.innerHTML = '<span>☁️ Данные синхронизированы</span>' +
-      '<button id="syncBannerBtn" style="background:rgba(107,227,164,0.2);border:1px solid rgba(107,227,164,0.4);' +
-      'color:#6BE3A4;border-radius:8px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer;' +
-      'font-family:inherit;">Обновить</button>' +
-      '<button id="syncBannerClose" style="background:none;border:none;color:rgba(255,255,255,0.5);' +
-      'font-size:18px;cursor:pointer;padding:0 4px;line-height:1;">✕</button>';
-    document.body.appendChild(bar);
-    document.getElementById('syncBannerBtn').addEventListener('click', function () {
-      window.location.reload();
-    });
-    document.getElementById('syncBannerClose').addEventListener('click', function () {
-      bar.remove();
-    });
   }
 
   /* ── Visual sync indicator ── */
