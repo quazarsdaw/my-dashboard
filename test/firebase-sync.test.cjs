@@ -34,7 +34,7 @@ function makeStorage() {
   };
 }
 
-function loadFirebaseSync() {
+function loadFirebaseSync(options = {}) {
   const localStorage = makeStorage();
   const sessionStorage = makeStorage();
   const timers = [];
@@ -137,15 +137,23 @@ function loadFirebaseSync() {
 
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'firebase-sync.js'), 'utf8'), context);
-  while (scriptLoads.length) {
-    var onload = scriptLoads.shift();
-    if (onload) onload();
+  function loadSdk() {
+    while (scriptLoads.length) {
+      var onload = scriptLoads.shift();
+      if (onload) onload();
+    }
   }
+  if (options.autoLoadSdk !== false) loadSdk();
 
   return {
     localStorage,
     timers,
     sets,
+    loadSdk,
+    listen(type, cb) {
+      if (!listeners[type]) listeners[type] = [];
+      listeners[type].push(cb);
+    },
     signIn() {
       vm.runInContext('__authCallback({ uid: "user-1", email: "me@example.com" })', context);
     },
@@ -359,4 +367,56 @@ test('newer cloud deletion removes an existing local key', () => {
   });
 
   assert.equal(h.localStorage.getItem(key), null);
+});
+
+test('local store changes made before Firebase is ready beat older cloud data', async () => {
+  const h = loadFirebaseSync({ autoLoadSdk: false });
+  const localStore = JSON.stringify({
+    rewards: [{ id: 'custom_early', name: 'Ранний кастом', price: 42, icon: '🎁' }],
+    purchases: [],
+  });
+  const olderCloudStore = JSON.stringify({
+    rewards: [{ id: 'series_1h', name: '1 час сериала', price: 50, icon: '📺' }],
+    purchases: [],
+  });
+
+  h.localStorage.setItem('store_v1', localStore);
+  h.loadSdk();
+  h.signIn();
+  h.snapshot({ store_v1: olderCloudStore, _sync_meta_v1: JSON.stringify({ store_v1: 1000 }) });
+  await Promise.resolve();
+
+  assert.equal(h.localStorage.getItem('store_v1'), localStore);
+  assert.ok(h.sets.length > 0);
+  assert.equal(h.sets[h.sets.length - 1].data.store_v1, localStore);
+});
+
+test('cloud-applied store changes emit render events', () => {
+  const h = loadFirebaseSync();
+  const events = [];
+  const remoteStore = JSON.stringify({
+    rewards: [{ id: 'remote_reward', name: 'С телефона', price: 70, icon: '📱' }],
+    purchases: [],
+  });
+
+  h.listen('dashboard-sync-applied', function (e) { events.push({ type: e.type, detail: e.detail }); });
+  h.listen('gamification-update', function (e) { events.push({ type: e.type, detail: e.detail }); });
+  h.signIn();
+  h.snapshot({ store_v1: remoteStore, _sync_meta_v1: JSON.stringify({ store_v1: 2000 }) });
+
+  assert.equal(h.localStorage.getItem('store_v1'), remoteStore);
+  assert.ok(events.some(function (e) {
+    return e.type === 'dashboard-sync-applied' && e.detail.changedKeys.indexOf('store_v1') !== -1;
+  }));
+  assert.ok(events.some(function (e) { return e.type === 'gamification-update'; }));
+});
+
+test('Firebase SDK localStorage keys are ignored by dashboard sync metadata', () => {
+  const h = loadFirebaseSync({ autoLoadSdk: false });
+
+  h.localStorage.setItem('firebase:authUser:demo:[DEFAULT]', '{"uid":"user-1"}');
+  h.localStorage.setItem('firebase-heartbeat-database', '{}');
+
+  assert.equal(h.localStorage.getItem('_sync_meta_v1'), null);
+  assert.equal(h.localStorage.getItem('_sync_deleted_v1'), null);
 });

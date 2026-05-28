@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Dashboard</title>
 <script src="gamification.js?v=3"></script>
-<script src="firebase-sync.js?v=17" defer></script>
+<script src="firebase-sync.js?v=18" defer></script>
 <script src="topbar.js?v=6" defer></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1191,6 +1191,19 @@ body::after {
   });
 
   loadToday(); loadTomorrow();
+  window.addEventListener('dashboard-sync-applied', function (e) {
+    var keys = (e.detail && e.detail.changedKeys) || [];
+    var todayKey = 'goals:' + getActiveDateString();
+    var tomorrowKey = 'goals:' + getTomorrowDateString();
+    var affectsGoals = keys.length === 0 || keys.indexOf(todayKey) !== -1 || keys.indexOf(tomorrowKey) !== -1 ||
+      keys.indexOf('goal_streak_v1') !== -1 || keys.indexOf('spheres_v1') !== -1 || keys.indexOf('sphere_defs_v1') !== -1;
+    if (!affectsGoals) return;
+    loadToday();
+    loadTomorrow();
+    renderRadar();
+    cycleIdx = 0;
+    tick();
+  });
   window.addEventListener('gamification-update', function () { renderRadar(); populateSphereSelect(document.getElementById('goalSphere')); populateSphereSelect(document.getElementById('tomorrowSphere')); });
 })();
 </script>

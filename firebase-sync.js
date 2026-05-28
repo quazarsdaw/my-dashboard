@@ -36,9 +36,9 @@
     };
     document.head.appendChild(s);
   }
-  loadNext();
 
   /* ── State ── */
+  var SYNC_VERSION = '18';
   var db = null;
   var currentUser = null;
   var syncEnabled = false;
@@ -51,32 +51,50 @@
   var rawRemoveItem = null;    // native localStorage remover used when applying cloud data
 
   // Sync ALL localStorage keys — no whitelist, nothing gets missed
-  var SKIP_KEYS = ['_sync_reload_at']; // internal keys to skip
+  var SKIP_KEYS = ['_sync_reload_at', '_sync_debug_v1']; // internal keys to skip
   var SYNC_META_KEY = '_sync_meta_v1';
   var DELETE_META_KEY = '_sync_deleted_v1';
+  var listenersInstalled = false;
+  var lastPushStatus = 'idle';
+  var lastPushError = null;
+  var lastPushAt = null;
+  var lastSnapshotAt = null;
+  var lastCloudKeys = [];
+  var lastCloudData = null;
+  var lastChangedKeys = [];
 
   function isInternalSyncKey(key) {
-    return !key || key === SYNC_META_KEY || key === DELETE_META_KEY || SKIP_KEYS.indexOf(key) !== -1;
+    return shouldSkipStorageKey(key) || key === SYNC_META_KEY || key === DELETE_META_KEY;
+  }
+
+  function shouldSkipStorageKey(key) {
+    return !key ||
+      SKIP_KEYS.indexOf(key) !== -1 ||
+      key.indexOf('firebase:') === 0 ||
+      key.indexOf('firebase-heartbeat') === 0 ||
+      key.indexOf('firebase-installations') === 0;
   }
 
   function getAllSyncKeys() {
     var keys = [];
     for (var i = 0; i < localStorage.length; i++) {
       var k = localStorage.key(i);
-      if (k && SKIP_KEYS.indexOf(k) === -1) {
+      if (!shouldSkipStorageKey(k)) {
         keys.push(k);
       }
     }
     return keys;
   }
 
+  installStorageHook();
+  installChangeListeners();
+  loadNext();
+
   /* ── SDK Ready ── */
   function onSDKReady() {
     sdkReady = true;
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
-
-    installStorageHook();
 
     // Auth state listener
     firebase.auth().onAuthStateChanged(function (user) {
@@ -89,6 +107,13 @@
         stopRealtimeSync();
       }
     });
+
+    updateAuthUI();
+  }
+
+  function installChangeListeners() {
+    if (listenersInstalled) return;
+    listenersInstalled = true;
 
     // Cross-tab changes
     window.addEventListener('storage', function (e) {
@@ -103,8 +128,6 @@
     window.addEventListener('gamification-update', function () {
       if (!isSyncing) schedulePush();
     });
-
-    updateAuthUI();
   }
 
   /* ═══════════════════════════════════════════════════════
@@ -261,6 +284,7 @@
 
   function mergeCloudData(cloudData) {
     var changed = false;
+    var changedKeys = [];
     var shouldPushLocal = false;
     var localMeta = readLocalMeta();
     var cloudMeta = readCloudMeta(cloudData);
@@ -268,6 +292,11 @@
     var cloudDeletedMeta = readCloudDeleteMeta(cloudData);
     var metaChanged = false;
     var deletedMetaChanged = false;
+
+    function markChanged(key) {
+      changed = true;
+      if (changedKeys.indexOf(key) === -1) changedKeys.push(key);
+    }
 
     function clearDeletedMeta(key) {
       if (deletedMeta[key]) {
@@ -279,7 +308,7 @@
     function applyCloudDeletion(key, deletedTime) {
       if (localStorage.getItem(key) !== null) {
         removeLocalStorageRaw(key);
-        changed = true;
+        markChanged(key);
       }
       if (localMeta[key]) {
         delete localMeta[key];
@@ -315,7 +344,7 @@
           return;
         }
         setLocalStorageRaw(originalKey, cloudVal);
-        changed = true;
+        markChanged(originalKey);
         clearDeletedMeta(originalKey);
         if (cloudTime && localMeta[originalKey] !== cloudTime) {
           localMeta[originalKey] = cloudTime;
@@ -327,7 +356,7 @@
       if (cloudTime > Math.max(localTime, deleteTime)) {
         if (localVal !== cloudVal) {
           setLocalStorageRaw(originalKey, cloudVal);
-          changed = true;
+          markChanged(originalKey);
         }
         clearDeletedMeta(originalKey);
         if (cloudTime && localMeta[originalKey] !== cloudTime) {
@@ -376,7 +405,25 @@
 
     if (metaChanged) writeLocalMeta(localMeta);
     if (deletedMetaChanged) writeDeleteMeta(deletedMeta);
-    return { changed: changed, shouldPushLocal: shouldPushLocal };
+    return { changed: changed, changedKeys: changedKeys, shouldPushLocal: shouldPushLocal };
+  }
+
+  function notifySyncedDataApplied(changedKeys) {
+    if (!changedKeys || changedKeys.length === 0) return;
+    lastChangedKeys = changedKeys.slice();
+    var previousSyncing = isSyncing;
+    isSyncing = true;
+    try {
+      window.dispatchEvent(new CustomEvent('dashboard-sync-applied', {
+        detail: { changedKeys: changedKeys.slice(), version: SYNC_VERSION }
+      }));
+    } catch (e) {}
+    try {
+      window.dispatchEvent(new CustomEvent('gamification-update', {
+        detail: { source: 'sync', changedKeys: changedKeys.slice() }
+      }));
+    } catch (e) {}
+    isSyncing = previousSyncing;
   }
 
   function startRealtimeSync() {
@@ -386,6 +433,7 @@
 
     unsubSnapshot = db.collection('users').doc(currentUser.uid)
       .onSnapshot(function (doc) {
+        lastSnapshotAt = new Date().toISOString();
         if (!doc.exists || !doc.data() || !doc.data().data) {
           // No cloud data — push everything local
           initialSnapshotDone = true;
@@ -395,6 +443,8 @@
 
         isSyncing = true;
         var cloudData = doc.data().data;
+        lastCloudData = cloudData;
+        lastCloudKeys = Object.keys(cloudData || {}).map(unsanitizeKey);
         var result = mergeCloudData(cloudData);
         var changed = result.changed;
 
@@ -405,13 +455,7 @@
           if (result.shouldPushLocal) pushToCloud();
 
           if (changed) {
-            // Imported new keys — reload to render them
-            var lastReload = parseInt(sessionStorage.getItem('_sync_reload_at') || '0', 10);
-            if (Date.now() - lastReload > 3000) {
-              sessionStorage.setItem('_sync_reload_at', String(Date.now()));
-              window.location.reload();
-              return;
-            }
+            notifySyncedDataApplied(result.changedKeys);
           }
           showSyncIndicator('synced');
 
@@ -424,12 +468,7 @@
           isSyncing = false;
 
           if (changed) {
-            var lastReload2 = parseInt(sessionStorage.getItem('_sync_reload_at') || '0', 10);
-            if (Date.now() - lastReload2 > 3000) {
-              sessionStorage.setItem('_sync_reload_at', String(Date.now()));
-              window.location.reload();
-              return;
-            }
+            notifySyncedDataApplied(result.changedKeys);
             showSyncIndicator('synced');
           }
         }
@@ -451,6 +490,7 @@
     var topbar = document.getElementById('topbar');
     if (topbar) {
       injectAuthUI();
+      injectDebugUI();
     } else {
       setTimeout(waitForTopbar, 200);
     }
@@ -522,12 +562,14 @@
 
   /* ── Push local → Cloud ── */
   function schedulePush(key) {
-    if (!syncEnabled || !currentUser || isSyncing) return;
+    if (isSyncing) return;
+    if (key && shouldSkipStorageKey(key)) return;
     if (key) {
       if (localStorage.getItem(key) === null) touchDeletedKey(key);
       else touchLocalKey(key);
     }
     hasPendingLocalChanges = true;
+    if (!syncEnabled || !currentUser || !db) return;
     clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
   }
@@ -556,11 +598,17 @@
     }
 
     hasPendingLocalChanges = true;
+    lastPushStatus = 'pending';
+    lastPushError = null;
     db.collection('users').doc(currentUser.uid).set(updates)
       .then(function () {
+        lastPushStatus = 'ok';
+        lastPushAt = new Date().toISOString();
         showSyncIndicator('pushed');
         if (callback) callback();
       }).catch(function (err) {
+        lastPushStatus = 'error';
+        lastPushError = err && (err.message || String(err));
         console.error('Push failed:', err);
         // Still start listening even if push fails
         if (callback) callback();
@@ -589,11 +637,109 @@
     }, 1500);
   }
 
+  function hashString(value) {
+    var str = value || '';
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+    }
+    return (hash >>> 0).toString(16);
+  }
+
+  function getDebugState() {
+    var storeValue = localStorage.getItem('store_v1') || '';
+    var goalsKeys = getAllSyncKeys().filter(function (key) { return key.indexOf('goals:') === 0; }).sort();
+    return {
+      version: SYNC_VERSION,
+      sdkReady: sdkReady,
+      signedIn: !!currentUser,
+      email: currentUser && currentUser.email || null,
+      syncEnabled: syncEnabled,
+      initialSnapshotDone: initialSnapshotDone,
+      pendingLocalChanges: hasPendingLocalChanges,
+      lastPushStatus: lastPushStatus,
+      lastPushError: lastPushError,
+      lastPushAt: lastPushAt,
+      lastSnapshotAt: lastSnapshotAt,
+      lastCloudKeys: lastCloudKeys.slice(-20),
+      lastChangedKeys: lastChangedKeys.slice(),
+      localKeysCount: getAllSyncKeys().length,
+      storePresent: !!storeValue,
+      storeHash: storeValue ? hashString(storeValue) : null,
+      storeLength: storeValue.length,
+      goalsKeys: goalsKeys
+    };
+  }
+
+  function pullLatestCloudNow() {
+    if (!lastCloudData) return;
+    isSyncing = true;
+    var result = mergeCloudData(lastCloudData);
+    isSyncing = false;
+    if (result.changed) notifySyncedDataApplied(result.changedKeys);
+  }
+
+  function injectDebugUI() {
+    try {
+      var enabled = window.location.search.indexOf('syncdebug=1') !== -1 ||
+        localStorage.getItem('_sync_debug_v1') === '1';
+      if (!enabled || document.getElementById('syncDebugPanel')) return;
+    } catch (e) { return; }
+
+    var panel = document.createElement('div');
+    panel.id = 'syncDebugPanel';
+    panel.style.cssText = 'position:fixed;left:10px;right:10px;bottom:82px;z-index:99999;' +
+      'max-height:42vh;overflow:auto;background:rgba(5,5,6,0.94);color:#fafafa;' +
+      'border:1px solid rgba(255,255,255,0.16);border-radius:10px;padding:10px;' +
+      'font:11px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;' +
+      'box-shadow:0 12px 40px rgba(0,0,0,0.5);';
+    document.body.appendChild(panel);
+
+    function button(label, action) {
+      return '<button data-action="' + action + '" style="margin:0 6px 8px 0;padding:5px 8px;' +
+        'border-radius:7px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.08);' +
+        'color:#fafafa;font:11px ui-monospace,SFMono-Regular,Menlo,monospace;">' + label + '</button>';
+    }
+
+    function render() {
+      var state = getDebugState();
+      panel.innerHTML =
+        button('push local', 'push') +
+        button('pull snapshot', 'pull') +
+        button('hide', 'hide') +
+        '\n' + JSON.stringify(state, null, 2);
+    }
+
+    panel.addEventListener('click', function (e) {
+      var action = e.target && e.target.getAttribute && e.target.getAttribute('data-action');
+      if (action === 'push') pushToCloud();
+      if (action === 'pull') pullLatestCloudNow();
+      if (action === 'hide') {
+        localStorage.removeItem('_sync_debug_v1');
+        panel.remove();
+        return;
+      }
+      render();
+    });
+
+    render();
+    setInterval(function () {
+      if (document.getElementById('syncDebugPanel')) render();
+    }, 1500);
+  }
+
   /* ── Public API ── */
   window.FirebaseSync = {
+    version: SYNC_VERSION,
     isSignedIn: function () { return !!currentUser; },
     getUser: function () { return currentUser; },
-    pushNow: pushToCloud
+    pushNow: pushToCloud,
+    pullNow: pullLatestCloudNow,
+    debug: getDebugState,
+    enableDebug: function () {
+      localStorage.setItem('_sync_debug_v1', '1');
+      injectDebugUI();
+    }
   };
 
 })();
