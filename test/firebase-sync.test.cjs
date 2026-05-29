@@ -34,15 +34,79 @@ function makeStorage() {
   };
 }
 
+async function flushPromises() {
+  for (let i = 0; i < 5; i++) {
+    await Promise.resolve();
+  }
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
 function loadFirebaseSync(options = {}) {
   const localStorage = makeStorage();
   const sessionStorage = makeStorage();
   const timers = [];
   const scriptLoads = [];
   const listeners = {};
+  const elementsById = {};
+  const popupCalls = [];
+  const redirectCalls = [];
+  const redirectResultCalls = [];
+  const persistenceCalls = [];
+  const alerts = [];
   let reloadCount = 0;
   const sets = [];
   const setOptions = [];
+
+  function makeElement(tagName) {
+    const elementListeners = {};
+    const attrs = {};
+    const element = {
+      tagName: tagName.toUpperCase(),
+      children: [],
+      style: {},
+      firstChild: null,
+      innerHTML: '',
+      textContent: '',
+      set id(value) {
+        this._id = value;
+        elementsById[value] = this;
+      },
+      get id() {
+        return this._id;
+      },
+      setAttribute(name, value) {
+        attrs[name] = String(value);
+      },
+      getAttribute(name) {
+        return attrs[name] || null;
+      },
+      addEventListener(type, cb) {
+        elementListeners[type] = cb;
+      },
+      click() {
+        if (elementListeners.click) elementListeners.click({ target: this });
+      },
+      appendChild(child) {
+        this.children.push(child);
+        if (!this.firstChild) this.firstChild = child;
+      },
+      insertBefore(child, before) {
+        const index = before ? this.children.indexOf(before) : -1;
+        if (index >= 0) this.children.splice(index, 0, child);
+        else this.children.unshift(child);
+        this.firstChild = this.children[0] || null;
+      },
+      remove() {
+        if (this.id) delete elementsById[this.id];
+      },
+    };
+    return element;
+  }
+
+  if (options.enableTopbar) {
+    elementsById.topbar = makeElement('div');
+    elementsById.topbar.id = 'topbar';
+  }
 
   const fakeDoc = {
     exists: true,
@@ -50,9 +114,16 @@ function loadFirebaseSync(options = {}) {
       return { data: {} };
     },
   };
+  const silentConsole = {
+    log() {},
+    warn() {},
+    error() {},
+    info() {},
+    debug() {},
+  };
 
   const context = {
-    console,
+    console: options.console || silentConsole,
     localStorage,
     sessionStorage,
     setTimeout(fn) {
@@ -60,20 +131,33 @@ function loadFirebaseSync(options = {}) {
       return timers.length;
     },
     clearTimeout() {},
+    alert(message) {
+      alerts.push(String(message));
+    },
+    confirm() {
+      return true;
+    },
+    navigator: {
+      userAgent: options.userAgent || '',
+      platform: options.platform || '',
+      maxTouchPoints: options.maxTouchPoints || 0,
+      standalone: !!options.standalone,
+    },
     document: {
-      readyState: 'loading',
+      readyState: options.enableTopbar ? 'complete' : 'loading',
       head: {
         appendChild(script) {
           scriptLoads.push(script.onload);
         },
       },
-      createElement() {
-        return {};
+      createElement(tagName) {
+        return makeElement(tagName || 'div');
       },
       addEventListener() {},
-      getElementById() {
-        return null;
+      getElementById(id) {
+        return elementsById[id] || null;
       },
+      body: makeElement('body'),
     },
     window: {
       addEventListener(type, cb) {
@@ -84,14 +168,72 @@ function loadFirebaseSync(options = {}) {
         (listeners[event.type] || []).forEach(function (cb) { cb(event); });
       },
       location: {
+        search: '',
         reload() {
           reloadCount++;
         },
       },
+      matchMedia() {
+        return { matches: !!options.displayModeStandalone };
+      },
     },
-    firebase: {
-      initializeApp() {},
-      firestore: Object.assign(function firestore() {
+  };
+  context.window.localStorage = localStorage;
+  context.window.sessionStorage = sessionStorage;
+  context.window.setTimeout = context.setTimeout;
+  context.window.clearTimeout = context.clearTimeout;
+  context.window.navigator = context.navigator;
+  context.window.alert = context.alert;
+  context.window.confirm = context.confirm;
+
+  const fakeAuth = {
+    onAuthStateChanged(cb) {
+      context.__authCallback = cb;
+    },
+    setPersistence(value) {
+      persistenceCalls.push(value);
+      return Promise.resolve();
+    },
+    getRedirectResult() {
+      redirectResultCalls.push(true);
+      return Promise.resolve(null);
+    },
+    signInWithPopup(provider) {
+      popupCalls.push(provider);
+      const result = options.popupResult || Promise.reject(Object.assign(new Error('Popup blocked'), {
+        code: 'auth/popup-blocked',
+        message: 'Popup blocked',
+      }));
+      return Promise.resolve().then(() => result);
+    },
+    signInWithRedirect(provider) {
+      redirectCalls.push(provider);
+      return Promise.resolve();
+    },
+    signOut() {
+      context.__authCallback(null);
+      return Promise.resolve();
+    },
+  };
+
+  function auth() {
+    return fakeAuth;
+  }
+  auth.GoogleAuthProvider = function GoogleAuthProvider() {
+    this.customParameters = null;
+    this.setCustomParameters = function setCustomParameters(params) {
+      this.customParameters = params;
+    };
+  };
+  auth.Auth = {
+    Persistence: {
+      LOCAL: 'LOCAL',
+    },
+  };
+
+  context.firebase = {
+    initializeApp() {},
+    firestore: Object.assign(function firestore() {
         return {
           collection() {
             return {
@@ -121,19 +263,8 @@ function loadFirebaseSync(options = {}) {
           },
         },
       }),
-      auth() {
-        return {
-          onAuthStateChanged(cb) {
-            context.__authCallback = cb;
-          },
-        };
-      },
-    },
+    auth,
   };
-  context.window.localStorage = localStorage;
-  context.window.sessionStorage = sessionStorage;
-  context.window.setTimeout = context.setTimeout;
-  context.window.clearTimeout = context.clearTimeout;
   context.CustomEvent = function CustomEvent(type, init) {
     this.type = type;
     this.detail = init && init.detail;
@@ -156,6 +287,16 @@ function loadFirebaseSync(options = {}) {
     sets,
     setOptions,
     loadSdk,
+    clickSyncButton() {
+      const btn = elementsById.syncAuthBtn;
+      assert.ok(btn, 'sync auth button should exist');
+      btn.click();
+    },
+    popupCalls,
+    redirectCalls,
+    redirectResultCalls,
+    persistenceCalls,
+    alerts,
     listen(type, cb) {
       if (!listeners[type]) listeners[type] = [];
       listeners[type].push(cb);
@@ -185,6 +326,50 @@ function loadFirebaseSync(options = {}) {
     },
   };
 }
+
+test('iOS auth popup failures do not fall back to Firebase redirect', async () => {
+  const h = loadFirebaseSync({
+    enableTopbar: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    platform: 'iPhone',
+  });
+
+  h.clickSyncButton();
+  await flushPromises();
+
+  assert.equal(h.popupCalls.length, 1);
+  assert.equal(h.redirectCalls.length, 0);
+  assert.equal(h.alerts.length, 1);
+  assert.match(h.alerts[0], /телефон/i);
+});
+
+test('auth popup starts synchronously from the click gesture', () => {
+  const h = loadFirebaseSync({
+    enableTopbar: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    platform: 'iPhone',
+    popupResult: new Promise(() => {}),
+  });
+
+  h.clickSyncButton();
+
+  assert.equal(h.popupCalls.length, 1);
+});
+
+test('desktop auth popup-blocked errors still fall back to redirect', async () => {
+  const h = loadFirebaseSync({
+    enableTopbar: true,
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/125 Safari/537.36',
+    platform: 'MacIntel',
+  });
+
+  h.clickSyncButton();
+  await flushPromises();
+
+  assert.equal(h.popupCalls.length, 1);
+  assert.equal(h.redirectCalls.length, 1);
+  assert.equal(h.alerts.length, 0);
+});
 
 test('pending local store changes are not overwritten by a stale cloud snapshot', () => {
   const h = loadFirebaseSync();

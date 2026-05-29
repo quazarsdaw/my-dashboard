@@ -38,7 +38,7 @@
   }
 
   /* ── State ── */
-  var SYNC_VERSION = '19';
+  var SYNC_VERSION = '20';
   var db = null;
   var currentUser = null;
   var syncEnabled = false;
@@ -63,6 +63,8 @@
   var lastCloudKeys = [];
   var lastCloudData = null;
   var lastChangedKeys = [];
+  var lastAuthMethod = null;
+  var lastAuthError = null;
 
   function isInternalSyncKey(key) {
     return shouldSkipStorageKey(key) || key === SYNC_META_KEY || key === DELETE_META_KEY;
@@ -97,8 +99,12 @@
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
 
+    var auth = firebase.auth();
+    ensureAuthPersistence(auth);
+    handleRedirectResult(auth);
+
     // Auth state listener
-    firebase.auth().onAuthStateChanged(function (user) {
+    auth.onAuthStateChanged(function (user) {
       currentUser = user;
       syncEnabled = !!user;
       updateAuthUI();
@@ -110,6 +116,126 @@
     });
 
     updateAuthUI();
+  }
+
+  function ensureAuthPersistence(auth) {
+    try {
+      if (auth && auth.setPersistence && firebase.auth.Auth &&
+          firebase.auth.Auth.Persistence && firebase.auth.Auth.Persistence.LOCAL) {
+        return auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function (err) {
+          recordAuthError(err);
+          console.warn('Auth persistence setup failed:', err);
+        });
+      }
+    } catch (err) {
+      recordAuthError(err);
+      console.warn('Auth persistence setup failed:', err);
+    }
+    return Promise.resolve();
+  }
+
+  function handleRedirectResult(auth) {
+    try {
+      if (auth && auth.getRedirectResult) {
+        auth.getRedirectResult().catch(function (err) {
+          recordAuthError(err);
+          console.error('Auth redirect error:', err);
+        });
+      }
+    } catch (err) {
+      recordAuthError(err);
+      console.error('Auth redirect error:', err);
+    }
+  }
+
+  function createGoogleProvider() {
+    var provider = new firebase.auth.GoogleAuthProvider();
+    if (provider.setCustomParameters) {
+      provider.setCustomParameters({ prompt: 'select_account' });
+    }
+    return provider;
+  }
+
+  function isAppleMobile() {
+    var nav = window.navigator || {};
+    var ua = nav.userAgent || '';
+    return /iPad|iPhone|iPod/.test(ua) ||
+      (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
+  }
+
+  function isStandaloneApp() {
+    var nav = window.navigator || {};
+    if (nav.standalone) return true;
+    try {
+      return !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function shouldAvoidRedirectAuth() {
+    return isAppleMobile() || isStandaloneApp();
+  }
+
+  function isPopupAuthError(err) {
+    return err && (
+      err.code === 'auth/popup-blocked' ||
+      err.code === 'auth/popup-closed-by-user' ||
+      err.code === 'auth/cancelled-popup-request'
+    );
+  }
+
+  function recordAuthError(err) {
+    lastAuthError = err ? ((err.code ? err.code + ': ' : '') + (err.message || String(err))) : null;
+  }
+
+  function getAuthErrorMessage(err) {
+    var code = err && err.code || 'unknown';
+    var message = err && err.message || String(err || 'unknown error');
+
+    if (shouldAvoidRedirectAuth()) {
+      return 'Не удалось открыть Google-вход на телефоне.\n\n' +
+        'Если это иконка на домашнем экране, открой сайт в обычной вкладке Safari/Chrome ' +
+        'и нажми кнопку синхронизации ещё раз. Разреши всплывающее окно, если браузер спросит.\n\n' +
+        'Код: ' + code;
+    }
+
+    if (code === 'auth/unauthorized-domain') {
+      return 'Домен не разрешён в Firebase Authentication.\n\n' +
+        'Нужно добавить текущий домен в Firebase Console → Authentication → Settings → Authorized domains.';
+    }
+
+    if (code === 'auth/network-request-failed') {
+      return 'Не удалось подключиться к Firebase Auth. Проверь интернет/VPN и попробуй ещё раз.';
+    }
+
+    return 'Auth error: ' + message;
+  }
+
+  function showAuthError(err) {
+    recordAuthError(err);
+    console.error('Auth error:', err);
+    alert(getAuthErrorMessage(err));
+  }
+
+  function startGoogleSignIn() {
+    var auth = firebase.auth();
+    var provider = createGoogleProvider();
+    lastAuthMethod = 'popup';
+    lastAuthError = null;
+    ensureAuthPersistence(auth);
+
+    try {
+      auth.signInWithPopup(provider).catch(function (err) {
+        if (isPopupAuthError(err) && !shouldAvoidRedirectAuth()) {
+          lastAuthMethod = 'redirect';
+          return auth.signInWithRedirect(provider).catch(showAuthError);
+        }
+        showAuthError(err);
+      });
+    } catch (err) {
+      showAuthError(err);
+    }
   }
 
   function installChangeListeners() {
@@ -548,15 +674,7 @@
           firebase.auth().signOut();
         }
       } else {
-        var provider = new firebase.auth.GoogleAuthProvider();
-        firebase.auth().signInWithPopup(provider).catch(function (err) {
-          if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user') {
-            firebase.auth().signInWithRedirect(provider);
-          } else {
-            console.error('Auth error:', err);
-            alert('Auth error: ' + err.message);
-          }
-        });
+        startGoogleSignIn();
       }
     });
 
@@ -680,6 +798,9 @@
       sdkReady: sdkReady,
       signedIn: !!currentUser,
       email: currentUser && currentUser.email || null,
+      authMethod: lastAuthMethod,
+      lastAuthError: lastAuthError,
+      authRedirectDisabled: shouldAvoidRedirectAuth(),
       syncEnabled: syncEnabled,
       initialSnapshotDone: initialSnapshotDone,
       pendingLocalChanges: hasPendingLocalChanges,
