@@ -196,7 +196,10 @@ function loadFirebaseSync(options = {}) {
     },
     getRedirectResult() {
       redirectResultCalls.push(true);
-      return Promise.resolve(null);
+      if (options.redirectResultError) {
+        return Promise.reject(options.redirectResultError);
+      }
+      return Promise.resolve(options.redirectResultValue || null);
     },
     signInWithPopup(provider) {
       popupCalls.push(provider);
@@ -327,7 +330,7 @@ function loadFirebaseSync(options = {}) {
   };
 }
 
-test('iOS auth popup failures do not fall back to Firebase redirect', async () => {
+test('iOS auth popup failures fall back to Firebase redirect', async () => {
   const h = loadFirebaseSync({
     enableTopbar: true,
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
@@ -338,9 +341,8 @@ test('iOS auth popup failures do not fall back to Firebase redirect', async () =
   await flushPromises();
 
   assert.equal(h.popupCalls.length, 1);
-  assert.equal(h.redirectCalls.length, 0);
-  assert.equal(h.alerts.length, 1);
-  assert.match(h.alerts[0], /телефон/i);
+  assert.equal(h.redirectCalls.length, 1);
+  assert.equal(h.alerts.length, 0);
 });
 
 test('auth popup starts synchronously from the click gesture', () => {
@@ -369,6 +371,21 @@ test('desktop auth popup-blocked errors still fall back to redirect', async () =
   assert.equal(h.popupCalls.length, 1);
   assert.equal(h.redirectCalls.length, 1);
   assert.equal(h.alerts.length, 0);
+});
+
+test('redirect result failures are surfaced to users', async () => {
+  const h = loadFirebaseSync({
+    redirectResultError: Object.assign(new Error('Domain is not authorized'), {
+      code: 'auth/unauthorized-domain',
+      message: 'Domain is not authorized',
+    }),
+  });
+
+  await flushPromises();
+
+  assert.equal(h.redirectResultCalls.length, 1);
+  assert.equal(h.alerts.length, 1);
+  assert.match(h.alerts[0], /Домен не разрешён/i);
 });
 
 test('pending local store changes are not overwritten by a stale cloud snapshot', () => {

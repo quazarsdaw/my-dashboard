@@ -38,7 +38,7 @@
   }
 
   /* ── State ── */
-  var SYNC_VERSION = '20';
+  var SYNC_VERSION = '21';
   var db = null;
   var currentUser = null;
   var syncEnabled = false;
@@ -137,14 +137,18 @@
   function handleRedirectResult(auth) {
     try {
       if (auth && auth.getRedirectResult) {
-        auth.getRedirectResult().catch(function (err) {
-          recordAuthError(err);
-          console.error('Auth redirect error:', err);
+        auth.getRedirectResult().then(function (result) {
+          if (result && result.user) {
+            lastAuthMethod = 'redirect';
+            lastAuthError = null;
+          }
+        }).catch(function (err) {
+          if (err && err.code === 'auth/no-auth-event') return;
+          showAuthError(err);
         });
       }
     } catch (err) {
-      recordAuthError(err);
-      console.error('Auth redirect error:', err);
+      showAuthError(err);
     }
   }
 
@@ -177,12 +181,12 @@
     return isAppleMobile() || isStandaloneApp();
   }
 
-  function isPopupAuthError(err) {
-    return err && (
+  function shouldFallbackToRedirect(err) {
+    return !!(err && (
       err.code === 'auth/popup-blocked' ||
-      err.code === 'auth/popup-closed-by-user' ||
-      err.code === 'auth/cancelled-popup-request'
-    );
+      err.code === 'auth/cancelled-popup-request' ||
+      err.code === 'auth/operation-not-supported-in-this-environment'
+    ));
   }
 
   function recordAuthError(err) {
@@ -193,13 +197,6 @@
     var code = err && err.code || 'unknown';
     var message = err && err.message || String(err || 'unknown error');
 
-    if (shouldAvoidRedirectAuth()) {
-      return 'Не удалось открыть Google-вход на телефоне.\n\n' +
-        'Если это иконка на домашнем экране, открой сайт в обычной вкладке Safari/Chrome ' +
-        'и нажми кнопку синхронизации ещё раз. Разреши всплывающее окно, если браузер спросит.\n\n' +
-        'Код: ' + code;
-    }
-
     if (code === 'auth/unauthorized-domain') {
       return 'Домен не разрешён в Firebase Authentication.\n\n' +
         'Нужно добавить текущий домен в Firebase Console → Authentication → Settings → Authorized domains.';
@@ -207,6 +204,13 @@
 
     if (code === 'auth/network-request-failed') {
       return 'Не удалось подключиться к Firebase Auth. Проверь интернет/VPN и попробуй ещё раз.';
+    }
+
+    if (shouldAvoidRedirectAuth()) {
+      return 'Не удалось открыть Google-вход на телефоне.\n\n' +
+        'Открой сайт в обычной вкладке Safari/Chrome, нажми кнопку синхронизации ещё раз и разреши всплывающее окно.\n' +
+        'Если popup блокируется, приложение попробует перейти в redirect-режим.\n\n' +
+        'Код: ' + code;
     }
 
     return 'Auth error: ' + message;
@@ -227,7 +231,7 @@
 
     try {
       auth.signInWithPopup(provider).catch(function (err) {
-        if (isPopupAuthError(err) && !shouldAvoidRedirectAuth()) {
+        if (shouldFallbackToRedirect(err)) {
           lastAuthMethod = 'redirect';
           return auth.signInWithRedirect(provider).catch(showAuthError);
         }
