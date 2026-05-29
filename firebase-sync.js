@@ -38,7 +38,7 @@
   }
 
   /* ── State ── */
-  var SYNC_VERSION = '21';
+  var SYNC_VERSION = '22';
   var db = null;
   var currentUser = null;
   var syncEnabled = false;
@@ -87,6 +87,38 @@
       }
     }
     return keys;
+  }
+
+  function toDateKey(date) {
+    var y = date.getFullYear();
+    var m = String(date.getMonth() + 1).padStart(2, '0');
+    var d = String(date.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + d;
+  }
+
+  function isDateKey(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value || '');
+  }
+
+  function isPastGoalsKey(key) {
+    if (!key || key.indexOf('goals:') !== 0) return false;
+    var dateKey = key.slice(6);
+    if (!isDateKey(dateKey)) return false;
+    return dateKey < toDateKey(new Date());
+  }
+
+  function purgePastGoalsKeysLocally() {
+    var keys = getAllSyncKeys();
+    var touched = false;
+    keys.forEach(function (key) {
+      if (!isPastGoalsKey(key)) return;
+      if (localStorage.getItem(key) !== null) {
+        removeLocalStorageRaw(key);
+        touchDeletedKey(key);
+        touched = true;
+      }
+    });
+    return touched;
   }
 
   installStorageHook();
@@ -436,6 +468,7 @@
   }
 
   function mergeCloudData(cloudData) {
+    purgePastGoalsKeysLocally();
     var changed = false;
     var changedKeys = [];
     var shouldPushLocal = false;
@@ -476,6 +509,12 @@
     Object.keys(cloudData).forEach(function (sanitized) {
       var originalKey = unsanitizeKey(sanitized);
       if (isInternalSyncKey(originalKey)) return;
+
+      if (isPastGoalsKey(originalKey)) {
+        applyCloudDeletion(originalKey, Date.now());
+        shouldPushLocal = true;
+        return;
+      }
 
       var cloudVal = cloudData[sanitized];
       if (cloudVal === null || cloudVal === undefined) return;
@@ -530,6 +569,11 @@
 
     getAllSyncKeys().forEach(function (key) {
       if (isInternalSyncKey(key)) return;
+      if (isPastGoalsKey(key)) {
+        applyCloudDeletion(key, Date.now());
+        shouldPushLocal = true;
+        return;
+      }
       var localVal = localStorage.getItem(key);
       if (localVal !== null && cloudData[sanitizeKey(key)] === undefined) {
         var cloudDeleteTime = cloudDeletedMeta[key] || 0;
@@ -583,6 +627,9 @@
     if (unsubSnapshot) unsubSnapshot();
     if (!currentUser || !db) return;
     initialSnapshotDone = false;
+    if (purgePastGoalsKeysLocally()) {
+      hasPendingLocalChanges = true;
+    }
 
     unsubSnapshot = db.collection('users').doc(currentUser.uid)
       .onSnapshot(function (doc) {

@@ -41,6 +41,19 @@ async function flushPromises() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+function toDateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function dayOffsetKey(offset) {
+  const date = new Date();
+  date.setDate(date.getDate() + offset);
+  return toDateKey(date);
+}
+
 function loadFirebaseSync(options = {}) {
   const localStorage = makeStorage();
   const sessionStorage = makeStorage();
@@ -388,6 +401,25 @@ test('redirect result failures are surfaced to users', async () => {
   assert.match(h.alerts[0], /Домен не разрешён/i);
 });
 
+test('stale past-day goals keys from cloud are purged and pushed as deletions', async () => {
+  const h = loadFirebaseSync();
+  const pastKey = 'goals:' + dayOffsetKey(-1);
+  const payload = JSON.stringify([{ text: 'Вернувшаяся задача', done: false }]);
+
+  h.signIn();
+  h.snapshot({
+    [pastKey]: payload,
+    _sync_meta_v1: JSON.stringify({ [pastKey]: 1000 }),
+  });
+  await flushPromises();
+
+  assert.equal(h.localStorage.getItem(pastKey), null);
+  assert.ok(h.sets.length > 0);
+  const lastSet = h.sets[h.sets.length - 1];
+  assert.equal(lastSet['data.' + pastKey], 'delete-field');
+  assert.match(lastSet['data._sync_deleted_v1'], /goals:/);
+});
+
 test('pending local store changes are not overwritten by a stale cloud snapshot', () => {
   const h = loadFirebaseSync();
   const cloudStore = JSON.stringify({
@@ -504,7 +536,7 @@ test('initial sync pushes local-only store data into an existing cloud document'
 
 test('push writes merge field updates for special localStorage keys', async () => {
   const h = loadFirebaseSync();
-  const key = 'goals:2026-05-28';
+  const key = 'goals:' + dayOffsetKey(2);
   const goals = JSON.stringify([{ text: 'Разобрать стол', done: false }]);
 
   h.localStorage.rawSetItem(key, goals);
@@ -521,7 +553,7 @@ test('push writes merge field updates for special localStorage keys', async () =
 
 test('local key deletion is pushed and not restored by a stale cloud snapshot', async () => {
   const h = loadFirebaseSync();
-  const key = 'goals:2026-05-28';
+  const key = 'goals:' + dayOffsetKey(2);
   const goals = JSON.stringify([{ text: 'Разобрать стол', done: false }]);
   const oldMeta = JSON.stringify({ [key]: 1000 });
 
@@ -538,13 +570,13 @@ test('local key deletion is pushed and not restored by a stale cloud snapshot', 
   assert.equal(h.localStorage.getItem(key), null);
   const lastSet = h.sets[h.sets.length - 1];
   assert.equal(lastSet['data.' + key], 'delete-field');
-  assert.match(lastSet['data._sync_deleted_v1'], /goals:2026-05-28/);
+  assert.match(lastSet['data._sync_deleted_v1'], new RegExp(key));
   assert.equal(h.setOptions[h.setOptions.length - 1].merge, true);
 });
 
 test('removeItem records a deletion for sync', async () => {
   const h = loadFirebaseSync();
-  const key = 'goals:2026-05-28';
+  const key = 'goals:' + dayOffsetKey(2);
   const goals = JSON.stringify([{ text: 'Разобрать стол', done: false }]);
   const oldMeta = JSON.stringify({ [key]: 1000 });
 
@@ -559,13 +591,13 @@ test('removeItem records a deletion for sync', async () => {
   assert.equal(h.localStorage.getItem(key), null);
   const lastSet = h.sets[h.sets.length - 1];
   assert.equal(lastSet['data.' + key], 'delete-field');
-  assert.match(lastSet['data._sync_deleted_v1'], /goals:2026-05-28/);
+  assert.match(lastSet['data._sync_deleted_v1'], new RegExp(key));
   assert.equal(h.setOptions[h.setOptions.length - 1].merge, true);
 });
 
 test('newer cloud deletion removes an existing local key', () => {
   const h = loadFirebaseSync();
-  const key = 'goals:2026-05-28';
+  const key = 'goals:' + dayOffsetKey(2);
   const goals = JSON.stringify([{ text: 'Разобрать стол', done: false }]);
 
   h.localStorage.rawSetItem(key, goals);
