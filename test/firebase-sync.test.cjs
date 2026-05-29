@@ -42,6 +42,7 @@ function loadFirebaseSync(options = {}) {
   const listeners = {};
   let reloadCount = 0;
   const sets = [];
+  const setOptions = [];
 
   const fakeDoc = {
     exists: true,
@@ -100,8 +101,9 @@ function loadFirebaseSync(options = {}) {
                     context.__snapshotCallback = cb;
                     return function unsubscribe() {};
                   },
-                  set(update) {
+                  set(update, options) {
                     sets.push(update);
+                    setOptions.push(options || null);
                     return Promise.resolve();
                   },
                 };
@@ -113,6 +115,9 @@ function loadFirebaseSync(options = {}) {
         FieldValue: {
           serverTimestamp() {
             return 'server-time';
+          },
+          delete() {
+            return 'delete-field';
           },
         },
       }),
@@ -149,6 +154,7 @@ function loadFirebaseSync(options = {}) {
     localStorage,
     timers,
     sets,
+    setOptions,
     loadSdk,
     listen(type, cb) {
       if (!listeners[type]) listeners[type] = [];
@@ -289,11 +295,12 @@ test('initial sync pushes local-only store data into an existing cloud document'
 
   assert.ok(h.sets.length > 0);
   const lastSet = h.sets[h.sets.length - 1];
-  assert.equal(lastSet.data.store_v1, localStore);
-  assert.match(lastSet.data._sync_meta_v1, /store_v1/);
+  assert.equal(lastSet['data.store_v1'], localStore);
+  assert.match(lastSet['data._sync_meta_v1'], /store_v1/);
+  assert.equal(h.setOptions[h.setOptions.length - 1].merge, true);
 });
 
-test('push writes a nested data map instead of dynamic field paths for special localStorage keys', async () => {
+test('push writes merge field updates for special localStorage keys', async () => {
   const h = loadFirebaseSync();
   const key = 'goals:2026-05-28';
   const goals = JSON.stringify([{ text: 'Разобрать стол', done: false }]);
@@ -305,9 +312,9 @@ test('push writes a nested data map instead of dynamic field paths for special l
 
   assert.ok(h.sets.length > 0);
   const lastSet = h.sets[h.sets.length - 1];
-  assert.ok(lastSet.data);
-  assert.equal(lastSet.data[key], goals);
-  assert.equal(Object.prototype.hasOwnProperty.call(lastSet, 'data.' + key), false);
+  assert.equal(lastSet['data.' + key], goals);
+  assert.equal(Object.prototype.hasOwnProperty.call(lastSet, 'data'), false);
+  assert.equal(h.setOptions[h.setOptions.length - 1].merge, true);
 });
 
 test('local key deletion is pushed and not restored by a stale cloud snapshot', async () => {
@@ -328,9 +335,9 @@ test('local key deletion is pushed and not restored by a stale cloud snapshot', 
 
   assert.equal(h.localStorage.getItem(key), null);
   const lastSet = h.sets[h.sets.length - 1];
-  assert.ok(lastSet.data);
-  assert.equal(Object.prototype.hasOwnProperty.call(lastSet.data, key), false);
-  assert.match(lastSet.data._sync_deleted_v1, /goals:2026-05-28/);
+  assert.equal(lastSet['data.' + key], 'delete-field');
+  assert.match(lastSet['data._sync_deleted_v1'], /goals:2026-05-28/);
+  assert.equal(h.setOptions[h.setOptions.length - 1].merge, true);
 });
 
 test('removeItem records a deletion for sync', async () => {
@@ -349,8 +356,9 @@ test('removeItem records a deletion for sync', async () => {
 
   assert.equal(h.localStorage.getItem(key), null);
   const lastSet = h.sets[h.sets.length - 1];
-  assert.ok(lastSet.data);
-  assert.match(lastSet.data._sync_deleted_v1, /goals:2026-05-28/);
+  assert.equal(lastSet['data.' + key], 'delete-field');
+  assert.match(lastSet['data._sync_deleted_v1'], /goals:2026-05-28/);
+  assert.equal(h.setOptions[h.setOptions.length - 1].merge, true);
 });
 
 test('newer cloud deletion removes an existing local key', () => {
@@ -388,7 +396,8 @@ test('local store changes made before Firebase is ready beat older cloud data', 
 
   assert.equal(h.localStorage.getItem('store_v1'), localStore);
   assert.ok(h.sets.length > 0);
-  assert.equal(h.sets[h.sets.length - 1].data.store_v1, localStore);
+  assert.equal(h.sets[h.sets.length - 1]['data.store_v1'], localStore);
+  assert.equal(h.setOptions[h.setOptions.length - 1].merge, true);
 });
 
 test('cloud-applied store changes emit render events', () => {
@@ -419,4 +428,25 @@ test('Firebase SDK localStorage keys are ignored by dashboard sync metadata', ()
 
   assert.equal(h.localStorage.getItem('_sync_meta_v1'), null);
   assert.equal(h.localStorage.getItem('_sync_deleted_v1'), null);
+});
+
+test('explicit store changes flush immediately after the initial snapshot', async () => {
+  const h = loadFirebaseSync();
+  const cloudStore = JSON.stringify({ rewards: [], purchases: [] });
+  const localStore = JSON.stringify({
+    rewards: [{ id: 'custom_now', name: 'Сразу', price: 33, icon: '⚡' }],
+    purchases: [],
+  });
+
+  h.localStorage.rawSetItem('store_v1', cloudStore);
+  h.signIn();
+  h.snapshot({ store_v1: cloudStore, _sync_meta_v1: JSON.stringify({ store_v1: 1000 }) });
+  const before = h.sets.length;
+  h.localStorage.rawSetItem('store_v1', localStore);
+  h.dispatch('dashboard-data-changed', { key: 'store_v1' });
+  await Promise.resolve();
+
+  assert.equal(h.sets.length, before + 1);
+  assert.equal(h.sets[h.sets.length - 1]['data.store_v1'], localStore);
+  assert.equal(h.setOptions[h.setOptions.length - 1].merge, true);
 });

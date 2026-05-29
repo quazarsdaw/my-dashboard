@@ -38,12 +38,13 @@
   }
 
   /* ── State ── */
-  var SYNC_VERSION = '18';
+  var SYNC_VERSION = '19';
   var db = null;
   var currentUser = null;
   var syncEnabled = false;
   var syncDebounceTimer = null;
   var SYNC_DEBOUNCE_MS = 2000;
+  var URGENT_SYNC_KEYS = ['store_v1'];
   var isSyncing = false;      // true while applying cloud data to localStorage
   var hasPendingLocalChanges = false; // local edits waiting to be pushed must not be overwritten by stale snapshots
   var unsubSnapshot = null;    // onSnapshot unsubscribe function
@@ -121,7 +122,8 @@
     });
 
     window.addEventListener('dashboard-data-changed', function (e) {
-      if (!isSyncing) schedulePush(e && e.detail && e.detail.key);
+      var key = e && e.detail && e.detail.key;
+      if (!isSyncing) schedulePush(key, URGENT_SYNC_KEYS.indexOf(key) !== -1);
     });
 
     // Gamification.js events (backup in case setItem interception misses)
@@ -218,6 +220,27 @@
       if (val !== null) data[sanitizeKey(key)] = val;
     });
     return data;
+  }
+
+  function addLocalDataFieldUpdates(updates) {
+    var keys = getAllSyncKeys();
+    var hasData = false;
+    keys.forEach(function (key) {
+      var val = localStorage.getItem(key);
+      if (val !== null) {
+        updates['data.' + sanitizeKey(key)] = val;
+        hasData = true;
+      }
+    });
+
+    var deleted = readDeleteMeta();
+    Object.keys(deleted).forEach(function (key) {
+      if (isInternalSyncKey(key)) return;
+      updates['data.' + sanitizeKey(key)] = firebase.firestore.FieldValue.delete();
+      hasData = true;
+    });
+
+    return hasData;
   }
 
   function cloudMatchesLocal(cloudData) {
@@ -561,7 +584,7 @@
   }
 
   /* ── Push local → Cloud ── */
-  function schedulePush(key) {
+  function schedulePush(key, immediate) {
     if (isSyncing) return;
     if (key && shouldSkipStorageKey(key)) return;
     if (key) {
@@ -571,7 +594,11 @@
     hasPendingLocalChanges = true;
     if (!syncEnabled || !currentUser || !db) return;
     clearTimeout(syncDebounceTimer);
-    syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
+    if (immediate) {
+      pushToCloud();
+    } else {
+      syncDebounceTimer = setTimeout(pushToCloud, SYNC_DEBOUNCE_MS);
+    }
   }
 
   function pushToCloudThen(callback) {
@@ -585,10 +612,9 @@
 
     var updates = {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      email: currentUser.email,
-      data: collectLocalData()
+      email: currentUser.email
     };
-    var hasData = Object.keys(updates.data).length > 0;
+    var hasData = addLocalDataFieldUpdates(updates);
 
     if (!hasData) {
       // Nothing to push — just start listening
@@ -600,7 +626,7 @@
     hasPendingLocalChanges = true;
     lastPushStatus = 'pending';
     lastPushError = null;
-    db.collection('users').doc(currentUser.uid).set(updates)
+    db.collection('users').doc(currentUser.uid).set(updates, { merge: true })
       .then(function () {
         lastPushStatus = 'ok';
         lastPushAt = new Date().toISOString();
