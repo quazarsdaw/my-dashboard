@@ -38,7 +38,7 @@
   }
 
   /* ── State ── */
-  var SYNC_VERSION = '22';
+  var SYNC_VERSION = '23';
   var db = null;
   var currentUser = null;
   var syncEnabled = false;
@@ -65,6 +65,10 @@
   var lastChangedKeys = [];
   var lastAuthMethod = null;
   var lastAuthError = null;
+  var lastSyncError = null;
+  var syncRecoveryAttempts = 0;
+  var syncRecoveryTimer = null;
+  var MAX_SYNC_RECOVERY_ATTEMPTS = 3;
 
   function isInternalSyncKey(key) {
     return shouldSkipStorageKey(key) || key === SYNC_META_KEY || key === DELETE_META_KEY;
@@ -139,6 +143,12 @@
     auth.onAuthStateChanged(function (user) {
       currentUser = user;
       syncEnabled = !!user;
+      syncRecoveryAttempts = 0;
+      lastSyncError = null;
+      if (syncRecoveryTimer) {
+        clearTimeout(syncRecoveryTimer);
+        syncRecoveryTimer = null;
+      }
       updateAuthUI();
       if (user) {
         startRealtimeSync();
@@ -633,6 +643,8 @@
 
     unsubSnapshot = db.collection('users').doc(currentUser.uid)
       .onSnapshot(function (doc) {
+        syncRecoveryAttempts = 0;
+        lastSyncError = null;
         lastSnapshotAt = new Date().toISOString();
         if (!doc.exists || !doc.data() || !doc.data().data) {
           // No cloud data — push everything local
@@ -674,7 +686,7 @@
         }
 
       }, function (err) {
-        console.error('Realtime sync error:', err);
+        handleSyncFailure(err, 'listener');
       });
   }
 
@@ -682,6 +694,49 @@
     if (unsubSnapshot) {
       unsubSnapshot();
       unsubSnapshot = null;
+    }
+    if (syncRecoveryTimer) {
+      clearTimeout(syncRecoveryTimer);
+      syncRecoveryTimer = null;
+    }
+    syncRecoveryAttempts = 0;
+  }
+
+  function isFirestoreAuthError(err) {
+    var code = err && err.code || '';
+    return code === 'permission-denied' ||
+      code === 'unauthenticated' ||
+      code === 'firestore/permission-denied' ||
+      code === 'firestore/unauthenticated';
+  }
+
+  function scheduleSyncRecovery() {
+    if (!currentUser || !db) return;
+    if (syncRecoveryAttempts >= MAX_SYNC_RECOVERY_ATTEMPTS) return;
+    syncRecoveryAttempts++;
+    if (syncRecoveryTimer) clearTimeout(syncRecoveryTimer);
+    var delay = 600 * syncRecoveryAttempts;
+    syncRecoveryTimer = setTimeout(function () {
+      syncRecoveryTimer = null;
+      if (!currentUser) return;
+      var refreshPromise = Promise.resolve();
+      if (currentUser.getIdToken) {
+        refreshPromise = currentUser.getIdToken(true).catch(function () { return null; });
+      }
+      refreshPromise.then(function () {
+        startRealtimeSync();
+        if (hasPendingLocalChanges) {
+          pushToCloud();
+        }
+      });
+    }, delay);
+  }
+
+  function handleSyncFailure(err, source) {
+    lastSyncError = (source || 'sync') + ': ' + (err && (err.code || err.message) || 'unknown');
+    console.error('Sync error (' + source + '):', err);
+    if (isFirestoreAuthError(err)) {
+      scheduleSyncRecovery();
     }
   }
 
@@ -798,13 +853,14 @@
     db.collection('users').doc(currentUser.uid).set(updates, { merge: true })
       .then(function () {
         lastPushStatus = 'ok';
+        lastSyncError = null;
         lastPushAt = new Date().toISOString();
         showSyncIndicator('pushed');
         if (callback) callback();
       }).catch(function (err) {
         lastPushStatus = 'error';
         lastPushError = err && (err.message || String(err));
-        console.error('Push failed:', err);
+        handleSyncFailure(err, 'push');
         // Still start listening even if push fails
         if (callback) callback();
       });
@@ -857,6 +913,8 @@
       pendingLocalChanges: hasPendingLocalChanges,
       lastPushStatus: lastPushStatus,
       lastPushError: lastPushError,
+      lastSyncError: lastSyncError,
+      syncRecoveryAttempts: syncRecoveryAttempts,
       lastPushAt: lastPushAt,
       lastSnapshotAt: lastSnapshotAt,
       lastCloudKeys: lastCloudKeys.slice(-20),

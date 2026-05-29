@@ -65,7 +65,9 @@ function loadFirebaseSync(options = {}) {
   const redirectCalls = [];
   const redirectResultCalls = [];
   const persistenceCalls = [];
+  const tokenRefreshCalls = [];
   const alerts = [];
+  let onSnapshotCalls = 0;
   let reloadCount = 0;
   const sets = [];
   const setOptions = [];
@@ -257,6 +259,8 @@ function loadFirebaseSync(options = {}) {
                 return {
                   onSnapshot(cb) {
                     context.__snapshotCallback = cb;
+                    context.__snapshotErrorCallback = arguments[1] || null;
+                    onSnapshotCalls++;
                     return function unsubscribe() {};
                   },
                   set(update, options) {
@@ -312,17 +316,23 @@ function loadFirebaseSync(options = {}) {
     redirectCalls,
     redirectResultCalls,
     persistenceCalls,
+    tokenRefreshCalls,
     alerts,
     listen(type, cb) {
       if (!listeners[type]) listeners[type] = [];
       listeners[type].push(cb);
     },
     signIn() {
-      vm.runInContext('__authCallback({ uid: "user-1", email: "me@example.com" })', context);
+      context.__tokenRefreshCalls = tokenRefreshCalls;
+      vm.runInContext('__authCallback({ uid: "user-1", email: "me@example.com", getIdToken: function (force) { __tokenRefreshCalls.push(!!force); return Promise.resolve("token"); } })', context);
     },
     snapshot(data) {
       context.__snapshotData = data;
       vm.runInContext('__snapshotCallback({ exists: true, data: function () { return { data: __snapshotData }; } })', context);
+    },
+    snapshotError(err) {
+      context.__snapshotErr = err;
+      vm.runInContext('if (__snapshotErrorCallback) __snapshotErrorCallback(__snapshotErr)', context);
     },
     emptySnapshot() {
       context.__snapshotData = fakeDoc.data().data;
@@ -339,6 +349,9 @@ function loadFirebaseSync(options = {}) {
     },
     get reloadCount() {
       return reloadCount;
+    },
+    get onSnapshotCalls() {
+      return onSnapshotCalls;
     },
   };
 }
@@ -399,6 +412,19 @@ test('redirect result failures are surfaced to users', async () => {
   assert.equal(h.redirectResultCalls.length, 1);
   assert.equal(h.alerts.length, 1);
   assert.match(h.alerts[0], /Домен не разрешён/i);
+});
+
+test('listener auth failures trigger token refresh and listener recovery', async () => {
+  const h = loadFirebaseSync();
+  h.signIn();
+  assert.equal(h.onSnapshotCalls, 1);
+
+  h.snapshotError({ code: 'permission-denied', message: 'Missing or insufficient permissions' });
+  h.runTimers();
+  await flushPromises();
+
+  assert.ok(h.tokenRefreshCalls.includes(true));
+  assert.ok(h.onSnapshotCalls >= 2);
 });
 
 test('stale past-day goals keys from cloud are purged and pushed as deletions', async () => {
