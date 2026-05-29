@@ -38,7 +38,7 @@
   }
 
   /* ── State ── */
-  var SYNC_VERSION = '23';
+  var SYNC_VERSION = '24';
   var db = null;
   var currentUser = null;
   var syncEnabled = false;
@@ -69,6 +69,8 @@
   var syncRecoveryAttempts = 0;
   var syncRecoveryTimer = null;
   var MAX_SYNC_RECOVERY_ATTEMPTS = 3;
+  var syncPollInterval = null;
+  var SYNC_POLL_MS = 15000;
 
   function isInternalSyncKey(key) {
     return shouldSkipStorageKey(key) || key === SYNC_META_KEY || key === DELETE_META_KEY;
@@ -633,6 +635,77 @@
     isSyncing = previousSyncing;
   }
 
+  function applyCloudDocument(doc) {
+    syncRecoveryAttempts = 0;
+    lastSyncError = null;
+    lastSnapshotAt = new Date().toISOString();
+    if (!doc.exists || !doc.data() || !doc.data().data) {
+      // No cloud data — push everything local
+      initialSnapshotDone = true;
+      pushToCloud();
+      return;
+    }
+
+    isSyncing = true;
+    var cloudData = doc.data().data;
+    lastCloudData = cloudData;
+    lastCloudKeys = Object.keys(cloudData || {}).map(unsanitizeKey);
+    var result = mergeCloudData(cloudData);
+    var changed = result.changed;
+
+    if (!initialSnapshotDone) {
+      initialSnapshotDone = true;
+      isSyncing = false;
+
+      if (result.shouldPushLocal) pushToCloud();
+
+      if (changed) {
+        notifySyncedDataApplied(result.changedKeys);
+      }
+      showSyncIndicator('synced');
+      return;
+    }
+
+    if (result.shouldPushLocal) pushToCloud();
+    if (hasPendingLocalChanges && cloudMatchesLocal(cloudData)) {
+      hasPendingLocalChanges = false;
+      showSyncIndicator('synced');
+    }
+    isSyncing = false;
+
+    if (changed) {
+      notifySyncedDataApplied(result.changedKeys);
+      showSyncIndicator('synced');
+    }
+  }
+
+  function fetchCloudDocumentOnce(source) {
+    if (!currentUser || !db) return Promise.resolve();
+    var docRef = db.collection('users').doc(currentUser.uid);
+    if (!docRef || !docRef.get) return Promise.resolve();
+    return docRef.get().then(function (doc) {
+      applyCloudDocument(doc);
+    }).catch(function (err) {
+      handleSyncFailure(err, source || 'poll');
+    });
+  }
+
+  function stopSyncPolling() {
+    if (syncPollInterval) {
+      clearInterval(syncPollInterval);
+      syncPollInterval = null;
+    }
+  }
+
+  function startSyncPolling() {
+    stopSyncPolling();
+    if (!currentUser || !db) return;
+    syncPollInterval = setInterval(function () {
+      if (!currentUser) return;
+      fetchCloudDocumentOnce('poll');
+    }, SYNC_POLL_MS);
+  }
+
   function startRealtimeSync() {
     if (unsubSnapshot) unsubSnapshot();
     if (!currentUser || !db) return;
@@ -643,51 +716,11 @@
 
     unsubSnapshot = db.collection('users').doc(currentUser.uid)
       .onSnapshot(function (doc) {
-        syncRecoveryAttempts = 0;
-        lastSyncError = null;
-        lastSnapshotAt = new Date().toISOString();
-        if (!doc.exists || !doc.data() || !doc.data().data) {
-          // No cloud data — push everything local
-          initialSnapshotDone = true;
-          pushToCloud();
-          return;
-        }
-
-        isSyncing = true;
-        var cloudData = doc.data().data;
-        lastCloudData = cloudData;
-        lastCloudKeys = Object.keys(cloudData || {}).map(unsanitizeKey);
-        var result = mergeCloudData(cloudData);
-        var changed = result.changed;
-
-        if (!initialSnapshotDone) {
-          initialSnapshotDone = true;
-          isSyncing = false;
-
-          if (result.shouldPushLocal) pushToCloud();
-
-          if (changed) {
-            notifySyncedDataApplied(result.changedKeys);
-          }
-          showSyncIndicator('synced');
-
-        } else {
-          if (result.shouldPushLocal) pushToCloud();
-          if (hasPendingLocalChanges && cloudMatchesLocal(cloudData)) {
-            hasPendingLocalChanges = false;
-            showSyncIndicator('synced');
-          }
-          isSyncing = false;
-
-          if (changed) {
-            notifySyncedDataApplied(result.changedKeys);
-            showSyncIndicator('synced');
-          }
-        }
-
+        applyCloudDocument(doc);
       }, function (err) {
         handleSyncFailure(err, 'listener');
       });
+    startSyncPolling();
   }
 
   function stopRealtimeSync() {
@@ -695,6 +728,7 @@
       unsubSnapshot();
       unsubSnapshot = null;
     }
+    stopSyncPolling();
     if (syncRecoveryTimer) {
       clearTimeout(syncRecoveryTimer);
       syncRecoveryTimer = null;
@@ -915,6 +949,7 @@
       lastPushError: lastPushError,
       lastSyncError: lastSyncError,
       syncRecoveryAttempts: syncRecoveryAttempts,
+      syncPollingActive: !!syncPollInterval,
       lastPushAt: lastPushAt,
       lastSnapshotAt: lastSnapshotAt,
       lastCloudKeys: lastCloudKeys.slice(-20),
@@ -928,11 +963,7 @@
   }
 
   function pullLatestCloudNow() {
-    if (!lastCloudData) return;
-    isSyncing = true;
-    var result = mergeCloudData(lastCloudData);
-    isSyncing = false;
-    if (result.changed) notifySyncedDataApplied(result.changedKeys);
+    fetchCloudDocumentOnce('manual');
   }
 
   function injectDebugUI() {

@@ -58,6 +58,7 @@ function loadFirebaseSync(options = {}) {
   const localStorage = makeStorage();
   const sessionStorage = makeStorage();
   const timers = [];
+  const intervals = [];
   const scriptLoads = [];
   const listeners = {};
   const elementsById = {};
@@ -146,6 +147,13 @@ function loadFirebaseSync(options = {}) {
       return timers.length;
     },
     clearTimeout() {},
+    setInterval(fn) {
+      intervals.push(fn);
+      return intervals.length;
+    },
+    clearInterval(id) {
+      if (id && intervals[id - 1]) intervals[id - 1] = null;
+    },
     alert(message) {
       alerts.push(String(message));
     },
@@ -197,6 +205,8 @@ function loadFirebaseSync(options = {}) {
   context.window.sessionStorage = sessionStorage;
   context.window.setTimeout = context.setTimeout;
   context.window.clearTimeout = context.clearTimeout;
+  context.window.setInterval = context.setInterval;
+  context.window.clearInterval = context.clearInterval;
   context.window.navigator = context.navigator;
   context.window.alert = context.alert;
   context.window.confirm = context.confirm;
