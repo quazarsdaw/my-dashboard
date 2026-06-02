@@ -2,30 +2,26 @@
   'use strict';
 
   var css = '\
-html {\
-  scrollbar-gutter: stable;\
-}\
+html { scrollbar-gutter: stable; }\
 .topbar {\
   position: fixed; top: 12px; left: 12px; right: 12px; z-index: 10000;\
   display: flex; justify-content: flex-end; align-items: center;\
-  gap: 10px; height: 58px; padding: 0 16px;\
+  gap: 10px; height: 58px; padding: 0 16px; box-sizing: border-box;\
   background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.04) 100%);\
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);\
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);\
   border: 1px solid rgba(255,255,255,0.12); border-radius: 16px;\
   box-shadow: 0 4px 20px rgba(0,0,0,0.2);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
-  box-sizing: border-box;\
 }\
 .bottombar {\
   position: fixed; bottom: 12px; left: 12px; right: 12px; z-index: 10000;\
   display: flex; justify-content: space-around; align-items: stretch;\
-  height: 64px; padding: 0 8px;\
-  background: linear-gradient(135deg, rgba(20,22,26,0.7) 0%, rgba(10,11,13,0.5) 100%);\
+  height: 64px; padding: 0 8px; box-sizing: border-box;\
+  background: linear-gradient(135deg, rgba(20,22,26,0.6) 0%, rgba(10,11,13,0.4) 100%);\
   backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);\
   border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;\
   box-shadow: 0 -4px 32px rgba(0,0,0,0.3);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
-  box-sizing: border-box;\
 }\
 .bottombar-tab {\
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;\
@@ -45,7 +41,7 @@ html {\
 }\
 .topbar-water-pill {\
   display: inline-flex; align-items: center; gap: 8px;\
-  padding: 9px 14px; background: rgba(125,211,252,0.1); border: 1px solid rgba(125,211,252,0.15);\
+  padding: 9px 14px; background: rgba(125,211,252,0.08); border: 1px solid rgba(125,211,252,0.15);\
   border-right: none; border-radius: 12px 0 0 12px; text-decoration: none; color: #FAFAFA;\
 }\
 .topbar-pill-dot {\
@@ -59,16 +55,16 @@ html {\
   0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }\
   50% { box-shadow: 0 0 0 5px rgba(239,68,68,0); }\
 }\
+.topbar-pill-count {\
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;\
+  font-size: 13px; font-weight: 700; color: #FAFAFA; font-variant-numeric: tabular-nums; white-space: nowrap;\
+}\
 .topbar-water-add {\
-  width: 44px; border: 1px solid rgba(125,211,252,0.15); background: rgba(125,211,252,0.2); color: #FFF; font-size: 20px; font-weight: 700; cursor: pointer; border-radius: 0 12px 12px 0;\
-  transition: background 0.15s;\
+  width: 44px; height: 40px; border: 1px solid rgba(125,211,252,0.15); background: rgba(125,211,252,0.2); color: #FFF; font-size: 20px; font-weight: 700; cursor: pointer; border-radius: 0 12px 12px 0; transition: background 0.15s;\
 }\
 .topbar-water-add.flash { background: rgba(125,211,252,0.6); }\
 body {\
-  padding-top: 82px !important;\
-  padding-bottom: 96px !important;\
-  padding-left: 16px !important;\
-  padding-right: 16px !important;\
+  padding-top: 82px !important; padding-bottom: 96px !important; padding-left: 16px !important; padding-right: 16px !important;\
 }\
 @media (max-width: 480px) {\
   .topbar { top: 8px; left: 8px; right: 8px; height: 52px; }\
@@ -86,7 +82,7 @@ body {\
   <div class="topbar-water-wrap">\
     <a href="health.html#water" class="topbar-water-pill" id="topbarWater">\
       <span class="topbar-pill-dot"></span>\
-      <span id="topbarWaterCount">0/0</span>\
+      <span class="topbar-pill-count" id="topbarWaterCount">0/0</span>\
     </a>\
     <button class="topbar-water-add" id="topbarWaterAdd" type="button">+</button>\
   </div>\
