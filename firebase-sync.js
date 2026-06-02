@@ -38,7 +38,7 @@
   }
 
   /* ── State ── */
-  var SYNC_VERSION = '24';
+  var SYNC_VERSION = '25';
   var db = null;
   var currentUser = null;
   var syncEnabled = false;
@@ -480,7 +480,9 @@
   }
 
   function mergeCloudData(cloudData) {
-    purgePastGoalsKeysLocally();
+    // Past-goals purge runs once per session in startRealtimeSync(), not on
+    // every snapshot/poll. The in-loop branches below still drop any stale
+    // goals: field that arrives from the cloud.
     var changed = false;
     var changedKeys = [];
     var shouldPushLocal = false;
@@ -523,7 +525,7 @@
       if (isInternalSyncKey(originalKey)) return;
 
       if (isPastGoalsKey(originalKey)) {
-        applyCloudDeletion(originalKey, Date.now());
+        applyCloudDeletion(originalKey, deletedMeta[originalKey] || Date.now());
         shouldPushLocal = true;
         return;
       }
@@ -582,7 +584,7 @@
     getAllSyncKeys().forEach(function (key) {
       if (isInternalSyncKey(key)) return;
       if (isPastGoalsKey(key)) {
-        applyCloudDeletion(key, Date.now());
+        applyCloudDeletion(key, deletedMeta[key] || Date.now());
         shouldPushLocal = true;
         return;
       }
@@ -636,8 +638,13 @@
   }
 
   function applyCloudDocument(doc) {
+    // Firestore echoes our own un-acked local writes (hasPendingWrites=true).
+    // Skip them: we already have that data locally. The paired server-ack
+    // snapshot (hasPendingWrites=false) does the real reconcile.
+    if (doc && doc.metadata && doc.metadata.hasPendingWrites) return;
     syncRecoveryAttempts = 0;
     lastSyncError = null;
+    stopSyncPolling();
     lastSnapshotAt = new Date().toISOString();
     if (!doc.exists || !doc.data() || !doc.data().data) {
       // No cloud data — push everything local
@@ -720,7 +727,6 @@
       }, function (err) {
         handleSyncFailure(err, 'listener');
       });
-    startSyncPolling();
   }
 
   function stopRealtimeSync() {
@@ -769,6 +775,12 @@
   function handleSyncFailure(err, source) {
     lastSyncError = (source || 'sync') + ': ' + (err && (err.code || err.message) || 'unknown');
     console.error('Sync error (' + source + '):', err);
+    // Realtime listener is down — start polling as a fallback so cross-device
+    // changes still arrive until the listener recovers (a healthy snapshot
+    // calls stopSyncPolling()).
+    if (source === 'listener') {
+      startSyncPolling();
+    }
     if (isFirestoreAuthError(err)) {
       scheduleSyncRecovery();
     }
