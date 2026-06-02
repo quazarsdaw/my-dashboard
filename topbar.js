@@ -3,16 +3,17 @@
 
   var css = '\
 .topbar {\
-  position: fixed; top: 10px; left: 10px; right: 10px; z-index: 100;\
+  position: fixed; top: 12px; left: 12px; right: 12px; z-index: 100;\
   display: flex; justify-content: flex-end; align-items: center;\
-  gap: 10px; height: 58px;\
+  gap: 10px; height: 60px;\
   padding: 0 16px;\
   background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 100%);\
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);\
   border: 1px solid rgba(255,255,255,0.14);\
-  border-radius: 16px;\
+  border-radius: 18px;\
   box-shadow: 0 8px 32px rgba(0,0,0,0.25);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
+  box-sizing: border-box;\
 }\
 .topbar-coins {\
   display: inline-flex; align-items: center; gap: 6px;\
@@ -71,15 +72,16 @@
   background: linear-gradient(180deg, rgba(125,211,252,0.7), rgba(110,231,183,0.7));\
 }\
 .bottombar {\
-  position: fixed; bottom: 15px; left: 10px; right: 10px; z-index: 100;\
+  position: fixed; bottom: 15px; left: 12px; right: 12px; z-index: 100;\
   display: flex; justify-content: space-around; align-items: stretch;\
-  height: 66px; padding: 0 8px;\
+  height: 70px; padding: 0 8px;\
   background: rgba(28,30,36,0.85);\
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);\
   border: 1px solid rgba(255,255,255,0.12);\
-  border-radius: 20px;\
+  border-radius: 22px;\
   box-shadow: 0 -4px 32px rgba(0,0,0,0.3);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
+  box-sizing: border-box;\
 }\
 .bottombar-tab {\
   flex: 1;\
@@ -102,6 +104,8 @@
 body {\
   padding-top: 84px !important;\
   padding-bottom: calc(100px + env(safe-area-inset-bottom)) !important;\
+  padding-left: 16px !important;\
+  padding-right: 16px !important;\
 }\
 @media (max-width: 480px) {\
   .topbar { left: 8px; right: 8px; top: 8px; height: 54px; padding: 0 12px; gap: 8px; }\
