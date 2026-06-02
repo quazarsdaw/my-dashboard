@@ -60,32 +60,47 @@
 
   /* ── SDK Ready ── */
   function onSDKReady() {
-    sdkReady = true;
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    try {
+      if (SUPABASE_URL.indexOf('YOUR_PROJECT_ID') !== -1) {
+        console.warn('Supabase: Ключи не настроены. Синхронизация отключена.');
+        updateAuthUI();
+        return;
+      }
+      sdkReady = true;
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Initial auth check
-    supabase.auth.getSession().then(function (res) {
-      handleAuthStateChange(res.data.session ? res.data.session.user : null);
-    });
+      // Initial auth check
+      supabase.auth.getSession().then(function (res) {
+        handleAuthStateChange(res.data.session ? res.data.session.user : null);
+      }).catch(function(e) { console.error('Supabase Auth error:', e); });
 
-    // Auth listener
-    supabase.auth.onAuthStateChange(function (event, session) {
-      handleAuthStateChange(session ? session.user : null);
-    });
+      // Auth listener
+      supabase.auth.onAuthStateChange(function (event, session) {
+        handleAuthStateChange(session ? session.user : null);
+      });
 
-    installStorageHook();
-    installChangeListeners();
+      installStorageHook();
+      installChangeListeners();
+    } catch (e) {
+      console.error('Supabase Init failed:', e);
+    }
     updateAuthUI();
   }
 
   function handleAuthStateChange(user) {
     var userChanged = (!currentUser && user) || (currentUser && !user) || (currentUser && user && currentUser.id !== user.id);
+    var firstLogin = !currentUser && user;
     currentUser = user;
     syncEnabled = !!user;
 
     if (userChanged) {
       if (user) {
         startRealtimeSync();
+        if (firstLogin) {
+            // При первом входе за сессию — пушим локальные данные, 
+            // чтобы облако узнало о текущем состоянии устройства
+            setTimeout(pushAllToCloud, 1000);
+        }
       } else {
         stopRealtimeSync();
       }
