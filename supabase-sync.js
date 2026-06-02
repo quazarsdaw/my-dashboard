@@ -178,6 +178,7 @@
           nativeSetItem.call(this, key, value);
           // Only sync if it's localStorage and not an internal/Supabase key
           if (this === localStorage && !isSyncing && !shouldSkipStorageKey(key)) {
+            touchLocalKey(key);
             schedulePush(key);
           }
         };
@@ -223,25 +224,40 @@
     syncDebounceTimer = setTimeout(syncPendingChanges, SYNC_DEBOUNCE_MS);
   }
 
+  function readLocalMeta() {
+    try { return JSON.parse(localStorage.getItem(SYNC_META_KEY)) || {}; } catch (e) { return {}; }
+  }
+
+  function writeLocalMeta(meta) {
+    rawSetItem(SYNC_META_KEY, JSON.stringify(meta));
+  }
+
+  function touchLocalKey(key) {
+    var meta = readLocalMeta();
+    meta[key] = Date.now();
+    writeLocalMeta(meta);
+  }
+
   function syncPendingChanges() {
     if (!currentUser || !supabase) return;
 
     var keysToPush = Object.keys(pendingKeys);
     if (keysToPush.length === 0) return;
 
-    // Prepare only changed rows
     var rows = [];
     keysToPush.forEach(function(k) {
       var val = localStorage.getItem(k);
+      var jsonVal = null;
+      try { jsonVal = JSON.parse(val); } catch(e) { jsonVal = val; }
+
       rows.push({
         user_id: currentUser.id,
         key: k,
-        value: val,
+        value: jsonVal, // Отправляем как объект для JSONB
         updated_at: new Date().toISOString()
       });
     });
 
-    // Clear pending queue BEFORE call to avoid missing changes during network hop
     var processingKeys = pendingKeys;
     pendingKeys = {};
 
@@ -250,7 +266,6 @@
       .then(function(res) {
           if (res.error) {
             console.error('Push error:', res.error);
-            // Put keys back to retry later
             Object.assign(pendingKeys, processingKeys);
           } else {
             lastLocalPushAt = Date.now();
@@ -308,14 +323,23 @@
       .then(function(res) {
         if (res.data) {
           var changedKeys = [];
+          var localMeta = readLocalMeta();
           res.data.forEach(function(row) {
-            var localVal = localStorage.getItem(row.key);
-            if (localVal !== row.value) {
-              rawSetItem(row.key, row.value);
-              changedKeys.push(row.key);
+            var cloudTime = new Date(row.updated_at).getTime();
+            var localTime = localMeta[row.key] || 0;
+            
+            // Sync ONLY if cloud data is newer than local change
+            if (cloudTime > localTime) {
+              var stringVal = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
+              if (localStorage.getItem(row.key) !== stringVal) {
+                rawSetItem(row.key, stringVal);
+                localMeta[row.key] = cloudTime;
+                changedKeys.push(row.key);
+              }
             }
           });
           if (changedKeys.length > 0) {
+            writeLocalMeta(localMeta);
             notifySyncedDataApplied(changedKeys);
           }
         }
@@ -331,12 +355,21 @@
   function handleCloudChange(payload) {
     if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
       var row = payload.new;
-      if (localStorage.getItem(row.key) !== row.value) {
-        isSyncing = true;
-        rawSetItem(row.key, row.value);
-        notifySyncedDataApplied([row.key]);
-        isSyncing = false;
-        showSyncIndicator('synced');
+      var localMeta = readLocalMeta();
+      var cloudTime = new Date(row.updated_at).getTime();
+      var localTime = localMeta[row.key] || 0;
+
+      if (cloudTime > localTime) {
+        var stringVal = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
+        if (localStorage.getItem(row.key) !== stringVal) {
+          isSyncing = true;
+          rawSetItem(row.key, stringVal);
+          localMeta[row.key] = cloudTime;
+          writeLocalMeta(localMeta);
+          notifySyncedDataApplied([row.key]);
+          isSyncing = false;
+          showSyncIndicator('synced');
+        }
       }
     }
   }
