@@ -45,6 +45,7 @@
   var syncEnabled = false;
   var isSyncing = false; // true while applying cloud data to localStorage
   var hasPendingLocalChanges = false;
+  var lastLocalPushAt = 0; // timestamp of last push to cloud
   var subscription = null;
 
   var SYNC_META_KEY = '_sync_meta_v1';
@@ -204,7 +205,7 @@
 
   /* ── Sync Logic ── */
   var syncDebounceTimer = null;
-  var SYNC_DEBOUNCE_MS = 1000;
+  var SYNC_DEBOUNCE_MS = 2000; // Increased to prevent spam
 
   function schedulePush(key) {
     if (isSyncing || !syncEnabled || !currentUser) return;
@@ -229,10 +230,14 @@
 
     if (rows.length === 0) return;
 
+    lastLocalPushAt = Date.now(); // Record when we sent data
     supabase.from('user_data').upsert(rows, { onConflict: 'user_id, key' })
       .then(function(res) {
           if (res.error) console.error('Push error:', res.error);
-          else showSyncIndicator('pushed');
+          else {
+            lastLocalPushAt = Date.now(); // Update after success too
+            showSyncIndicator('pushed');
+          }
       });
   }
 
@@ -255,6 +260,11 @@
         table: 'user_data',
         filter: 'user_id=eq.' + currentUser.id
       }, function(payload) {
+        // IGNORE changes if we just pushed something ourselves (< 3 seconds ago)
+        // This prevents the "flicker" effect.
+        if (Date.now() - lastLocalPushAt < 3000) {
+          return;
+        }
         if (!isSyncing) handleCloudChange(payload);
       })
       .subscribe();
