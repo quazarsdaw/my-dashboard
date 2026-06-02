@@ -177,7 +177,6 @@
   function getActivityLog() { return storeGet('activity_log_v1') || []; }
 
   var ACHIEVEMENT_DEFS = [
-    // --- COMMON (2-8) ---
     { id: 'first_task', rarity: 'common', bonus: 2, name: 'База', icon: '🌱', desc: 'Выполни первую задачу' },
     { id: 'altushka', rarity: 'common', bonus: 5, name: 'Альтушка с госуслуг', icon: '👩‍🎤', desc: 'Первая покупка в магазине' },
     { id: 'tasks_5', rarity: 'common', bonus: 4, name: 'Начало пути', icon: '👣', desc: 'Выполни 5 задач' },
@@ -197,7 +196,6 @@
     { id: 'number_67', rarity: 'common', bonus: 25, name: '67', icon: '🎰', desc: 'Выполни ровно 67 задач' },
     { id: 'clothing_78', rarity: 'common', bonus: 8, name: '7-8 одежда', icon: '👕', desc: 'Выполни 8 задач за день' },
 
-    // --- RARE (10-30) ---
     { id: 'tasks_50', rarity: 'rare', bonus: 20, name: '52', icon: '🏙️', desc: 'Санкт-Петербург! (50 задач)' },
     { id: 'tasks_75', rarity: 'rare', bonus: 25, name: 'Специалист', icon: '🛠️', desc: '75 выполненных задач' },
     { id: 'temshik', rarity: 'rare', bonus: 30, name: 'Темщик', icon: '💸', desc: 'Набери 1000 монет' },
@@ -223,7 +221,6 @@
     { id: 'gym_variety', rarity: 'rare', bonus: 25, name: 'Многоборец', icon: '🏟️', desc: 'Тренировки в 5 днях' },
     { id: 'habit_7', rarity: 'rare', bonus: 20, name: 'Привычка', icon: '🔄', desc: '7 активных дней' },
 
-    // --- EPIC (40-150) ---
     { id: 'svo', rarity: 'epic', bonus: 80, name: 'С.В.О.', icon: '🎖️', desc: '5 сложных задач подряд' },
     { id: 'borov', rarity: 'epic', bonus: 120, name: 'Боров', icon: '🐗', desc: 'Накопи 5000 монет' },
     { id: 'mamont', rarity: 'epic', bonus: 60, name: 'Мамонт', icon: '🦣', desc: 'Потрачено 5000 монет' },
@@ -238,7 +235,7 @@
     { id: 'days_60', rarity: 'epic', bonus: 150, name: 'Железная воля', icon: '🛡️', desc: '60 активных дней' },
     { id: 'level_25', rarity: 'epic', bonus: 100, name: 'Четверть пути', icon: '👑', desc: 'Достигни 25 уровня' },
     { id: 'level_40', rarity: 'epic', bonus: 150, name: 'Элита', icon: '💎', desc: 'Достигни 40 уровня' },
-    { id: 'gym_30', rarity: 'epic', rarity: 'epic', bonus: 100, name: 'Бодибилдер', icon: '🏋️‍♂️', desc: '30 тренировок' },
+    { id: 'gym_30', rarity: 'epic', bonus: 100, name: 'Бодибилдер', icon: '🏋️‍♂️', desc: '30 тренировок' },
     { id: 'gym_50', rarity: 'epic', bonus: 150, name: 'Геракл', icon: '🏺', desc: '50 тренировок завершено' },
     { id: 'finance_master', rarity: 'epic', bonus: 100, name: 'Успешный успех', icon: '💹', desc: '15 уровень в Финансах' },
     { id: 'career_master', rarity: 'epic', bonus: 100, name: 'Директор', icon: '🏢', desc: '15 уровень в Карьере' },
@@ -251,7 +248,6 @@
     { id: 'big_spender', rarity: 'epic', bonus: 100, name: 'Магнат', icon: '🥂', desc: 'Потрачено 5000 монет' },
     { id: 'saver', rarity: 'epic', bonus: 80, name: 'Скряга', icon: '🔒', desc: 'Баланс монет > 2000' },
 
-    // --- LEGENDARY (200-600) ---
     { id: 'river_walker', rarity: 'legendary', bonus: 400, name: 'Идущий к реке', icon: '🌊', desc: '500 часов чистого времени' },
     { id: 'gigachad', rarity: 'legendary', bonus: 350, name: 'Гигачад', icon: '💪', desc: '100 тренировок' },
     { id: 'moms_friend_son', rarity: 'legendary', bonus: 500, name: 'Сын маминой подруги', icon: '🥇', desc: '10 уровень во всех сферах' },
@@ -267,10 +263,9 @@
     { id: 'gym_100', rarity: 'legendary', bonus: 400, name: 'Олимпиец', icon: '🥇', desc: '100 тренировок' },
     { id: 'all_max_lvl', rarity: 'legendary', bonus: 500, name: 'Магистр сфер', icon: '🔮', desc: '10 уровень во всех сферах' },
     { id: 'streak_30', rarity: 'legendary', bonus: 300, name: 'Несгораемый', icon: '🧨', desc: '30 активных дней' },
-    { id: 'finance_balance_100000', rarity: 'legendary', bonus: 500, name: 'Капиталист', icon: '🏦', desc: 'Баланс финансов > 100000' },
+    { id: 'finance_balance_100000', rarity: 'legendary', bonus: 500, name: 'Капиталист JR', icon: '🏦', desc: 'Баланс финансов > 100000' },
     { id: 'pomo_100', rarity: 'legendary', bonus: 250, name: 'Дзен', icon: '🧘', desc: '100 сессий таймера' },
 
-    // --- MYTHIC (1000-5000) ---
     { id: 'tasks_5000', rarity: 'mythic', bonus: 2000, name: 'Творец миров', icon: '🌌', desc: '5000 выполненных задач' },
     { id: 'hours_2000', rarity: 'mythic', bonus: 3000, name: 'Вне времени', icon: '🌀', desc: '2000 часов продуктивности' },
     { id: 'level_100', rarity: 'mythic', bonus: 2500, name: 'БОЖЕСТВО', icon: '🪐', desc: 'Достигни 100 уровня' },
@@ -293,7 +288,7 @@
     var taskHistory = storeGet('task_history_v1') || [];
     var hardTasksInARow = 0;
     for(var i=0; i<Math.min(taskHistory.length, 10); i++) {
-        if(taskHistory[i].difficulty === 'hard') hardTasksInARow++;
+        if(taskHistory[i] && taskHistory[i].difficulty === 'hard') hardTasksInARow++;
         else if (hardTasksInARow < 5) hardTasksInARow = 0;
     }
     var d = { totalTasks: stats.totalTasks, totalMinutes: stats.totalMinutes, totalDays: stats.totalDays, coinsEarned: coins.earned, overallLevel: overall.level, sphereLevels: sphereLevels, activeSpheres: activeSpheres, totalSpheres: SPHERES.length, totalPurchases: store.purchases ? store.purchases.length : 0, totalWorkouts: gymHistory.length, earlyTask: taskHour >= 4 && taskHour < 9, nightTask: (taskHour >= 0 && taskHour < 4) || taskHour > 23, pomoCount: log.length, finBalance: finData.balance || 0, coinBalance: coins.balance, hardStreak: hardTasksInARow >= 5, lastGymDate: gymHistory.length ? gymHistory[0].date : stats.firstDay };
