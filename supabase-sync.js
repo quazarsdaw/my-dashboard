@@ -12,17 +12,29 @@
   var supabase = null;
 
   function loadSDK() {
+    var timeout = setTimeout(function() {
+      if (!sdkReady) {
+        console.warn('Supabase SDK load timeout');
+        updateAuthUI();
+      }
+    }, 5000);
+
     var s = document.createElement('script');
     s.src = sdkURL;
+    s.async = true;
     s.onload = function () {
+      clearTimeout(timeout);
       if (window.supabase) {
         onSDKReady();
       } else {
         console.error('Supabase SDK failed to initialize from window');
+        updateAuthUI();
       }
     };
     s.onerror = function () {
+      clearTimeout(timeout);
       console.error('Supabase SDK load failed');
+      updateAuthUI();
     };
     document.head.appendChild(s);
   }
@@ -162,11 +174,16 @@
 
         window.Storage.prototype.setItem = function (key, value) {
           nativeSetItem.call(this, key, value);
-          if (this === localStorage && !isSyncing) schedulePush(key);
+          // Only sync if it's localStorage and not an internal/Supabase key
+          if (this === localStorage && !isSyncing && !shouldSkipStorageKey(key)) {
+            schedulePush(key);
+          }
         };
         window.Storage.prototype.removeItem = function (key) {
           nativeRemoveItem.call(this, key);
-          if (this === localStorage && !isSyncing) schedulePush(key);
+          if (this === localStorage && !isSyncing && !shouldSkipStorageKey(key)) {
+            schedulePush(key);
+          }
         };
       }
     } catch (e) {
