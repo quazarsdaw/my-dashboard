@@ -13,7 +13,6 @@
   border-radius: 16px;\
   box-shadow: 0 8px 32px rgba(0,0,0,0.25);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
-  transition: transform 0.3s ease;\
 }\
 .topbar-coins {\
   display: inline-flex; align-items: center; gap: 6px;\
@@ -113,24 +112,6 @@ body {\
   .bottombar-tab { font-size: 0; }\
   .bottombar-tab.active { font-size: 8px; }\
 }\
-';
-@media (max-width: 480px) {\
-  .topbar { padding-left: 10px; padding-right: 10px; gap: 6px; }\
-  .topbar-coins { padding: 7px 10px; font-size: 12px; gap: 5px; }\
-  .topbar-water-pill { padding: 8px 11px; gap: 6px; }\
-  .topbar-pill-count { font-size: 12px; }\
-  .topbar-water-add { width: 40px; font-size: 18px; }\
-  .bottombar-tab-icon { font-size: 18px; }\
-  .bottombar-tab { font-size: 0; gap: 1px; padding: 6px 0 4px; }\
-  .bottombar-tab.active { font-size: 7px; }\
-}\
-html, body { -webkit-text-size-adjust: 100%; }\
-@media (max-width: 768px) {\
-  html { touch-action: pan-y; }\
-  ::-webkit-scrollbar { width: 0; height: 0; display: none; }\
-  html, body { scrollbar-width: none; -ms-overflow-style: none; }\
-}\
-body.topbar-modal-open { overflow: hidden; touch-action: none; }\
 ';
 
   var topbarHtml = '\
@@ -239,12 +220,7 @@ body.topbar-modal-open { overflow: hidden; touch-action: none; }\
     if (p.sex === 'm') adjust += 200;
     if ((p.age || 0) >= 50) adjust += 100;
     var totalMl = base + exercise + caffeine + subs + adjust;
-    var unitVol;
-    if (state.unit === 'glass') unitVol = state.glassMl || 250;
-    else if (state.unit === 'oz') unitVol = 30;
-    else if (state.unit === 'ml') unitVol = 1;
-    else unitVol = state.bottleMl || 500;
-    var total = Math.max(1, Math.ceil(totalMl / unitVol));
+    var total = Math.max(1, Math.ceil(totalMl / (state.bottleMl || 500)));
     return { done: done, total: total };
   }
 
@@ -279,25 +255,15 @@ body.topbar-modal-open { overflow: hidden; touch-action: none; }\
     }
   }
 
-  function defaultWaterState() {
-    return {
-      unit: 'bottle', bottleMl: 500, glassMl: 250, weightUnit: 'kg',
-      profile: { weightKg: 75, age: 25, sex: 'm', activityHrsPerWeek: 5 },
-      caffeineMgPerDay: 200, substances: [], logs: {}
-    };
-  }
-
   function addWater() {
     var state = null;
     try { state = JSON.parse(localStorage.getItem('po_water_v1')); } catch (e) {}
-    if (!state || typeof state !== 'object') state = defaultWaterState();
+    if (!state || typeof state !== 'object') return;
     state.logs = state.logs || {};
     var k = calendarDateKey();
     state.logs[k] = (state.logs[k] || 0) + 1;
-    try { localStorage.setItem('po_water_v1', JSON.stringify(state)); } catch (e) {}
+    localStorage.setItem('po_water_v1', JSON.stringify(state));
     render();
-    var btn = document.getElementById('topbarWaterAdd');
-    if (btn) { btn.classList.add('flash'); setTimeout(function () { btn.classList.remove('flash'); }, 220); }
   }
 
   function boot() {
@@ -308,7 +274,6 @@ body.topbar-modal-open { overflow: hidden; touch-action: none; }\
     window.addEventListener('storage', render);
     window.addEventListener('focus', render);
     window.addEventListener('gamification-update', render);
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) render(); });
     setInterval(render, 30000);
   }
 
