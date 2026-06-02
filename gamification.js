@@ -345,6 +345,23 @@
     { id: 'all_max_lvl', rarity: 'legendary', bonus: 5000, name: 'Магистр сфер', icon: '🔮', desc: '10 уровень во всех сферах' },
     { id: 'streak_30', rarity: 'legendary', bonus: 2000, name: 'Несгораемый', icon: '🧨', desc: 'Стрик активности 30 дней' },
 
+    // --- ADDITIONAL (Extra) ---
+    { id: 'gym_50', rarity: 'epic', bonus: 1000, name: 'Геракл', icon: '🏺', desc: '50 тренировок завершено' },
+    { id: 'finance_balance_1000', rarity: 'rare', bonus: 200, name: 'Первый капитал', icon: '💵', desc: 'Баланс финансов > 1000' },
+    { id: 'finance_balance_10000', rarity: 'epic', bonus: 1000, name: 'Инвестор', icon: '📈', desc: 'Баланс финансов > 10000' },
+    { id: 'finance_balance_100000', rarity: 'legendary', bonus: 5000, name: 'Капиталист', icon: '🏦', desc: 'Баланс финансов > 100000' },
+    { id: 'task_spree_10', rarity: 'rare', bonus: 100, name: 'Спринтер', icon: '🏃‍♂️', desc: '10 задач за один день' },
+    { id: 'task_spree_20', rarity: 'epic', bonus: 300, name: 'Марафонец', icon: '🏁', desc: '20 задач за один день' },
+    { id: 'pomo_100', rarity: 'legendary', bonus: 1500, name: 'Дзен', icon: '🧘', desc: '100 сессий таймера' },
+    { id: 'pomo_500', rarity: 'mythic', bonus: 10000, name: 'Абсолютный фокус', icon: '🧿', desc: '500 сессий таймера' },
+    { id: 'all_spheres_5', rarity: 'epic', bonus: 800, name: 'Разносторонний', icon: '💠', desc: '5 уровень во всех сферах' },
+    { id: 'night_owl_3', rarity: 'rare', bonus: 100, name: 'Полуночник', icon: '🌑', desc: '3 задачи ночью' },
+    { id: 'early_bird_10', rarity: 'rare', bonus: 200, name: 'Жаворонок', icon: '🌄', desc: '10 задач ранним утром' },
+    { id: 'gym_variety', rarity: 'rare', bonus: 150, name: 'Многоборец', icon: '🏟️', desc: 'Тренировки в 3 разных залах' },
+    { id: 'habit_7', rarity: 'rare', bonus: 100, name: 'Привычка', icon: '🔄', desc: '7 дней подряд одна сфера' },
+    { id: 'big_spender', rarity: 'epic', bonus: 500, name: 'Магнат', icon: '🥂', desc: 'Потрачено 5000 монет' },
+    { id: 'saver', rarity: 'epic', bonus: 500, name: 'Скряга', icon: '🔒', desc: 'Баланс монет > 2000' },
+    ];
     // --- MYTHIC (Мифические) 💀 ---
     { id: 'tasks_5000', rarity: 'mythic', bonus: 25000, name: 'Творец миров', icon: '🌌', desc: '5000 выполненных задач' },
     { id: 'hours_2000', rarity: 'mythic', bonus: 50000, name: 'Вне времени', icon: '🌀', desc: '2000 часов продуктивности' },
