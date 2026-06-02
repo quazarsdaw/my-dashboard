@@ -280,27 +280,36 @@
   // --- Achievements ---
 
   var ACHIEVEMENT_DEFS = [
-    { id: 'first_task',       name: 'Первая задача',         icon: '🌱', desc: 'Выполни первую задачу', check: function(s){ return s.totalTasks >= 1; } },
-    { id: 'tasks_10',         name: '10 задач',              icon: '⭐', desc: 'Выполни 10 задач', check: function(s){ return s.totalTasks >= 10; } },
-    { id: 'tasks_50',         name: '50 задач',              icon: '🌟', desc: 'Выполни 50 задач', check: function(s){ return s.totalTasks >= 50; } },
-    { id: 'tasks_100',        name: 'Сотня!',                icon: '💯', desc: 'Выполни 100 задач', check: function(s){ return s.totalTasks >= 100; } },
-    { id: 'tasks_500',        name: 'Машина',                icon: '🤖', desc: 'Выполни 500 задач', check: function(s){ return s.totalTasks >= 500; } },
-    { id: 'hours_1',          name: 'Первый час',            icon: '⏱️', desc: '1 час полезного времени', check: function(s){ return s.totalMinutes >= 60; } },
-    { id: 'hours_10',         name: '10 часов',              icon: '🕐', desc: '10 часов полезного времени', check: function(s){ return s.totalMinutes >= 600; } },
-    { id: 'hours_100',        name: '100 часов',             icon: '🔥', desc: '100 часов полезного времени', check: function(s){ return s.totalMinutes >= 6000; } },
-    { id: 'days_7',           name: 'Неделя',                icon: '📅', desc: '7 активных дней', check: function(s){ return s.totalDays >= 7; } },
-    { id: 'days_30',          name: 'Месяц',                 icon: '🗓️', desc: '30 активных дней', check: function(s){ return s.totalDays >= 30; } },
-    { id: 'days_100',         name: '100 дней',              icon: '🏆', desc: '100 активных дней', check: function(s){ return s.totalDays >= 100; } },
-    { id: 'coins_100',        name: 'Копилка',               icon: '🪙', desc: 'Заработай 100 монет', check: function(s){ return (s.coinsEarned||0) >= 100; } },
-    { id: 'coins_1000',       name: 'Богач',                 icon: '💎', desc: 'Заработай 1000 монет', check: function(s){ return (s.coinsEarned||0) >= 1000; } },
-    { id: 'level_5',          name: 'Уровень 5',             icon: '🎯', desc: 'Достигни 5 уровня', check: function(s){ return (s.overallLevel||1) >= 5; } },
-    { id: 'level_10',         name: 'Уровень 10',            icon: '🏅', desc: 'Достигни 10 уровня', check: function(s){ return (s.overallLevel||1) >= 10; } },
-    { id: 'level_25',         name: 'Уровень 25',            icon: '👑', desc: 'Достигни 25 уровня', check: function(s){ return (s.overallLevel||1) >= 25; } },
-    { id: 'level_50',         name: 'Полтинник',             icon: '🎖️', desc: 'Достигни 50 уровня', check: function(s){ return (s.overallLevel||1) >= 50; } },
-    { id: 'level_100',        name: 'МАКС',                  icon: '🏛️', desc: 'Достигни 100 уровня', check: function(s){ return (s.overallLevel||1) >= 100; } },
-    { id: 'all_spheres',      name: 'Универсал',             icon: '🌈', desc: 'XP во всех сферах', check: function(s){ return (s.activeSpheres||0) >= (s.totalSpheres||6); } },
-    { id: 'first_purchase',   name: 'Первая покупка',        icon: '🛒', desc: 'Купи награду в магазине', check: function(s){ return (s.totalPurchases||0) >= 1; } },
-    { id: 'workout_10',       name: '10 тренировок',         icon: '💪', desc: 'Завершил 10 тренировок', check: function(s){ return (s.totalWorkouts||0) >= 10; } },
+    // --- EASY (🥉) ---
+    { id: 'first_task', tier: 'easy', bonus: 10, name: 'Первый шаг', icon: '🌱', desc: 'Выполни первую задачу', check: function(s){ return s.totalTasks >= 1; } },
+    { id: 'tasks_10', tier: 'easy', bonus: 25, name: 'Разогрев', icon: '🔥', desc: 'Выполни 10 задач', check: function(s){ return s.totalTasks >= 10; } },
+    { id: 'hours_1', tier: 'easy', bonus: 20, name: 'Час пользы', icon: '⏱️', desc: 'Набери 1 час чистого времени', check: function(s){ return s.totalMinutes >= 60; } },
+    { id: 'coins_100', tier: 'easy', bonus: 30, name: 'Копилка', icon: '🪙', desc: 'Заработай 100 монет всего', check: function(s){ return (s.coinsEarned||0) >= 100; } },
+    { id: 'level_5', tier: 'easy', bonus: 50, name: 'Новичок+', icon: '🎯', desc: 'Достигни 5 уровня', check: function(s){ return (s.overallLevel||1) >= 5; } },
+    { id: 'early_bird', tier: 'easy', bonus: 15, name: 'Утренняя пташка', icon: '☀️', desc: 'Заверши задачу до 9:00', check: function(s){ return s.earlyTask; } },
+    
+    // --- MEDIUM (🥈) ---
+    { id: 'tasks_50', tier: 'medium', bonus: 75, name: 'В ритме', icon: '🌟', desc: 'Выполни 50 задач', check: function(s){ return s.totalTasks >= 50; } },
+    { id: 'hours_10', tier: 'medium', bonus: 100, name: 'Глубокая работа', icon: '🕐', desc: '10 часов полезного времени', check: function(s){ return s.totalMinutes >= 600; } },
+    { id: 'days_7', tier: 'medium', bonus: 150, name: 'Недельный спринт', icon: '📅', desc: '7 активных дней подряд', check: function(s){ return s.totalDays >= 7; } },
+    { id: 'coins_1000', tier: 'medium', bonus: 200, name: 'Богач', icon: '💎', desc: 'Заработай 1000 монет', check: function(s){ return (s.coinsEarned||0) >= 1000; } },
+    { id: 'level_15', tier: 'medium', bonus: 250, name: 'Профи', icon: '🏅', desc: 'Достигни 15 уровня', check: function(s){ return (s.overallLevel||1) >= 15; } },
+    { id: 'all_spheres', tier: 'medium', bonus: 100, name: 'Универсал', icon: '🌈', desc: 'Получи XP во всех сферах', check: function(s){ return (s.activeSpheres||0) >= (s.totalSpheres||6); } },
+    { id: 'store_fan', tier: 'medium', bonus: 80, name: 'Шопоголик', icon: '🛍️', desc: 'Купи 5 наград в магазине', check: function(s){ return (s.totalPurchases||0) >= 5; } },
+
+    // --- HARD (🥇) ---
+    { id: 'tasks_200', tier: 'hard', bonus: 400, name: 'Стахановец', icon: '💯', desc: 'Выполни 200 задач', check: function(s){ return s.totalTasks >= 200; } },
+    { id: 'hours_50', tier: 'hard', bonus: 500, name: 'Мастер фокуса', icon: '⚡', desc: '50 часов в потоке', check: function(s){ return s.totalMinutes >= 3000; } },
+    { id: 'days_30', tier: 'hard', bonus: 600, name: 'Железная воля', icon: '🗓️', desc: '30 активных дней', check: function(s){ return s.totalDays >= 30; } },
+    { id: 'level_30', tier: 'hard', bonus: 700, name: 'Ветеран', icon: '👑', desc: 'Достигни 30 уровня', check: function(s){ return (s.overallLevel||1) >= 30; } },
+    { id: 'finance_master', tier: 'hard', bonus: 300, name: 'Инвестор', icon: '💹', desc: 'Уровень 10 в сфере Финансы', check: function(s){ return (s.sphereLevels['finance']||1) >= 10; } },
+    { id: 'career_beast', tier: 'hard', bonus: 300, name: 'Акула бизнеса', icon: '🦈', desc: 'Уровень 10 в сфере Карьера', check: function(s){ return (s.sphereLevels['career']||1) >= 10; } },
+
+    // --- ULTRA (💎) ---
+    { id: 'tasks_1000', tier: 'ultra', bonus: 2000, name: 'Легенда', icon: '🤖', desc: 'Выполни 1000 задач', check: function(s){ return s.totalTasks >= 1000; } },
+    { id: 'hours_200', tier: 'ultra', bonus: 2500, name: 'Повелитель времени', icon: '⏳', desc: '200 часов продуктивности', check: function(s){ return s.totalMinutes >= 12000; } },
+    { id: 'days_100', tier: 'ultra', bonus: 3000, name: 'Бессмертный', icon: '🏆', desc: '100 активных дней', check: function(s){ return s.totalDays >= 100; } },
+    { id: 'level_100', tier: 'ultra', bonus: 5000, name: 'АБСОЛЮТ', icon: '🏛️', desc: 'Достигни 100 уровня', check: function(s){ return (s.overallLevel||1) >= 100; } },
   ];
 
   function getAchievements() {
@@ -311,12 +320,27 @@
     var stats = getTotalStats();
     var coins = getCoins();
     var spheres = getSpheres();
-    var overall = getOverallLevel(spheres);
-    var store = getStore();
-    var gymHistory = storeGet('gym_history_v1') || [];
+    var overall = getLevelInfo(0); // initial call to get overall
+    var totalXp = 0;
+    var sphereLevels = {};
     var activeSpheres = 0;
     for (var i = 0; i < SPHERES.length; i++) {
-      if (spheres[SPHERES[i].id] && spheres[SPHERES[i].id].xp > 0) activeSpheres++;
+      var sId = SPHERES[i].id;
+      var xp = (spheres[sId] && spheres[sId].xp) || 0;
+      totalXp += xp;
+      sphereLevels[sId] = getLevelInfo(xp).level;
+      if (xp > 0) activeSpheres++;
+    }
+    overall = getLevelInfo(totalXp);
+    var store = getStore();
+    var gymHistory = storeGet('gym_history_v1') || [];
+    
+    // Custom check for "early bird"
+    var lastTaskDate = localStorage.getItem('_last_task_date');
+    var earlyTask = false;
+    if (lastTaskDate) {
+        var d = new Date(lastTaskDate);
+        if (d.getHours() < 9) earlyTask = true;
     }
 
     var checkData = {
@@ -325,10 +349,12 @@
       totalDays: stats.totalDays,
       coinsEarned: coins.earned,
       overallLevel: overall.level,
+      sphereLevels: sphereLevels,
       activeSpheres: activeSpheres,
       totalSpheres: SPHERES.length,
       totalPurchases: store.purchases ? store.purchases.length : 0,
       totalWorkouts: gymHistory.length,
+      earlyTask: earlyTask
     };
 
     var achievements = getAchievements();
@@ -339,6 +365,10 @@
       if (a.check(checkData)) {
         achievements.unlocked[a.id] = new Date().toISOString();
         newUnlocks.push(a);
+        // Award bonus coins
+        if (a.bonus) {
+            earnCoins(a.bonus, 'Награда: ' + a.name);
+        }
       }
     }
     if (newUnlocks.length > 0) {
