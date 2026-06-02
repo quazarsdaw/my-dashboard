@@ -93,14 +93,34 @@
     updateAuthUI();
   }
 
-  function startGoogleSignIn() {
+  function startSignIn() {
     if (!supabase) return;
-    supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + window.location.pathname
+    
+    var method = confirm('Войти через Google?\n\n(Нажми "Отмена", чтобы войти по почте)') 
+      ? 'google' 
+      : 'email';
+
+    if (method === 'google') {
+      supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin + window.location.pathname
+        }
+      });
+    } else {
+      var email = prompt('Введи твой email для входа:');
+      if (email) {
+        supabase.auth.signInWithOtp({
+          email: email,
+          options: {
+            emailRedirectTo: window.location.origin + window.location.pathname
+          }
+        }).then(function(res) {
+          if (res.error) alert('Ошибка: ' + res.error.message);
+          else alert('Ссылка для входа отправлена на почту!');
+        });
       }
-    });
+    }
   }
 
   function signOut() {
@@ -299,7 +319,7 @@
           signOut();
         }
       } else {
-        startGoogleSignIn();
+        startSignIn();
       }
     });
 
