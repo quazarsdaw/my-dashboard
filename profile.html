@@ -166,26 +166,26 @@ body::after {
   transition: border-color 0.2s, transform 0.15s; position: relative;
   overflow: hidden;
 }
-.ach-card.locked { opacity: 0.35; }
+.ach-card.locked { opacity: 0.55; }
 .ach-card.unlocked { transform: scale(1); }
 
 .ach-rarity-header {
   font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
-  margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 1px dashed rgba(255,255,255,0.1);
+  margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 1px dashed rgba(255,255,255,0.15);
 }
 
 /* Rarity Styles */
-.ach-card.rarity-common { border-color: rgba(184,182,176,0.2); background: rgba(184,182,176,0.03); }
-.ach-card.rarity-rare { border-color: rgba(125,211,252,0.25); background: rgba(125,211,252,0.05); }
-.ach-card.rarity-epic { border-color: rgba(242,192,99,0.3); background: rgba(242,192,99,0.06); }
-.ach-card.rarity-legendary { border-color: rgba(192,132,252,0.35); background: rgba(192,132,252,0.08); }
-.ach-card.rarity-mythic { border-color: rgba(255,107,107,0.4); background: rgba(255,107,107,0.1); }
+.ach-card.rarity-common { border-color: rgba(184,182,176,0.3); background: rgba(184,182,176,0.05); }
+.ach-card.rarity-rare { border-color: rgba(125,211,252,0.35); background: rgba(125,211,252,0.08); }
+.ach-card.rarity-epic { border-color: rgba(242,192,99,0.4); background: rgba(242,192,99,0.1); }
+.ach-card.rarity-legendary { border-color: rgba(192,132,252,0.45); background: rgba(192,132,252,0.12); }
+.ach-card.rarity-mythic { border-color: rgba(255,107,107,0.5); background: rgba(255,107,107,0.15); }
 
-.ach-card.unlocked.rarity-common { border-color: rgba(184,182,176,0.6); background: rgba(184,182,176,0.15); box-shadow: 0 0 10px rgba(184,182,176,0.1); }
-.ach-card.unlocked.rarity-rare { border-color: rgba(125,211,252,0.7); background: rgba(125,211,252,0.2); box-shadow: 0 0 20px rgba(125,211,252,0.25); }
-.ach-card.unlocked.rarity-epic { border-color: rgba(242,192,99,0.8); background: rgba(242,192,99,0.25); box-shadow: 0 0 25px rgba(242,192,99,0.3); }
-.ach-card.unlocked.rarity-legendary { border-color: rgba(192,132,252,0.9); background: rgba(192,132,252,0.3); box-shadow: 0 0 30px rgba(192,132,252,0.4); }
-.ach-card.unlocked.rarity-mythic { border-color: rgba(255,107,107,1); background: rgba(255,107,107,0.35); box-shadow: 0 0 40px rgba(255,107,107,0.5); animation: mythicGlow 2s infinite alternate; }
+.ach-card.unlocked.rarity-common { border-color: rgba(184,182,176,0.7); background: rgba(184,182,176,0.2); box-shadow: 0 0 10px rgba(184,182,176,0.2); }
+.ach-card.unlocked.rarity-rare { border-color: rgba(125,211,252,0.8); background: rgba(125,211,252,0.25); box-shadow: 0 0 20px rgba(125,211,252,0.3); }
+.ach-card.unlocked.rarity-epic { border-color: rgba(242,192,99,0.9); background: rgba(242,192,99,0.3); box-shadow: 0 0 25px rgba(242,192,99,0.35); }
+.ach-card.unlocked.rarity-legendary { border-color: rgba(192,132,252,1); background: rgba(192,132,252,0.35); box-shadow: 0 0 30px rgba(192,132,252,0.5); }
+.ach-card.unlocked.rarity-mythic { border-color: rgba(255,107,107,1); background: rgba(255,107,107,0.4); box-shadow: 0 0 40px rgba(255,107,107,0.6); animation: mythicGlow 2s infinite alternate; }
 
 @keyframes mythicGlow { 0% { box-shadow: 0 0 20px rgba(255,107,107,0.4); } 100% { box-shadow: 0 0 50px rgba(255,107,107,0.7); } }
 
@@ -379,7 +379,7 @@ body::after {
 
 <!-- Achievements -->
 <div class="section-eyebrow">Достижения</div>
-<div class="ach-grid" id="achGrid"></div>
+<div id="achievementsContainer"></div>
 
 <!-- Activity log -->
 <div class="section-eyebrow">Последняя активность</div>
@@ -553,25 +553,16 @@ body::after {
   // --- Achievements ---
   function renderAchievements() {
     var achievements = G.getAchievements();
-    var gridParent = document.getElementById('achGrid').parentNode;
-    
-    // Check if we already wrapped it
     var container = document.getElementById('achievementsContainer');
-    if (!container) {
-        var oldGrid = document.getElementById('achGrid');
-        container = document.createElement('div');
-        container.id = 'achievementsContainer';
-        gridParent.insertBefore(container, oldGrid);
-        oldGrid.remove();
-    }
+    if (!container) return;
     container.innerHTML = '';
     
     var RARITIES = [
-        { id: 'mythic', name: 'Мифические', color: '#FF6B6B' },
-        { id: 'legendary', name: 'Легендарные', color: '#C084FC' },
-        { id: 'epic', name: 'Эпические', color: '#F2C063' },
+        { id: 'common', name: 'Обычные', color: '#B8B6B0' },
         { id: 'rare', name: 'Редкие', color: '#7DD3FC' },
-        { id: 'common', name: 'Обычные', color: '#B8B6B0' }
+        { id: 'epic', name: 'Эпические', color: '#F2C063' },
+        { id: 'legendary', name: 'Легендарные', color: '#C084FC' },
+        { id: 'mythic', name: 'Мифические', color: '#FF6B6B' }
     ];
 
     RARITIES.forEach(function(r) {
@@ -593,6 +584,7 @@ body::after {
         var card = document.createElement('div');
         card.className = 'ach-card rarity-' + r.id + ' ' + (unlocked ? 'unlocked' : 'locked');
         card.innerHTML =
+          '<div class="ach-rarity-tag">' + r.id.toUpperCase() + '</div>' +
           '<div class="ach-icon">' + a.icon + '</div>' +
           '<div class="ach-name">' + a.name + '</div>' +
           '<div class="ach-desc">' + a.desc + '</div>' +
