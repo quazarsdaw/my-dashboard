@@ -46,6 +46,7 @@
   var isSyncing = false; // true while applying cloud data to localStorage
   var hasPendingLocalChanges = false;
   var lastLocalPushAt = 0; // timestamp of last push to cloud
+  var pendingKeys = {}; // Queue of keys that need to be pushed: { key: true }
   var subscription = null;
 
   var SYNC_META_KEY = '_sync_meta_v1';
@@ -211,34 +212,55 @@
     if (isSyncing || !syncEnabled || !currentUser) return;
     if (key && shouldSkipStorageKey(key)) return;
     
+    if (key) {
+      pendingKeys[key] = true;
+    } else {
+      // If no key provided, mark all for sync (full sync)
+      getAllSyncKeys().forEach(function(k) { pendingKeys[k] = true; });
+    }
+
     clearTimeout(syncDebounceTimer);
-    syncDebounceTimer = setTimeout(pushAllToCloud, SYNC_DEBOUNCE_MS);
+    syncDebounceTimer = setTimeout(syncPendingChanges, SYNC_DEBOUNCE_MS);
   }
 
-  function pushAllToCloud() {
+  function syncPendingChanges() {
     if (!currentUser || !supabase) return;
 
-    var keys = getAllSyncKeys();
-    var rows = keys.map(function(k) {
-        return {
-            user_id: currentUser.id,
-            key: k,
-            value: localStorage.getItem(k),
-            updated_at: new Date().toISOString()
-        };
+    var keysToPush = Object.keys(pendingKeys);
+    if (keysToPush.length === 0) return;
+
+    // Prepare only changed rows
+    var rows = [];
+    keysToPush.forEach(function(k) {
+      var val = localStorage.getItem(k);
+      rows.push({
+        user_id: currentUser.id,
+        key: k,
+        value: val,
+        updated_at: new Date().toISOString()
+      });
     });
 
-    if (rows.length === 0) return;
+    // Clear pending queue BEFORE call to avoid missing changes during network hop
+    var processingKeys = pendingKeys;
+    pendingKeys = {};
 
-    lastLocalPushAt = Date.now(); // Record when we sent data
+    lastLocalPushAt = Date.now();
     supabase.from('user_data').upsert(rows, { onConflict: 'user_id, key' })
       .then(function(res) {
-          if (res.error) console.error('Push error:', res.error);
-          else {
-            lastLocalPushAt = Date.now(); // Update after success too
+          if (res.error) {
+            console.error('Push error:', res.error);
+            // Put keys back to retry later
+            Object.assign(pendingKeys, processingKeys);
+          } else {
+            lastLocalPushAt = Date.now();
             showSyncIndicator('pushed');
           }
       });
+  }
+
+  function pushAllToCloud() {
+    schedulePush(null);
   }
 
   function startRealtimeSync() {
