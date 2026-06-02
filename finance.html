@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Dashboard">
-<meta name="theme-color" content="#111315">
+<meta name="theme-color" content="#14161A">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
@@ -19,15 +19,15 @@
 :root{
   --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --text-primary:#FAFAFA;--text-secondary:#B8B6B0;--text-tertiary:#76746E;
+  --text-primary:#FAFAFA;--text-secondary:#D1D1D1;--text-tertiary:#A0A0A0;
   --success:#6BE3A4;--warning:#F2C063;--danger:#FF6B6B;
-  --card-bg:rgba(255,255,255,0.04);--card-radius:16px;
+  --card-bg:rgba(255,255,255,0.07);--card-radius:16px;
 }
-html{background:#0A0B0D}
-body{font-family:var(--font-sans);color:var(--text-primary);background:#0A0B0D;
+html{background:#14161A}
+body{font-family:var(--font-sans);color:var(--text-primary);background:#14161A;
   min-height:100vh;max-width:1100px;margin:0 auto;padding:0 16px 40px;-webkit-font-smoothing:antialiased}
 body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
-  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.16),transparent),
+  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.2),transparent),
   radial-gradient(ellipse 50% 50% at 18% 90%,rgba(180,180,200,0.06),transparent);
   filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
 @keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
@@ -40,7 +40,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .fin-tabs{display:flex;gap:2px;padding:8px 0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .fin-tab{flex:1;padding:10px 6px;text-align:center;border-radius:12px;cursor:pointer;
   font-size:12px;font-weight:700;color:var(--text-tertiary);background:rgba(255,255,255,0.03);
-  border:1px solid rgba(255,255,255,0.04);transition:all 0.15s;white-space:nowrap;
+  border:1px solid rgba(255,255,255,0.07);transition:all 0.15s;white-space:nowrap;
   -webkit-tap-highlight-color:transparent}
 .fin-tab.active{color:var(--text-primary);background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.1)}
 .fin-tab:hover:not(.active){background:rgba(255,255,255,0.05)}
@@ -99,7 +99,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 /* Add rows */
 .add-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   border-top:1px solid rgba(255,255,255,0.06);padding-top:14px;margin-top:14px}
-.add-input{flex:1;min-width:100px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.04);
+.add-input{flex:1;min-width:100px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.07);
   border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;
   font-family:var(--font-sans);outline:none}
 .add-input:focus{border-color:rgba(255,255,255,0.2)}
@@ -107,7 +107,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .add-small{width:100px;text-align:center}
 .add-icon{width:50px;text-align:center;font-size:20px}
 .add-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;
-  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#0A0A0B;
+  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#14161A;
   font-size:13px;font-weight:700;font-family:var(--font-sans);
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 8px rgba(0,0,0,0.3);
   transition:transform 0.1s;white-space:nowrap}
@@ -144,7 +144,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .cat-section{margin-top:18px}
 .cat-section-title{font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
   color:var(--text-tertiary);margin-bottom:10px}
-.cat-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.cat-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.07)}
 .cat-row:last-child{border-bottom:none}
 .cat-name{flex:1;font-size:13px;font-weight:600;color:var(--text-secondary);min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

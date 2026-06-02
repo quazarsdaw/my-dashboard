@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Dashboard">
-<meta name="theme-color" content="#111315">
+<meta name="theme-color" content="#14161A">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
@@ -19,15 +19,15 @@
 :root{
   --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --text-primary:#FAFAFA;--text-secondary:#B8B6B0;--text-tertiary:#76746E;
+  --text-primary:#FAFAFA;--text-secondary:#D1D1D1;--text-tertiary:#A0A0A0;
   --success:#6BE3A4;--warning:#F2C063;--danger:#FF6B6B;
-  --card-bg:rgba(255,255,255,0.04);--card-radius:16px;
+  --card-bg:rgba(255,255,255,0.07);--card-radius:16px;
 }
-html{background:#0A0B0D}
-body{font-family:var(--font-sans);color:var(--text-primary);background:#0A0B0D;
+html{background:#14161A}
+body{font-family:var(--font-sans);color:var(--text-primary);background:#14161A;
   min-height:100vh;max-width:800px;margin:0 auto;padding:0 16px 40px;-webkit-font-smoothing:antialiased}
 body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
-  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.16),transparent),
+  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.2),transparent),
   radial-gradient(ellipse 50% 50% at 18% 90%,rgba(180,180,200,0.06),transparent);
   filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
 @keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
@@ -41,7 +41,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 
 /* Year summary */
 .year-summary{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding:16px 20px;
-  background:var(--card-bg);border-radius:var(--card-radius);border:1px solid rgba(255,255,255,0.04)}
+  background:var(--card-bg);border-radius:var(--card-radius);border:1px solid rgba(255,255,255,0.07)}
 .year-ring{position:relative;width:80px;height:80px;flex-shrink:0}
 .year-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
 .year-ring-bg{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:6}
@@ -56,7 +56,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 
 /* Goal card */
 .goal-card{background:var(--card-bg);border-radius:var(--card-radius);
-  border:1px solid rgba(255,255,255,0.04);padding:16px 18px;margin-bottom:10px;
+  border:1px solid rgba(255,255,255,0.07);padding:16px 18px;margin-bottom:10px;
   transition:border-color 0.15s;cursor:pointer}
 .goal-card:hover{border-color:rgba(255,255,255,0.1)}
 .goal-card.completed{border-color:rgba(107,227,164,0.15);background:rgba(107,227,164,0.03)}
@@ -72,7 +72,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .goal-bar-fill.low{background:var(--danger)}
 .goal-bar-fill.mid{background:var(--warning)}
 .goal-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono)}
-.goal-sphere-tag{padding:2px 8px;border-radius:6px;background:rgba(255,255,255,0.04);font-size:10px;font-weight:700}
+.goal-sphere-tag{padding:2px 8px;border-radius:6px;background:rgba(255,255,255,0.07);font-size:10px;font-weight:700}
 .goal-value{margin-left:auto}
 .goal-delete{background:none;border:none;color:var(--text-tertiary);font-size:14px;cursor:pointer;
   opacity:0;transition:opacity 0.15s;padding:0 4px}
@@ -81,18 +81,18 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 
 /* Add goal */
 .add-card{background:var(--card-bg);border-radius:var(--card-radius);
-  border:1px solid rgba(255,255,255,0.04);padding:18px;margin-bottom:24px}
+  border:1px solid rgba(255,255,255,0.07);padding:18px;margin-bottom:24px}
 .add-card h3{font-size:14px;font-weight:700;margin-bottom:14px}
 .add-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
-.add-input{flex:1;min-width:120px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.04);
+.add-input{flex:1;min-width:120px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.07);
   border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;font-family:var(--font-sans);outline:none}
 .add-input:focus{border-color:rgba(255,255,255,0.2)}
 .add-input::placeholder{color:var(--text-tertiary)}
 .add-input-sm{width:80px;min-width:80px;flex:0;text-align:center;font-family:var(--font-mono)}
-.add-select{padding:10px 8px;border-radius:10px;background:rgba(255,255,255,0.04);
+.add-select{padding:10px 8px;border-radius:10px;background:rgba(255,255,255,0.07);
   border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:13px;cursor:pointer;outline:none;-webkit-appearance:none}
 .add-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;
-  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#0A0A0B;
+  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#14161A;
   font-size:13px;font-weight:700;font-family:var(--font-sans);
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 8px rgba(0,0,0,0.3);transition:transform 0.1s;white-space:nowrap}
 .add-btn:hover{transform:translateY(-1px)}
@@ -108,7 +108,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .edit-box h3{font-size:14px;font-weight:700;margin-bottom:14px}
 .edit-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 .edit-actions{display:flex;gap:8px;margin-top:14px}
-.edit-save{flex:1;padding:10px;border-radius:10px;border:none;cursor:pointer;background:linear-gradient(180deg,#FFF,#E8E5DD);color:#0A0A0B;font-size:13px;font-weight:700}
+.edit-save{flex:1;padding:10px;border-radius:10px;border:none;cursor:pointer;background:linear-gradient(180deg,#FFF,#E8E5DD);color:#14161A;font-size:13px;font-weight:700}
 .edit-cancel{padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:var(--text-secondary);font-size:13px;font-weight:700;cursor:pointer}
 
 .section-title{font-size:10.5px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;

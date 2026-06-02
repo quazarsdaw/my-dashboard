@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Dashboard">
-<meta name="theme-color" content="#111315">
+<meta name="theme-color" content="#14161A">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
@@ -19,15 +19,15 @@
 :root{
   --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --text-primary:#FAFAFA;--text-secondary:#B8B6B0;--text-tertiary:#76746E;
+  --text-primary:#FAFAFA;--text-secondary:#D1D1D1;--text-tertiary:#A0A0A0;
   --success:#6BE3A4;--warning:#F2C063;--danger:#FF6B6B;
-  --card-bg:rgba(255,255,255,0.04);--card-radius:16px;
+  --card-bg:rgba(255,255,255,0.07);--card-radius:16px;
 }
-html{background:#0A0B0D}
-body{font-family:var(--font-sans);color:var(--text-primary);background:#0A0B0D;
+html{background:#14161A}
+body{font-family:var(--font-sans);color:var(--text-primary);background:#14161A;
   min-height:100vh;max-width:1100px;margin:0 auto;padding:0 16px 40px;-webkit-font-smoothing:antialiased}
 body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
-  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.16),transparent),
+  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.2),transparent),
   radial-gradient(ellipse 50% 50% at 18% 90%,rgba(180,180,200,0.06),transparent);
   filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
 @keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
@@ -41,7 +41,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 
 /* Score bar */
 .score-bar{display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:14px 18px;
-  background:var(--card-bg);border-radius:var(--card-radius);border:1px solid rgba(255,255,255,0.04)}
+  background:var(--card-bg);border-radius:var(--card-radius);border:1px solid rgba(255,255,255,0.07)}
 .score-num{font-size:32px;font-weight:800;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .score-num.positive{color:var(--success)}
 .score-num.negative{color:var(--danger)}
@@ -60,7 +60,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .scale-btn:hover{background:rgba(255,255,255,0.08)}
 .nav-arrows{display:flex;gap:4px;margin-left:auto}
 .nav-arrow{width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);
-  background:rgba(255,255,255,0.04);color:var(--text-primary);font-size:14px;cursor:pointer;
+  background:rgba(255,255,255,0.07);color:var(--text-primary);font-size:14px;cursor:pointer;
   display:flex;align-items:center;justify-content:center;transition:background 0.15s,transform 0.1s;
   -webkit-tap-highlight-color:transparent;font-family:var(--font-sans)}
 .nav-arrow:active{transform:scale(0.9)}
@@ -79,7 +79,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .section-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,0.08),transparent)}
 
 /* Chart */
-.chart-card{background:var(--card-bg);border-radius:var(--card-radius);border:1px solid rgba(255,255,255,0.04);
+.chart-card{background:var(--card-bg);border-radius:var(--card-radius);border:1px solid rgba(255,255,255,0.07);
   padding:16px;margin-bottom:16px;overflow:hidden}
 .chart-title{font-size:14px;font-weight:700;color:var(--text-secondary);margin-bottom:10px}
 .chart-svg{width:100%;display:block}
@@ -89,7 +89,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .habit-table th,.habit-table td{padding:0;text-align:center;vertical-align:middle}
 .habit-name-cell{text-align:left!important;padding:8px 10px!important;font-size:13px;font-weight:600;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;
-  position:sticky;left:0;z-index:2;background:#0a0a0b}
+  position:sticky;left:0;z-index:2;background:#14161A}
 .habit-date-header{font-size:9px;font-weight:700;color:var(--text-tertiary);letter-spacing:0.04em;
   padding:4px 2px!important;min-width:36px;font-family:var(--font-mono)}
 .habit-date-header.today{color:var(--warning)}
@@ -124,17 +124,17 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 
 /* Add habit */
 .add-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:20px}
-.add-input{flex:1;min-width:140px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.04);
+.add-input{flex:1;min-width:140px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.07);
   border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;font-family:var(--font-sans);outline:none}
 .add-input:focus{border-color:rgba(255,255,255,0.2)}
 .add-input::placeholder{color:var(--text-tertiary)}
 .add-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;
-  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#0A0A0B;
+  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#14161A;
   font-size:13px;font-weight:700;font-family:var(--font-sans);
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 8px rgba(0,0,0,0.3);
   transition:transform 0.1s;white-space:nowrap}
 .add-btn:hover{transform:translateY(-1px)}
-.add-select{padding:10px 10px;border-radius:10px;background:rgba(255,255,255,0.04);
+.add-select{padding:10px 10px;border-radius:10px;background:rgba(255,255,255,0.07);
   border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:12px;font-weight:600;
   cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;font-family:var(--font-sans)}
 .penalty-tag{font-size:9px;font-weight:700;color:var(--danger);opacity:0.6;margin-left:4px;font-family:var(--font-mono)}
@@ -363,7 +363,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 
     var thead = document.createElement('thead');
     var hr = document.createElement('tr');
-    hr.innerHTML = '<th class="habit-name-cell" style="background:#0A0B0D"></th>';
+    hr.innerHTML = '<th class="habit-name-cell" style="background:#14161A"></th>';
     dates.forEach(function(d, idx){
       var th = document.createElement('th');
       var showLabel = !isCompact || (idx % labelEvery === 0);
@@ -416,7 +416,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
     // Day score footer (only in normal mode)
     if(!isCompact){
       var footTr = document.createElement('tr');
-      footTr.innerHTML = '<td class="habit-name-cell" style="font-size:10px;color:var(--text-tertiary);font-weight:700;background:#0A0B0D">ИТОГ</td>';
+      footTr.innerHTML = '<td class="habit-name-cell" style="font-size:10px;color:var(--text-tertiary);font-weight:700;background:#14161A">ИТОГ</td>';
       dates.forEach(function(d){
         var td = document.createElement('td');
         var s = calcDayScore(data, d);

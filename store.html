@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Dashboard">
-<meta name="theme-color" content="#111315">
+<meta name="theme-color" content="#14161A">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
@@ -20,25 +20,25 @@
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-primary: #FAFAFA;
-  --text-secondary: #B8B6B0;
-  --text-tertiary: #76746E;
+  --text-secondary: #D1D1D1;
+  --text-tertiary: #A0A0A0;
   --success: #6BE3A4;
   --warning: #F2C063;
   --danger: #FF6B6B;
-  --card-bg: rgba(255,255,255,0.04);
+  --card-bg: rgba(255,255,255,0.07);
   --card-radius: 16px;
 }
-html { background: #0A0B0D; }
+html { background: #14161A; }
 body {
   font-family: var(--font-sans); color: var(--text-primary);
-  background: #0A0B0D; min-height: 100vh;
+  background: #14161A; min-height: 100vh;
   max-width: 1100px; margin: 0 auto; padding: 0 16px 40px;
   -webkit-font-smoothing: antialiased;
 }
 body::before {
   content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
   background:
-    radial-gradient(ellipse 50% 50% at 82% 14%, rgba(224,118,88,0.16), transparent),
+    radial-gradient(ellipse 50% 50% at 82% 14%, rgba(224,118,88,0.2), transparent),
     radial-gradient(ellipse 50% 50% at 18% 90%, rgba(180,180,200,0.06), transparent);
   filter: blur(40px);
   animation: bgDrift 36s ease-in-out infinite alternate;
@@ -95,7 +95,7 @@ body::after {
 }
 .reward-card {
   background: var(--card-bg); border-radius: 14px; padding: 16px;
-  border: 1px solid rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
   display: flex; flex-direction: column; gap: 10px;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -116,7 +116,7 @@ body::after {
   flex: 1; padding: 10px; border: none; border-radius: 10px; cursor: pointer;
   font-family: var(--font-sans); font-size: 13px; font-weight: 700;
   background: linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%);
-  color: #0A0A0B;
+  color: #14161A;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.3);
   transition: transform 0.1s;
 }
@@ -130,7 +130,7 @@ body::after {
   box-shadow: none; pointer-events: none;
 }
 .reward-del-btn {
-  width: 38px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  width: 38px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px; color: var(--text-tertiary); font-size: 16px;
   cursor: pointer; transition: color 0.15s, background 0.15s;
 }
@@ -139,14 +139,14 @@ body::after {
 /* Add reward */
 .add-reward-card {
   background: var(--card-bg); border-radius: var(--card-radius); padding: 18px;
-  border: 1px solid rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
 }
 .add-reward-row {
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
 }
 .add-input {
   flex: 1; min-width: 140px; padding: 10px 14px; border-radius: 12px;
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08);
   color: var(--text-primary); font-size: 14px; font-family: var(--font-sans);
   outline: none;
 }
@@ -154,7 +154,7 @@ body::after {
 .add-input::placeholder { color: var(--text-tertiary); }
 .add-price {
   width: 90px; padding: 10px 14px; border-radius: 12px;
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08);
   color: #F2C063; font-size: 14px; font-family: var(--font-mono); font-weight: 700;
   outline: none; text-align: center;
 }
@@ -162,7 +162,7 @@ body::after {
 .add-price::placeholder { color: var(--text-tertiary); font-weight: 400; }
 .add-icon-btn {
   width: 50px; height: 46px; border-radius: 12px;
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08);
   color: var(--text-primary); font-size: 22px; text-align: center;
   cursor: pointer; transition: border-color 0.15s, background 0.15s;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
@@ -178,7 +178,7 @@ body::after {
 .emoji-popup.open { display: flex; }
 .emoji-popup-opt {
   width: 38px; height: 38px; border-radius: 10px; border: 2px solid transparent;
-  background: rgba(255,255,255,0.04); font-size: 20px; cursor: pointer;
+  background: rgba(255,255,255,0.07); font-size: 20px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -188,7 +188,7 @@ body::after {
 .add-btn {
   padding: 10px 20px; border-radius: 12px; border: none; cursor: pointer;
   background: linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%);
-  color: #0A0A0B; font-size: 13px; font-weight: 700; font-family: var(--font-sans);
+  color: #14161A; font-size: 13px; font-weight: 700; font-family: var(--font-sans);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.3);
   transition: transform 0.1s; white-space: nowrap;
 }

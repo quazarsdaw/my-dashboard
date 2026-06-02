@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Dashboard">
-<meta name="theme-color" content="#111315">
+<meta name="theme-color" content="#14161A">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
@@ -20,25 +20,25 @@
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-primary: #FAFAFA;
-  --text-secondary: #B8B6B0;
-  --text-tertiary: #76746E;
+  --text-secondary: #D1D1D1;
+  --text-tertiary: #A0A0A0;
   --success: #6BE3A4;
   --warning: #F2C063;
   --danger: #FF6B6B;
-  --card-bg: rgba(255,255,255,0.04);
+  --card-bg: rgba(255,255,255,0.07);
   --card-radius: 16px;
 }
-html { background: #0A0B0D; }
+html { background: #14161A; }
 body {
   font-family: var(--font-sans); color: var(--text-primary);
-  background: #0A0B0D; min-height: 100vh;
+  background: #14161A; min-height: 100vh;
   max-width: 1100px; margin: 0 auto; padding: 0 16px 40px;
   -webkit-font-smoothing: antialiased;
 }
 body::before {
   content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
   background:
-    radial-gradient(ellipse 50% 50% at 82% 14%, rgba(224,118,88,0.16), transparent),
+    radial-gradient(ellipse 50% 50% at 82% 14%, rgba(224,118,88,0.2), transparent),
     radial-gradient(ellipse 50% 50% at 18% 90%, rgba(180,180,200,0.06), transparent);
   filter: blur(40px); animation: bgDrift 36s ease-in-out infinite alternate;
 }
@@ -194,7 +194,7 @@ body::after {
   text-transform: uppercase; letter-spacing: 0.1em; padding: 3px 0;
   background: rgba(255,255,255,0.05); color: var(--text-tertiary);
 }
-.rarity-common .ach-rarity-tag { color: #B8B6B0; }
+.rarity-common .ach-rarity-tag { color: #D1D1D1; }
 .rarity-rare .ach-rarity-tag { color: #7DD3FC; background: rgba(125,211,252,0.1); }
 .rarity-epic .ach-rarity-tag { color: #F2C063; background: rgba(242,192,99,0.1); }
 .rarity-legendary .ach-rarity-tag { color: #C084FC; background: rgba(192,132,252,0.15); }
@@ -213,7 +213,7 @@ body::after {
 .log-list { margin-bottom: 24px; }
 .log-item {
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 .log-dot {
   width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
@@ -225,7 +225,7 @@ body::after {
 /* Coin history */
 .coin-row {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 .coin-reason { font-size: 13px; color: var(--text-secondary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .coin-amount { font-size: 13px; font-family: var(--font-mono); font-weight: 700; white-space: nowrap; margin-left: 12px; }
@@ -235,7 +235,7 @@ body::after {
 
 .show-more-btn {
   display: block; width: 100%; padding: 12px; margin-top: 8px;
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08);
   border-radius: 12px; color: var(--text-secondary); font-size: 13px;
   font-family: var(--font-sans); cursor: pointer; text-align: center;
 }
@@ -256,7 +256,7 @@ body::after {
 .modal-label { font-size: 12px; font-weight: 600; color: var(--text-tertiary); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
 .modal-input {
   width: 100%; padding: 12px 14px; border-radius: 12px;
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
   color: var(--text-primary); font-size: 15px; font-family: var(--font-sans);
   outline: none; margin-bottom: 16px;
 }
@@ -266,7 +266,7 @@ body::after {
 }
 .emoji-opt {
   width: 44px; height: 44px; border-radius: 12px;
-  background: rgba(255,255,255,0.04); border: 2px solid transparent;
+  background: rgba(255,255,255,0.07); border: 2px solid transparent;
   font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -558,7 +558,7 @@ body::after {
     container.innerHTML = '';
     
     var RARITIES = [
-        { id: 'common', name: 'Обычные', color: '#B8B6B0' },
+        { id: 'common', name: 'Обычные', color: '#D1D1D1' },
         { id: 'rare', name: 'Редкие', color: '#7DD3FC' },
         { id: 'epic', name: 'Эпические', color: '#F2C063' },
         { id: 'legendary', name: 'Легендарные', color: '#C084FC' },

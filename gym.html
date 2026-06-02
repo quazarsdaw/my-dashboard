@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Dashboard">
-<meta name="theme-color" content="#111315">
+<meta name="theme-color" content="#14161A">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
@@ -19,15 +19,15 @@
 :root{
   --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --text-primary:#FAFAFA;--text-secondary:#B8B6B0;--text-tertiary:#76746E;
+  --text-primary:#FAFAFA;--text-secondary:#D1D1D1;--text-tertiary:#A0A0A0;
   --success:#6BE3A4;--warning:#F2C063;--danger:#FF6B6B;
-  --card-bg:rgba(255,255,255,0.04);--card-radius:16px;
+  --card-bg:rgba(255,255,255,0.07);--card-radius:16px;
 }
-html{background:#0A0B0D}
-body{font-family:var(--font-sans);color:var(--text-primary);background:#0A0B0D;
+html{background:#14161A}
+body{font-family:var(--font-sans);color:var(--text-primary);background:#14161A;
   min-height:100vh;max-width:1100px;margin:0 auto;padding:0 16px 40px;-webkit-font-smoothing:antialiased}
 body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
-  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.16),transparent),
+  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.2),transparent),
   radial-gradient(ellipse 50% 50% at 18% 90%,rgba(180,180,200,0.06),transparent);
   filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
 @keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
@@ -49,7 +49,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 /* Workout summary */
 .workout-stats{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px}
 .ws-stat{flex:1;min-width:100px;text-align:center;padding:14px;border-radius:14px;
-  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04)}
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)}
 .ws-stat-num{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-0.03em}
 .ws-stat-label{font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;
   color:var(--text-tertiary);margin-top:4px}
@@ -71,7 +71,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .wdh-muscles{font-size:11px;color:var(--text-tertiary);margin-top:2px}
 .wdh-status{font-family:var(--font-mono);font-size:11px;font-weight:700;
   padding:4px 10px;border-radius:8px;text-transform:uppercase;letter-spacing:0.06em}
-.wdh-status.pending{color:var(--text-tertiary);background:rgba(255,255,255,0.04)}
+.wdh-status.pending{color:var(--text-tertiary);background:rgba(255,255,255,0.07)}
 .wdh-status.done{color:var(--success);background:rgba(107,227,164,0.1)}
 
 /* Exercise list */
@@ -83,7 +83,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .ex-name{flex:1;font-size:13px;font-weight:600;color:var(--text-primary);min-width:0}
 .ex-sets{font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);white-space:nowrap}
 .ex-weight{font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--warning);white-space:nowrap}
-.ex-input{width:60px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.04);
+.ex-input{width:60px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.07);
   border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:12px;
   font-family:var(--font-mono);text-align:center;outline:none}
 .ex-input:focus{border-color:rgba(255,255,255,0.2)}
@@ -93,14 +93,14 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 /* Add workout / exercise */
 .add-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   border-top:1px solid rgba(255,255,255,0.06);padding-top:14px;margin-top:14px}
-.add-input{flex:1;min-width:120px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.04);
+.add-input{flex:1;min-width:120px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.07);
   border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;
   font-family:var(--font-sans);outline:none}
 .add-input:focus{border-color:rgba(255,255,255,0.2)}
 .add-input::placeholder{color:var(--text-tertiary)}
 .add-small{width:80px;text-align:center}
 .add-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;
-  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#0A0A0B;
+  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#14161A;
   font-size:13px;font-weight:700;font-family:var(--font-sans);
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 8px rgba(0,0,0,0.3);
   transition:transform 0.1s;white-space:nowrap}
