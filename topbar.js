@@ -3,20 +3,23 @@
 
   var css = '\
 .topbar {\
-  position: sticky; top: 0; z-index: 40;\
+  position: fixed; top: 0; left: 10px; right: 10px; z-index: 100;\
   display: flex; justify-content: flex-end; align-items: center;\
-  gap: 8px;\
-  padding: max(10px, env(safe-area-inset-top)) 14px 8px;\
-  background: #0a0a0b;\
-  border-bottom: 1px solid rgba(255,255,255,0.06);\
+  gap: 10px; height: 64px;\
+  padding: 0 16px;\
+  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%);\
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);\
+  border: 1px solid rgba(255,255,255,0.1); border-top: none;\
+  border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;\
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
 .topbar-coins {\
   display: inline-flex; align-items: center; gap: 6px;\
   padding: 8px 14px;\
-  background: rgba(242,192,99,0.08);\
-  border: 1px solid rgba(242,192,99,0.16);\
-  border-radius: 12px;\
+  background: rgba(242,192,99,0.12);\
+  border: 1px solid rgba(242,192,99,0.2);\
+  border-radius: 14px;\
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;\
   font-size: 13px; font-weight: 700; color: #F2C063;\
   font-variant-numeric: tabular-nums;\
@@ -28,10 +31,10 @@
 .topbar-water-pill {\
   display: inline-flex; align-items: center; gap: 8px;\
   padding: 9px 14px;\
-  background: rgba(125,211,252,0.08);\
-  border: 1px solid rgba(125,211,252,0.16);\
+  background: rgba(125,211,252,0.1);\
+  border: 1px solid rgba(125,211,252,0.2);\
   border-right: none;\
-  border-radius: 12px 0 0 12px;\
+  border-radius: 14px 0 0 14px;\
   text-decoration: none; color: #FAFAFA;\
   -webkit-tap-highlight-color: transparent;\
 }\
@@ -55,11 +58,11 @@
 }\
 .topbar-water-add {\
   width: 44px;\
-  border: 1px solid rgba(125,211,252,0.16);\
-  background: linear-gradient(180deg, rgba(125,211,252,0.28), rgba(110,231,183,0.28));\
+  border: 1px solid rgba(125,211,252,0.2);\
+  background: linear-gradient(180deg, rgba(125,211,252,0.35), rgba(110,231,183,0.35));\
   color: #FFF; font-family: inherit;\
   font-size: 20px; font-weight: 700; line-height: 1;\
-  cursor: pointer; border-radius: 0 12px 12px 0;\
+  cursor: pointer; border-radius: 0 14px 14px 0;\
   -webkit-tap-highlight-color: transparent;\
   transition: background 0.15s, transform 0.10s;\
 }\
@@ -68,10 +71,11 @@
   background: linear-gradient(180deg, rgba(125,211,252,0.7), rgba(110,231,183,0.7));\
 }\
 .bottombar {\
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;\
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;\
   display: flex; justify-content: space-around; align-items: stretch;\
-  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));\
-  background: #0a0a0b;\
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom));\
+  background: rgba(20,22,26,0.85);\
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);\
   border-top: 1px solid rgba(255,255,255,0.08);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
@@ -79,22 +83,23 @@
   flex: 1;\
   display: flex; flex-direction: column; align-items: center; justify-content: center;\
   gap: 3px; padding: 6px 0 4px; text-decoration: none;\
-  color: rgba(255,255,255,0.45);\
+  color: rgba(255,255,255,0.5);\
   font-size: 10px; font-weight: 600; letter-spacing: 0.04em;\
   -webkit-tap-highlight-color: transparent; transition: color 0.15s;\
 }\
 .bottombar-tab-icon {\
   font-size: 22px; line-height: 1;\
-  filter: grayscale(100%) brightness(1.2); opacity: 0.55;\
+  filter: grayscale(100%) brightness(1.3); opacity: 0.65;\
   transition: opacity 0.15s, filter 0.15s, transform 0.10s;\
 }\
 .bottombar-tab.active { color: #FAFAFA; }\
 .bottombar-tab.active .bottombar-tab-icon {\
-  filter: grayscale(100%) brightness(1.6); opacity: 1;\
+  filter: grayscale(0%) brightness(1); opacity: 1;\
 }\
 .bottombar-tab:active .bottombar-tab-icon { transform: scale(0.92); }\
 body.has-bottombar {\
-  padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;\
+  padding-top: 74px !important;\
+  padding-bottom: calc(84px + env(safe-area-inset-bottom)) !important;\
 }\
 @media (max-width: 480px) {\
   .topbar { padding-left: 10px; padding-right: 10px; gap: 6px; }\

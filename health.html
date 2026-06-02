@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Dashboard">
-<meta name="theme-color" content="#14161A">
+<meta name="theme-color" content="#1C1E24">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
@@ -21,13 +21,13 @@
   --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   --text-primary:#FAFAFA;--text-secondary:#D1D1D1;--text-tertiary:#A0A0A0;
   --success:#6BE3A4;--warning:#F2C063;--danger:#FF6B6B;
-  --card-bg:rgba(255,255,255,0.07);--card-radius:16px;
+  --card-bg:rgba(255,255,255,0.09);--card-radius:16px;
 }
-html{background:#14161A}
-body{font-family:var(--font-sans);color:var(--text-primary);background:#14161A;
+html{background:#1C1E24}
+body{font-family:var(--font-sans);color:var(--text-primary);background:#1C1E24;
   min-height:100vh;max-width:1100px;margin:0 auto;padding:0 16px 40px;-webkit-font-smoothing:antialiased}
 body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
-  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.2),transparent),
+  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.22),transparent),
   radial-gradient(ellipse 50% 50% at 18% 90%,rgba(180,180,200,0.06),transparent);
   filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
 @keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
@@ -66,7 +66,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
   background:rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:center;transition:background 0.2s,border-color 0.2s}
 .stack-cb:checked+.stack-cb-vis{background:#6BE3A4;border-color:#6BE3A4;box-shadow:0 0 12px rgba(107,227,164,0.4)}
 .stack-cb:checked+.stack-cb-vis::after{content:'';display:block;width:6px;height:10px;
-  border:solid #14161A;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+  border:solid #1C1E24;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
 .stack-item-info{flex:1;min-width:0}
 .stack-item-name{font-size:14px;font-weight:600;color:var(--text-primary)}
 .stack-item-dose{font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary);margin-top:2px}
@@ -89,7 +89,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
   border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:13px;cursor:pointer;outline:none;
   -webkit-appearance:none;appearance:none}
 .add-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;
-  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#14161A;
+  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#1C1E24;
   font-size:13px;font-weight:700;font-family:var(--font-sans);
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 8px rgba(0,0,0,0.3);
   transition:transform 0.1s;white-space:nowrap}
