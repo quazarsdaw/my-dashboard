@@ -170,11 +170,17 @@ body::after {
 .ach-card.unlocked { transform: scale(1); }
 
 /* Rarity Styles */
-.ach-card.rarity-common.unlocked { border-color: rgba(184,182,176,0.3); background: rgba(184,182,176,0.05); }
-.ach-card.rarity-rare.unlocked { border-color: rgba(125,211,252,0.4); background: rgba(125,211,252,0.08); box-shadow: 0 0 15px rgba(125,211,252,0.1); }
-.ach-card.rarity-epic.unlocked { border-color: rgba(242,192,99,0.5); background: rgba(242,192,99,0.1); box-shadow: 0 0 20px rgba(242,192,99,0.15); }
-.ach-card.rarity-legendary.unlocked { border-color: rgba(192,132,252,0.6); background: rgba(192,132,252,0.15); box-shadow: 0 0 25px rgba(192,132,252,0.2); }
-.ach-card.rarity-mythic.unlocked { border-color: rgba(255,107,107,0.8); background: rgba(255,107,107,0.2); box-shadow: 0 0 30px rgba(255,107,107,0.3); animation: mythicGlow 3s infinite alternate; }
+.ach-card.rarity-common { border-color: rgba(184,182,176,0.1); background: rgba(184,182,176,0.02); }
+.ach-card.rarity-rare { border-color: rgba(125,211,252,0.15); background: rgba(125,211,252,0.03); }
+.ach-card.rarity-epic { border-color: rgba(242,192,99,0.2); background: rgba(242,192,99,0.04); }
+.ach-card.rarity-legendary { border-color: rgba(192,132,252,0.25); background: rgba(192,132,252,0.05); }
+.ach-card.rarity-mythic { border-color: rgba(255,107,107,0.3); background: rgba(255,107,107,0.06); }
+
+.ach-card.unlocked.rarity-common { border-color: rgba(184,182,176,0.4); background: rgba(184,182,176,0.1); }
+.ach-card.unlocked.rarity-rare { border-color: rgba(125,211,252,0.5); background: rgba(125,211,252,0.12); box-shadow: 0 0 15px rgba(125,211,252,0.15); }
+.ach-card.unlocked.rarity-epic { border-color: rgba(242,192,99,0.6); background: rgba(242,192,99,0.15); box-shadow: 0 0 20px rgba(242,192,99,0.2); }
+.ach-card.unlocked.rarity-legendary { border-color: rgba(192,132,252,0.7); background: rgba(192,132,252,0.2); box-shadow: 0 0 25px rgba(192,132,252,0.3); }
+.ach-card.unlocked.rarity-mythic { border-color: rgba(255,107,107,0.9); background: rgba(255,107,107,0.25); box-shadow: 0 0 35px rgba(255,107,107,0.4); animation: mythicGlow 3s infinite alternate; }
 
 @keyframes mythicGlow { 0% { box-shadow: 0 0 15px rgba(255,107,107,0.2); } 100% { box-shadow: 0 0 35px rgba(255,107,107,0.5); } }
 
