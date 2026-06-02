@@ -49,7 +49,7 @@
   var XP_BASE = 100;
   var XP_EXPONENT = 1.5;
 
-  var DIFFICULTY_COIN_MULT = { easy: 0.1, medium: 0.2, hard: 0.4 }; // Lowered coin earn rate too
+  var DIFFICULTY_COIN_MULT = { easy: 0.1, medium: 0.2, hard: 0.4 };
   var DIFFICULTY_LABELS = { easy: 'Лёгкая', medium: 'Средняя', hard: 'Сложная' };
 
   function xpForLevel(level) {
@@ -177,49 +177,106 @@
   function getActivityLog() { return storeGet('activity_log_v1') || []; }
 
   var ACHIEVEMENT_DEFS = [
+    // --- COMMON (2-8) ---
     { id: 'first_task', rarity: 'common', bonus: 2, name: 'База', icon: '🌱', desc: 'Выполни первую задачу' },
     { id: 'altushka', rarity: 'common', bonus: 5, name: 'Альтушка с госуслуг', icon: '👩‍🎤', desc: 'Первая покупка в магазине' },
-    { id: 'tasks_10', rarity: 'common', bonus: 8, name: 'Разогрев', icon: '🔥', desc: 'Выполни 10 задач' },
-    { id: 'hours_1', rarity: 'common', bonus: 5, name: 'Час пользы', icon: '⏱️', desc: '1 час в фокусе' },
-    { id: 'days_3', rarity: 'common', bonus: 10, name: 'Стабильность', icon: '📅', desc: '3 активных дня' },
-    { id: 'coins_50', rarity: 'common', bonus: 5, name: 'Мелочь', icon: '🪙', desc: 'Заработай 50 монет' },
-    { id: 'level_5', rarity: 'common', bonus: 15, name: 'Новичок+', icon: '🏅', desc: 'Достигни 5 уровня' },
-    { id: 'gym_1', rarity: 'common', bonus: 5, name: 'Спортсмен', icon: '💪', desc: 'Первая тренировка' },
+    { id: 'tasks_5', rarity: 'common', bonus: 4, name: 'Начало пути', icon: '👣', desc: 'Выполни 5 задач' },
+    { id: 'tasks_10', rarity: 'common', bonus: 6, name: 'Разогрев', icon: '🔥', desc: 'Выполни 10 задач' },
+    { id: 'hours_1', rarity: 'common', bonus: 4, name: 'Час пользы', icon: '⏱️', desc: '1 час в фокусе' },
+    { id: 'hours_5', rarity: 'common', bonus: 8, name: 'Пятилетка', icon: '🕒', desc: '5 часов продуктивности' },
+    { id: 'days_3', rarity: 'common', bonus: 5, name: 'Стабильность', icon: '📅', desc: '3 активных дня' },
+    { id: 'coins_50', rarity: 'common', bonus: 4, name: 'Мелочь', icon: '🪙', desc: 'Заработай 50 монет' },
+    { id: 'coins_200', rarity: 'common', bonus: 8, name: 'Копилка', icon: '💰', desc: 'Набери 200 монет' },
+    { id: 'level_3', rarity: 'common', bonus: 5, name: 'Растем', icon: '🎯', desc: 'Достигни 3 уровня' },
+    { id: 'level_5', rarity: 'common', bonus: 8, name: 'Новичок+', icon: '🏅', desc: 'Достигни 5 уровня' },
+    { id: 'gym_1', rarity: 'common', bonus: 6, name: 'Спортсмен', icon: '💪', desc: 'Первая тренировка' },
+    { id: 'gym_3', rarity: 'common', bonus: 8, name: 'В форме', icon: '🏋️', desc: '3 тренировки' },
+    { id: 'finance_1', rarity: 'common', bonus: 4, name: 'Счетовод', icon: '📊', desc: 'Первая запись в финансах' },
     { id: 'sphere_xp', rarity: 'common', bonus: 3, name: 'Первый опыт', icon: '✨', desc: 'Получи XP в любой сфере' },
     { id: 'early_bird', rarity: 'common', bonus: 5, name: 'Кто понял жизнь...', icon: '☀️', desc: 'Задача до 9:00' },
     { id: 'number_67', rarity: 'common', bonus: 25, name: '67', icon: '🎰', desc: 'Выполни ровно 67 задач' },
-    { id: 'clothing_78', rarity: 'common', bonus: 10, name: '7-8 одежда', icon: '👕', desc: 'Выполни 8 задач за день' },
+    { id: 'clothing_78', rarity: 'common', bonus: 8, name: '7-8 одежда', icon: '👕', desc: 'Выполни 8 задач за день' },
 
-    { id: 'tasks_50', rarity: 'rare', bonus: 20, name: '52', icon: '🏙️', desc: 'Да здравствует Санкт-Петербург!' },
+    // --- RARE (10-30) ---
+    { id: 'tasks_50', rarity: 'rare', bonus: 20, name: '52', icon: '🏙️', desc: 'Санкт-Петербург! (50 задач)' },
+    { id: 'tasks_75', rarity: 'rare', bonus: 25, name: 'Специалист', icon: '🛠️', desc: '75 выполненных задач' },
     { id: 'temshik', rarity: 'rare', bonus: 30, name: 'Темщик', icon: '💸', desc: 'Набери 1000 монет' },
     { id: 'surgut', rarity: 'rare', bonus: 25, name: 'Сургут', icon: '❄️', desc: '10 тренировок' },
     { id: 'technik', rarity: 'rare', bonus: 20, name: 'Техник', icon: '🎧', desc: 'Купи 10 наград' },
     { id: 'skuf', rarity: 'rare', bonus: 1, name: 'Скуф', icon: '🍺', desc: '30 дней без тренировок' },
-    { id: 'hours_20', rarity: 'rare', bonus: 40, name: 'Сутки пользы', icon: '⏳', desc: '24 часа в фокусе' },
-    { id: 'days_7', rarity: 'rare', bonus: 30, name: 'Недельный стрик', icon: '📆', desc: '7 активных дней' },
-    { id: 'level_15', rarity: 'rare', bonus: 50, name: 'Профи', icon: '🌟', desc: 'Достигни 15 уровня' },
+    { id: 'hours_20', rarity: 'rare', bonus: 30, name: 'Сутки пользы', icon: '⏳', desc: '24 часа в фокусе' },
+    { id: 'hours_40', rarity: 'rare', bonus: 40, name: 'Трудоголик', icon: '👔', desc: '40 часов в фокусе' },
+    { id: 'days_7', rarity: 'rare', bonus: 25, name: 'Недельный стрик', icon: '📆', desc: '7 активных дней подряд' },
+    { id: 'days_14', rarity: 'rare', bonus: 35, name: 'Две недели', icon: '🌓', desc: '14 активных дней' },
+    { id: 'coins_500', rarity: 'rare', bonus: 20, name: 'Состоятельный', icon: '💎', desc: 'Заработай 500 монет' },
+    { id: 'level_10', rarity: 'rare', bonus: 30, name: 'Десятка', icon: '🎖️', desc: 'Достигни 10 уровня' },
+    { id: 'level_15', rarity: 'rare', bonus: 40, name: 'Профи', icon: '🌟', desc: 'Достигни 15 уровня' },
+    { id: 'gym_10', rarity: 'rare', bonus: 30, name: 'Атлет', icon: '🏃', desc: '10 тренировок' },
+    { id: 'gym_streak', rarity: 'rare', bonus: 20, name: 'Режим', icon: '🔋', desc: '3 тренировки за неделю' },
     { id: 'all_spheres', rarity: 'rare', bonus: 25, name: 'Универсал', icon: '🌈', desc: 'XP во всех сферах' },
+    { id: 'store_5', rarity: 'rare', bonus: 15, name: 'Шопоголик', icon: '🛍️', desc: '5 покупок в магазине' },
+    { id: 'health_5', rarity: 'rare', bonus: 20, name: 'ЗОЖник', icon: '🍎', desc: '5 уровень в Здоровье' },
+    { id: 'finance_5', rarity: 'rare', bonus: 20, name: 'Экономист', icon: '📈', desc: '5 уровень в Финансах' },
+    { id: 'career_5', rarity: 'rare', bonus: 20, name: 'Карьерист', icon: '💼', desc: '5 уровень в Карьере' },
+    { id: 'night_owl_3', rarity: 'rare', bonus: 15, name: 'Полуночник', icon: '🌑', desc: '3 задачи ночью' },
+    { id: 'early_bird_10', rarity: 'rare', bonus: 20, name: 'Овсянка, сэр!', icon: '🌄', desc: '10 задач ранним утром' },
+    { id: 'gym_variety', rarity: 'rare', bonus: 25, name: 'Многоборец', icon: '🏟️', desc: 'Тренировки в 5 днях' },
+    { id: 'habit_7', rarity: 'rare', bonus: 20, name: 'Привычка', icon: '🔄', desc: '7 активных дней' },
 
-    { id: 'svo', rarity: 'epic', bonus: 100, name: 'С.В.О.', icon: '🎖️', desc: '5 сложных задач подряд' },
-    { id: 'borov', rarity: 'epic', bonus: 150, name: 'Боров', icon: '🐗', desc: 'Накопи 5000 монет' },
-    { id: 'mamont', rarity: 'epic', bonus: 80, name: 'Мамонт', icon: '🦣', desc: 'Потрачено 5000 монет' },
-    { id: 'mamkin_investor', rarity: 'epic', bonus: 100, name: 'Мамкин инвестор', icon: '📈', desc: 'Баланс финансов > 10000' },
+    // --- EPIC (40-150) ---
+    { id: 'svo', rarity: 'epic', bonus: 80, name: 'С.В.О.', icon: '🎖️', desc: '5 сложных задач подряд' },
+    { id: 'borov', rarity: 'epic', bonus: 120, name: 'Боров', icon: '🐗', desc: 'Накопи 5000 монет' },
+    { id: 'mamont', rarity: 'epic', bonus: 60, name: 'Мамонт', icon: '🦣', desc: 'Потрачено 5000 монет' },
+    { id: 'mamkin_investor', rarity: 'epic', bonus: 80, name: 'Мамкин инвестор', icon: '📈', desc: 'Баланс финансов > 10000' },
     { id: 'dedinsight', rarity: 'epic', bonus: 40, name: 'Дединсайд', icon: '🦉', desc: 'Задача после 00:00' },
-    { id: 'sigma', rarity: 'epic', bonus: 120, name: 'Сигма', icon: '🗿', desc: '50 тренировок' },
-    { id: 'hours_100', rarity: 'epic', bonus: 150, name: 'Мастер времени', icon: '🌓', desc: '100 часов в фокусе' },
-    { id: 'days_60', rarity: 'epic', bonus: 200, name: 'Железная воля', icon: '🛡️', desc: '60 активных дней' },
+    { id: 'sigma', rarity: 'epic', bonus: 100, name: 'Сигма', icon: '🗿', desc: '50 тренировок' },
+    { id: 'tasks_150', rarity: 'epic', bonus: 70, name: 'Машина', icon: '🤖', desc: '150 выполненных задач' },
+    { id: 'tasks_300', rarity: 'epic', bonus: 120, name: 'Неудержимый', icon: '🚀', desc: '300 выполненных задач' },
+    { id: 'hours_100', rarity: 'epic', bonus: 120, name: 'Мастер времени', icon: '🌓', desc: '100 часов в фокусе' },
+    { id: 'hours_150', rarity: 'epic', bonus: 180, name: 'Ветеран труда', icon: '🛠️', desc: '150 часов продуктивности' },
+    { id: 'days_30', rarity: 'epic', bonus: 100, name: 'Работяга', icon: '🗓️', desc: '30 активных дней' },
+    { id: 'days_60', rarity: 'epic', bonus: 150, name: 'Железная воля', icon: '🛡️', desc: '60 активных дней' },
+    { id: 'level_25', rarity: 'epic', bonus: 100, name: 'Четверть пути', icon: '👑', desc: 'Достигни 25 уровня' },
+    { id: 'level_40', rarity: 'epic', bonus: 150, name: 'Элита', icon: '💎', desc: 'Достигни 40 уровня' },
+    { id: 'gym_30', rarity: 'epic', rarity: 'epic', bonus: 100, name: 'Бодибилдер', icon: '🏋️‍♂️', desc: '30 тренировок' },
+    { id: 'gym_50', rarity: 'epic', bonus: 150, name: 'Геракл', icon: '🏺', desc: '50 тренировок завершено' },
+    { id: 'finance_master', rarity: 'epic', bonus: 100, name: 'Успешный успех', icon: '💹', desc: '15 уровень в Финансах' },
+    { id: 'career_master', rarity: 'epic', bonus: 100, name: 'Директор', icon: '🏢', desc: '15 уровень в Карьере' },
+    { id: 'growth_master', rarity: 'epic', bonus: 100, name: 'Мудрец', icon: '🧙‍♂️', desc: '15 уровень в Развитии' },
+    { id: 'pomo_master', rarity: 'epic', bonus: 60, name: 'Помидорный маг', icon: '🍅', desc: 'Использовал таймер 50 раз' },
+    { id: 'night_owl', rarity: 'epic', bonus: 40, name: 'Ночной дозор', icon: '🦉', desc: 'Задача после 00:00' },
+    { id: 'finance_balance_10000', rarity: 'epic', bonus: 80, name: 'Инвестор+', icon: '📈', desc: 'Баланс финансов > 10000' },
+    { id: 'task_spree_20', rarity: 'epic', bonus: 80, name: 'Марафонец', icon: '🏁', desc: '20 задач за всё время' },
+    { id: 'all_spheres_5', rarity: 'epic', bonus: 120, name: 'Разносторонний', icon: '💠', desc: '5 уровень во всех сферах' },
+    { id: 'big_spender', rarity: 'epic', bonus: 100, name: 'Магнат', icon: '🥂', desc: 'Потрачено 5000 монет' },
+    { id: 'saver', rarity: 'epic', bonus: 80, name: 'Скряга', icon: '🔒', desc: 'Баланс монет > 2000' },
 
+    // --- LEGENDARY (200-600) ---
     { id: 'river_walker', rarity: 'legendary', bonus: 400, name: 'Идущий к реке', icon: '🌊', desc: '500 часов чистого времени' },
-    { id: 'gigachad', rarity: 'legendary', bonus: 300, name: 'Гигачад', icon: '💪', desc: '100 тренировок' },
+    { id: 'gigachad', rarity: 'legendary', bonus: 350, name: 'Гигачад', icon: '💪', desc: '100 тренировок' },
     { id: 'moms_friend_son', rarity: 'legendary', bonus: 500, name: 'Сын маминой подруги', icon: '🥇', desc: '10 уровень во всех сферах' },
     { id: 'chinazes', rarity: 'legendary', bonus: 600, name: 'Чиназес', icon: '😎', desc: '1000 выполненных задач' },
-    { id: 'capitalist', rarity: 'legendary', bonus: 1000, name: 'Капиталист', icon: '🏦', desc: 'Баланс финансов > 1 000 000' },
-    { id: 'level_75', rarity: 'legendary', bonus: 800, name: 'Легенда', icon: '🔱', desc: 'Достигни 75 уровня' },
+    { id: 'capitalist', rarity: 'legendary', bonus: 800, name: 'Капиталист', icon: '🏦', desc: 'Баланс финансов > 1 000 000' },
+    { id: 'tasks_500', rarity: 'legendary', bonus: 300, name: 'Сверхчеловек', icon: '⚡', desc: '500 выполненных задач' },
+    { id: 'tasks_1000', rarity: 'legendary', bonus: 500, name: 'АБСОЛЮТ', icon: '🏛️', desc: '1000 выполненных задач' },
+    { id: 'hours_500', rarity: 'legendary', bonus: 500, name: 'Повелитель времени', icon: '⏳', desc: '500 часов в фокусе' },
+    { id: 'days_100', rarity: 'legendary', bonus: 400, name: 'Стодневник', icon: '🏆', desc: '100 активных дней' },
+    { id: 'days_365', rarity: 'legendary', bonus: 1500, name: 'Год жизни', icon: '🌍', desc: '365 активных дней' },
+    { id: 'coins_25000', rarity: 'legendary', bonus: 600, name: 'Золотой фонд', icon: '🏺', desc: 'Набери 25000 монет всего' },
+    { id: 'level_75', rarity: 'legendary', bonus: 600, name: 'Легенда', icon: '🔱', desc: 'Достигни 75 уровня' },
+    { id: 'gym_100', rarity: 'legendary', bonus: 400, name: 'Олимпиец', icon: '🥇', desc: '100 тренировок' },
+    { id: 'all_max_lvl', rarity: 'legendary', bonus: 500, name: 'Магистр сфер', icon: '🔮', desc: '10 уровень во всех сферах' },
+    { id: 'streak_30', rarity: 'legendary', bonus: 300, name: 'Несгораемый', icon: '🧨', desc: '30 активных дней' },
+    { id: 'finance_balance_100000', rarity: 'legendary', bonus: 500, name: 'Капиталист', icon: '🏦', desc: 'Баланс финансов > 100000' },
+    { id: 'pomo_100', rarity: 'legendary', bonus: 250, name: 'Дзен', icon: '🧘', desc: '100 сессий таймера' },
 
-    { id: 'tasks_5000', rarity: 'mythic', bonus: 2500, name: 'Творец миров', icon: '🌌', desc: '5000 выполненных задач' },
-    { id: 'level_100', rarity: 'mythic', bonus: 5000, name: 'БОЖЕСТВО', icon: '🪐', desc: 'Достигни 100 уровня' },
-    { id: 'billionaire', rarity: 'mythic', bonus: 10000, name: 'Властелин богатства', icon: '♾️', desc: 'Заработай 100к монет за всё время' },
-    { id: 'perfectionist', rarity: 'mythic', bonus: 3000, name: 'Перфекционист', icon: '💎', desc: 'Все сферы на 50 уровне' }
+    // --- MYTHIC (1000-5000) ---
+    { id: 'tasks_5000', rarity: 'mythic', bonus: 2000, name: 'Творец миров', icon: '🌌', desc: '5000 выполненных задач' },
+    { id: 'hours_2000', rarity: 'mythic', bonus: 3000, name: 'Вне времени', icon: '🌀', desc: '2000 часов продуктивности' },
+    { id: 'level_100', rarity: 'mythic', bonus: 2500, name: 'БОЖЕСТВО', icon: '🪐', desc: 'Достигни 100 уровня' },
+    { id: 'billionaire', rarity: 'mythic', bonus: 5000, name: 'Властелин богатства', icon: '♾️', desc: 'Заработай 100к монет всего' },
+    { id: 'perfectionist', rarity: 'mythic', bonus: 2000, name: 'Перфекционист', icon: '💎', desc: 'Все сферы на 50 уровне' },
+    { id: 'pomo_500', rarity: 'mythic', bonus: 1500, name: 'Абсолютный фокус', icon: '🧿', desc: '500 сессий таймера' },
   ];
 
   function getAchievements() { return storeGet('achievements_v1') || { unlocked: {} }; }
@@ -243,7 +300,7 @@
     var daysSinceGym = d.lastGymDate ? (Date.now() - new Date(d.lastGymDate).getTime()) / (1000*3600*24) : 0;
     var achievements = getAchievements(), newUnlocks = [];
     var checker = {
-      first_task: function(d) { return d.totalTasks >= 1; }, altushka: function(d) { return d.totalPurchases >= 1; }, tasks_10: function(d) { return d.totalTasks >= 10; }, hours_1: function(d) { return d.totalMinutes >= 60; }, days_3: function(d) { return d.totalDays >= 3; }, coins_50: function(d) { return d.coinsEarned >= 50; }, level_5: function(d) { return d.overallLevel >= 5; }, gym_1: function(d) { return d.totalWorkouts >= 1; }, sphere_xp: function(d) { return d.activeSpheres >= 1; }, early_bird: function(d) { return d.earlyTask; }, number_67: function(d) { return d.totalTasks === 67; }, clothing_78: function(d) { return d.totalTasks >= 8; }, tasks_50: function(d) { return d.totalTasks >= 50; }, temshik: function(d) { return d.coinsEarned >= 1000; }, surgut: function(d) { return d.totalWorkouts >= 10; }, technik: function(d) { return d.totalPurchases >= 10; }, skuf: function(d) { return daysSinceGym >= 30; }, hours_20: function(d) { return d.totalMinutes >= 1200; }, days_7: function(d) { return d.totalDays >= 7; }, level_15: function(d) { return d.overallLevel >= 15; }, all_spheres: function(d) { return d.activeSpheres >= d.totalSpheres; }, svo: function(d) { return d.hardStreak; }, borov: function(d) { return d.coinsEarned >= 5000; }, mamont: function(d) { return (d.coinsEarned - d.coinBalance) >= 5000; }, mamkin_investor: function(d) { return d.finBalance >= 10000; }, dedinsight: function(d) { return d.nightTask; }, sigma: function(d) { return d.totalWorkouts >= 50; }, hours_100: function(d) { return d.totalMinutes >= 6000; }, days_60: function(d) { return d.totalDays >= 60; }, river_walker: function(d) { return d.totalMinutes >= 30000; }, gigachad: function(d) { return d.totalWorkouts >= 100; }, moms_friend_son: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, chinazes: function(d) { return d.totalTasks >= 1000; }, level_75: function(d) { return d.overallLevel >= 75; }, capitalist: function(d) { return d.finBalance >= 1000000; }, tasks_5000: function(d) { return d.totalTasks >= 5000; }, level_100: function(d) { return d.overallLevel >= 100; }, billionaire: function(d) { return d.coinsEarned >= 100000; }, perfectionist: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 50) m = false; return m; }
+      first_task: function(d) { return d.totalTasks >= 1; }, altushka: function(d) { return d.totalPurchases >= 1; }, tasks_5: function(d) { return d.totalTasks >= 5; }, tasks_10: function(d) { return d.totalTasks >= 10; }, hours_1: function(d) { return d.totalMinutes >= 60; }, hours_5: function(d) { return d.totalMinutes >= 300; }, days_3: function(d) { return d.totalDays >= 3; }, coins_50: function(d) { return d.coinsEarned >= 50; }, coins_200: function(d) { return d.coinsEarned >= 200; }, level_3: function(d) { return d.overallLevel >= 3; }, level_5: function(d) { return d.overallLevel >= 5; }, gym_1: function(d) { return d.totalWorkouts >= 1; }, gym_3: function(d) { return d.totalWorkouts >= 3; }, finance_1: function(d) { return d.sphereLevels['finance'] >= 1; }, sphere_xp: function(d) { return d.activeSpheres >= 1; }, early_bird: function(d) { return d.earlyTask; }, number_67: function(d) { return d.totalTasks === 67; }, clothing_78: function(d) { return d.totalTasks >= 8; }, tasks_50: function(d) { return d.totalTasks >= 50; }, tasks_75: function(d) { return d.totalTasks >= 75; }, temshik: function(d) { return d.coinsEarned >= 1000; }, surgut: function(d) { return d.totalWorkouts >= 10; }, technik: function(d) { return d.totalPurchases >= 10; }, skuf: function(d) { return daysSinceGym >= 30; }, hours_20: function(d) { return d.totalMinutes >= 1200; }, hours_40: function(d) { return d.totalMinutes >= 2400; }, days_7: function(d) { return d.totalDays >= 7; }, days_14: function(d) { return d.totalDays >= 14; }, level_10: function(d) { return d.overallLevel >= 10; }, level_15: function(d) { return d.overallLevel >= 15; }, gym_10: function(d) { return d.totalWorkouts >= 10; }, gym_streak: function(d) { return d.totalWorkouts >= 3; }, all_spheres: function(d) { return d.activeSpheres >= d.totalSpheres; }, store_5: function(d) { return d.totalPurchases >= 5; }, health_5: function(d) { return d.sphereLevels['health'] >= 5; }, finance_5: function(d) { return d.sphereLevels['finance'] >= 5; }, career_5: function(d) { return d.sphereLevels['career'] >= 5; }, night_owl_3: function(d) { return d.nightTask; }, early_bird_10: function(d) { return d.earlyTask; }, gym_variety: function(d) { return d.totalWorkouts >= 5; }, habit_7: function(d) { return d.totalDays >= 7; }, svo: function(d) { return d.hardStreak; }, borov: function(d) { return d.coinsEarned >= 5000; }, mamont: function(d) { return (d.coinsEarned - d.coinBalance) >= 5000; }, mamkin_investor: function(d) { return d.finBalance >= 10000; }, dedinsight: function(d) { return d.nightTask; }, sigma: function(d) { return d.totalWorkouts >= 50; }, tasks_150: function(d) { return d.totalTasks >= 150; }, tasks_300: function(d) { return d.totalTasks >= 300; }, hours_100: function(d) { return d.totalMinutes >= 6000; }, hours_150: function(d) { return d.totalMinutes >= 9000; }, days_30: function(d) { return d.totalDays >= 30; }, days_60: function(d) { return d.totalDays >= 60; }, level_25: function(d) { return d.overallLevel >= 25; }, level_40: function(d) { return d.overallLevel >= 40; }, gym_30: function(d) { return d.totalWorkouts >= 30; }, gym_50: function(d) { return d.totalWorkouts >= 50; }, finance_master: function(d) { return d.sphereLevels['finance'] >= 15; }, career_master: function(d) { return d.sphereLevels['career'] >= 15; }, growth_master: function(d) { return d.sphereLevels['growth'] >= 15; }, pomo_master: function(d) { return d.pomoCount >= 50; }, night_owl: function(d) { return d.nightTask; }, finance_balance_10000: function(d) { return d.finBalance >= 10000; }, task_spree_20: function(d) { return d.totalTasks >= 20; }, all_spheres_5: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 5) m = false; return m; }, big_spender: function(d) { return (d.coinsEarned - d.coinBalance) >= 5000; }, saver: function(d) { return d.coinBalance >= 2000; }, river_walker: function(d) { return d.totalMinutes >= 30000; }, gigachad: function(d) { return d.totalWorkouts >= 100; }, moms_friend_son: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, chinazes: function(d) { return d.totalTasks >= 1000; }, tasks_500: function(d) { return d.totalTasks >= 500; }, tasks_1000: function(d) { return d.totalTasks >= 1000; }, hours_500: function(d) { return d.totalMinutes >= 30000; }, days_100: function(d) { return d.totalDays >= 100; }, days_365: function(d) { return d.totalDays >= 365; }, level_75: function(d) { return d.overallLevel >= 75; }, gym_100: function(d) { return d.totalWorkouts >= 100; }, all_max_lvl: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, streak_30: function(d) { return d.totalDays >= 30; }, finance_balance_100000: function(d) { return d.finBalance >= 100000; }, pomo_100: function(d) { return d.pomoCount >= 100; }, capitalist: function(d) { return d.finBalance >= 1000000; }, tasks_5000: function(d) { return d.totalTasks >= 5000; }, hours_2000: function(d) { return d.totalMinutes >= 120000; }, level_100: function(d) { return d.overallLevel >= 100; }, billionaire: function(d) { return d.coinsEarned >= 100000; }, perfectionist: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 50) m = false; return m; }, pomo_500: function(d) { return d.pomoCount >= 500; }
     };
     for (var j = 0; j < ACHIEVEMENT_DEFS.length; j++) {
       var a = ACHIEVEMENT_DEFS[j]; if (achievements.unlocked[a.id]) continue;
