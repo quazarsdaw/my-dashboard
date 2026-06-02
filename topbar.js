@@ -45,11 +45,25 @@ html {\
 }\
 .topbar-water-pill {\
   display: inline-flex; align-items: center; gap: 8px;\
-  padding: 9px 14px; background: rgba(125,211,252,0.1); border: 1px solid rgba(125,211,252,0.15); border-right: none; border-radius: 12px 0 0 12px; text-decoration: none; color: #FAFAFA;\
+  padding: 9px 14px; background: rgba(125,211,252,0.1); border: 1px solid rgba(125,211,252,0.15);\
+  border-right: none; border-radius: 12px 0 0 12px; text-decoration: none; color: #FAFAFA;\
+}\
+.topbar-pill-dot {\
+  width: 8px; height: 8px; border-radius: 50%; background: #7DD3FC; flex-shrink: 0;\
+}\
+.topbar-water-pill.warn .topbar-pill-dot { background: #fbbf24; }\
+.topbar-water-pill.miss .topbar-pill-dot {\
+  background: #ff8a8a; animation: topbar-miss-pulse 1.6s ease-in-out infinite;\
+}\
+@keyframes topbar-miss-pulse {\
+  0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }\
+  50% { box-shadow: 0 0 0 5px rgba(239,68,68,0); }\
 }\
 .topbar-water-add {\
   width: 44px; border: 1px solid rgba(125,211,252,0.15); background: rgba(125,211,252,0.2); color: #FFF; font-size: 20px; font-weight: 700; cursor: pointer; border-radius: 0 12px 12px 0;\
+  transition: background 0.15s;\
 }\
+.topbar-water-add.flash { background: rgba(125,211,252,0.6); }\
 body {\
   padding-top: 82px !important;\
   padding-bottom: 96px !important;\
@@ -71,7 +85,7 @@ body {\
   </div>\
   <div class="topbar-water-wrap">\
     <a href="health.html#water" class="topbar-water-pill" id="topbarWater">\
-      <span style="width:8px;height:8px;border-radius:50%;background:#7DD3FC"></span>\
+      <span class="topbar-pill-dot"></span>\
       <span id="topbarWaterCount">0/0</span>\
     </a>\
     <button class="topbar-water-add" id="topbarWaterAdd" type="button">+</button>\
@@ -117,7 +131,37 @@ body {\
     document.body.classList.add('has-bottombar');
   }
 
+  function getWaterProgress() {
+    var state = null;
+    try { state = JSON.parse(localStorage.getItem('po_water_v1')); } catch (e) {}
+    if (!state) return { done: 0, total: 8 };
+    var todayKey = new Date().toISOString().slice(0, 10);
+    var done = (state.logs || {})[todayKey] || 0;
+    var p = state.profile || { weightKg: 75 };
+    var wKg = p.weightKg || 75;
+    var totalMl = wKg * 35 + ((p.activityHrsPerWeek || 0) / 7 * 500);
+    var total = Math.max(1, Math.ceil(totalMl / (state.bottleMl || 500)));
+    return { done: done, total: total };
+  }
+
+  function classifyStatus(done, total) {
+    if (done >= total) return 'good';
+    if (done >= total * 0.5) return 'warn';
+    if (new Date().getHours() >= 18) return 'miss';
+    return 'warn';
+  }
+
   function render() {
+    var w = getWaterProgress();
+    var countEl = document.getElementById('topbarWaterCount');
+    if (countEl) countEl.textContent = w.done + '/' + w.total;
+    
+    var waterPill = document.getElementById('topbarWater');
+    if (waterPill) {
+        waterPill.classList.remove('good', 'warn', 'miss');
+        waterPill.classList.add(classifyStatus(w.done, w.total));
+    }
+
     if (window.Gamification) {
       var bal = window.Gamification.getCoins().balance;
       var count = document.getElementById('topbarCoinsCount');
@@ -125,11 +169,27 @@ body {\
     }
   }
 
+  function addWater() {
+    var state = null;
+    try { state = JSON.parse(localStorage.getItem('po_water_v1')); } catch (e) {}
+    if (!state || typeof state !== 'object') state = { logs: {} };
+    state.logs = state.logs || {};
+    var k = new Date().toISOString().slice(0, 10);
+    state.logs[k] = (state.logs[k] || 0) + 1;
+    localStorage.setItem('po_water_v1', JSON.stringify(state));
+    render();
+    var btn = document.getElementById('topbarWaterAdd');
+    if (btn) { btn.classList.add('flash'); setTimeout(function(){ btn.classList.remove('flash'); }, 200); }
+  }
+
   function boot() {
     inject();
+    var btn = document.getElementById('topbarWaterAdd');
+    if (btn) btn.onclick = function(e) { e.preventDefault(); addWater(); };
     render();
     window.addEventListener('gamification-update', render);
-    setInterval(render, 5000);
+    window.addEventListener('storage', render);
+    setInterval(render, 30000);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
