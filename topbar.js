@@ -92,8 +92,7 @@ body {\
 <nav class="bottombar" id="bottombar">\
   <a href="index.html" class="bottombar-tab" data-page="main"><span class="bottombar-tab-icon">🏠</span><span>Главная</span></a>\
   <a href="tracker.html" class="bottombar-tab" data-page="tracker"><span class="bottombar-tab-icon">✅</span><span>Трекер</span></a>\
-  <a href="health.html" class="bottombar-tab" data-page="health"><span class="bottombar-tab-icon">💧</span><span>Здоровье</span></a>\
-  <a href="gym.html" class="bottombar-tab" data-page="fitness"><span class="bottombar-tab-icon">💪</span><span>Спорт</span></a>\
+  <a href="health.html" class="bottombar-tab" data-page="health"><span class="bottombar-tab-icon">🧘</span><span>Тело</span></a>\
   <a href="finance.html" class="bottombar-tab" data-page="finance"><span class="bottombar-tab-icon">💳</span><span>Финансы</span></a>\
   <a href="goals.html" class="bottombar-tab" data-page="goals"><span class="bottombar-tab-icon">🎯</span><span>Цели</span></a>\
   <a href="store.html" class="bottombar-tab" data-page="store"><span class="bottombar-tab-icon">🏪</span><span>Магазин</span></a>\
@@ -105,7 +104,7 @@ body {\
     var p = window.location.pathname.toLowerCase();
     if (p.indexOf('tracker') !== -1) return 'tracker';
     if (p.indexOf('health') !== -1) return 'health';
-    if (p.indexOf('gym') !== -1) return 'fitness';
+    if (p.indexOf('gym') !== -1) return 'health'; // Map both to same active state
     if (p.indexOf('finance') !== -1) return 'finance';
     if (p.indexOf('goals') !== -1) return 'goals';
     if (p.indexOf('store') !== -1) return 'store';

@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
-<title>Здоровье</title>
+<title>Здоровье и Спорт</title>
 <script src="gamification.js?v=7"></script>
 <script src="supabase-sync.js?v=26-sb" defer></script>
 <script src="topbar.js?v=15" defer></script>
@@ -23,9 +23,27 @@
   --success:#6BE3A4;--warning:#F2C063;--danger:#FF6B6B;
   --card-bg:rgba(255,255,255,0.09);--card-radius:16px;
 }
-html{background:#1C1E24}
+html{background:#1C1E24; scrollbar-gutter: stable;}
 body{font-family:var(--font-sans);color:var(--text-primary);background:#1C1E24;
-  min-height:100vh;max-width:1100px;margin:0 auto;-webkit-font-smoothing:antialiased}
+  min-height:100vh;margin:0;-webkit-font-smoothing:antialiased}
+
+/* Grid Layout */
+.combined-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  padding: 0 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .combined-container { gap: 20px; padding: 0 16px; }
+}
+
+@media (max-width: 768px) {
+  .combined-container { grid-template-columns: 1fr; }
+}
+
 body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.22),transparent),
   radial-gradient(ellipse 50% 50% at 18% 90%,rgba(180,180,200,0.06),transparent);
@@ -46,746 +64,273 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .card{background:var(--card-bg);border-radius:var(--card-radius);padding:18px;
   backdrop-filter:blur(24px) saturate(1.2);box-shadow:0 12px 40px rgba(0,0,0,0.45)}
 
-/* Stack */
+/* --- Shared / Common styles from health & gym --- */
+.add-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap; border-top:1px solid rgba(255,255,255,0.06);padding-top:14px;margin-top:14px}
+.add-input{flex:1;min-width:120px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;font-family:var(--font-sans);outline:none}
+.add-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer; background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#1C1E24; font-size:13px;font-weight:700;font-family:var(--font-sans); box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 8px rgba(0,0,0,0.3); transition:transform 0.1s;white-space:nowrap}
+.empty{font-size:12px;color:var(--text-tertiary);font-style:italic;padding:14px 0;text-align:center}
+
+/* --- Health Styles --- */
 .stack-progress{display:flex;align-items:baseline;gap:8px;margin-bottom:14px}
 .stack-num{font-size:36px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.04em}
-.stack-total{font-family:var(--font-mono);font-size:16px;color:var(--text-tertiary)}
-.stack-label{font-size:11px;font-weight:600;letter-spacing:0.10em;text-transform:uppercase;color:var(--text-tertiary)}
 .stack-bar{display:flex;gap:3px;height:5px;margin-bottom:16px;border-radius:3px;overflow:hidden}
 .stack-bar-seg{flex:1;background:rgba(255,255,255,0.08);border-radius:3px;transition:background 0.3s}
 .stack-bar-seg.taken{background:#6BE3A4;box-shadow:0 0 6px rgba(107,227,164,0.4)}
-.stack-list{list-style:none;display:flex;flex-direction:column;gap:6px}
-.stack-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;
-  background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.06);transition:background 0.15s}
-.stack-item:hover{background:rgba(255,255,255,0.055)}
-.stack-item.taken{opacity:0.45;background:rgba(107,227,164,0.04)}
-.stack-item.taken .stack-item-name{text-decoration:line-through;text-decoration-color:rgba(255,255,255,0.4)}
+.stack-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px; background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.06);transition:background 0.15s; margin-bottom:6px}
 .stack-cb-wrap{position:relative;width:22px;height:22px;flex-shrink:0}
 .stack-cb{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;z-index:1}
-.stack-cb-vis{width:22px;height:22px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.18);
-  background:rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:center;transition:background 0.2s,border-color 0.2s}
-.stack-cb:checked+.stack-cb-vis{background:#6BE3A4;border-color:#6BE3A4;box-shadow:0 0 12px rgba(107,227,164,0.4)}
-.stack-cb:checked+.stack-cb-vis::after{content:'';display:block;width:6px;height:10px;
-  border:solid #1C1E24;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
-.stack-item-info{flex:1;min-width:0}
-.stack-item-name{font-size:14px;font-weight:600;color:var(--text-primary)}
-.stack-item-dose{font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary);margin-top:2px}
-.stack-item-time{font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary);
-  padding:4px 8px;border-radius:8px;background:rgba(255,255,255,0.07);white-space:nowrap}
-.stack-del{background:none;border:none;color:var(--text-tertiary);font-size:16px;cursor:pointer;
-  opacity:0;transition:opacity 0.15s,color 0.15s;padding:0 4px}
-.stack-item:hover .stack-del{opacity:1}
-.stack-del:hover{color:var(--danger)}
-.stack-empty{font-size:12px;color:var(--text-tertiary);font-style:italic;padding:14px 0;text-align:center}
-
-.add-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-  border-top:1px solid rgba(255,255,255,0.06);padding-top:14px;margin-top:14px}
-.add-input{flex:1;min-width:120px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.07);
-  border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;font-family:var(--font-sans);outline:none}
-.add-input:focus{border-color:rgba(255,255,255,0.2)}
-.add-input::placeholder{color:var(--text-tertiary)}
-.add-small{width:80px;text-align:center}
-.add-select{padding:10px 8px;border-radius:10px;background:rgba(255,255,255,0.07);
-  border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:13px;cursor:pointer;outline:none;
-  -webkit-appearance:none;appearance:none}
-.add-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;
-  background:linear-gradient(180deg,#FFF 0%,#E8E5DD 100%);color:#1C1E24;
-  font-size:13px;font-weight:700;font-family:var(--font-sans);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.8),0 2px 8px rgba(0,0,0,0.3);
-  transition:transform 0.1s;white-space:nowrap}
-.add-btn:hover{transform:translateY(-1px)}
-
-/* Water */
-.water-card{margin-top:16px}
-.water-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.stack-cb-vis{width:22px;height:22px;border-radius:7px;border:1.5px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:center;transition:background 0.2s,border-color 0.2s}
+.stack-cb:checked+.stack-cb-vis{background:#6BE3A4;border-color:#6BE3A4}
 .water-count{display:flex;align-items:baseline;gap:6px}
-.water-num{font-size:48px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-0.04em;color:#7DD3FC}
-.water-total{font-family:var(--font-mono);font-size:20px;color:var(--text-tertiary)}
-.water-unit{font-size:12px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.1em}
-.water-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:6px;margin-bottom:16px}
-.water-drop{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;
-  font-size:22px;background:rgba(125,211,252,0.06);border:1px solid rgba(125,211,252,0.1);
-  cursor:pointer;transition:background 0.15s,transform 0.1s;-webkit-tap-highlight-color:transparent}
+.water-num{font-size:48px;font-weight:800;color:#7DD3FC}
+.water-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:6px;margin-bottom:16px}
+.water-drop{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center; font-size:20px;background:rgba(125,211,252,0.06);border:1px solid rgba(125,211,252,0.1); cursor:pointer}
 .water-drop.filled{background:rgba(125,211,252,0.2);border-color:rgba(125,211,252,0.3)}
-.water-drop:active{transform:scale(0.92)}
-.water-add-btn{width:100%;padding:14px;border:none;border-radius:14px;cursor:pointer;
-  background:linear-gradient(180deg,rgba(125,211,252,0.2),rgba(110,231,183,0.15));
-  color:#7DD3FC;font-size:18px;font-weight:800;font-family:var(--font-sans);
-  transition:background 0.15s,transform 0.1s;-webkit-tap-highlight-color:transparent}
-.water-add-btn:active{transform:scale(0.97)}
-
-.water-settings{margin-top:16px;border-top:1px solid rgba(255,255,255,0.06);padding-top:14px}
-.water-settings summary{font-size:12px;font-weight:600;color:var(--text-tertiary);cursor:pointer;
-  list-style:none;display:flex;align-items:center;gap:6px}
-.water-settings summary::before{content:'⚙️';font-size:14px}
-.water-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-.ws-field{display:flex;flex-direction:column;gap:4px}
-.ws-label{font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.08em}
-.ws-input{padding:8px 12px;border-radius:10px;background:rgba(255,255,255,0.07);
-  border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:13px;
-  font-family:var(--font-mono);outline:none;width:100%}
-.ws-input:focus{border-color:rgba(255,255,255,0.2)}
-
-/* Weight tracker */
-.wt-card{margin-top:16px}
-.wt-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
-.wt-current{display:flex;align-items:baseline;gap:8px}
-.wt-num{font-size:42px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-0.03em}
-.wt-unit-label{font-size:14px;color:var(--text-tertiary);font-weight:600}
-.wt-goal-badge{padding:6px 14px;border-radius:10px;background:rgba(107,227,164,0.08);border:1px solid rgba(107,227,164,0.15);
-  font-size:12px;font-weight:700;color:var(--success);font-family:var(--font-mono);white-space:nowrap}
-.wt-delta{font-size:12px;color:var(--text-tertiary);margin-bottom:14px;font-family:var(--font-mono)}
-.wt-delta .up{color:var(--danger)}.wt-delta .down{color:var(--success)}.wt-delta .same{color:var(--text-tertiary)}
-.wt-chart{width:100%;height:120px;margin-bottom:14px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);overflow:hidden}
-.wt-chart svg{width:100%;height:100%}
-.wt-chart-line{fill:none;stroke:#7DD3FC;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.wt-chart-area{fill:url(#wtAreaGrad);opacity:0.3}
-.wt-chart-goal{stroke:var(--success);stroke-width:1;stroke-dasharray:6 4;opacity:0.5}
-.wt-chart-dot{fill:#7DD3FC;r:3}
-.wt-log-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,0.06);padding-top:14px;margin-top:14px}
-.wt-log-input{width:90px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.07);
-  border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;font-family:var(--font-mono);outline:none;text-align:center}
-.wt-log-input:focus{border-color:rgba(255,255,255,0.2)}
-.wt-goal-input{width:90px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.07);
-  border:1px solid rgba(107,227,164,0.15);color:var(--success);font-size:14px;font-family:var(--font-mono);outline:none;text-align:center}
-.wt-goal-input:focus{border-color:rgba(107,227,164,0.3)}
-.wt-log-label{font-size:11px;color:var(--text-tertiary);font-weight:600;letter-spacing:0.06em;text-transform:uppercase}
-
-/* Calorie calendar */
-.cal-card{margin-top:16px}
-.cal-month{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.cal-month-label{font-size:14px;font-weight:700}
-.cal-month-btn{background:none;border:none;color:var(--text-tertiary);font-size:20px;cursor:pointer;padding:4px 10px}
-.cal-month-btn:active{color:var(--text-primary)}
-.cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px}
-.cal-wd{font-size:10px;font-weight:700;color:var(--text-tertiary);text-align:center;letter-spacing:0.08em;text-transform:uppercase}
+.wt-num{font-size:42px;font-weight:800}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:14px}
-.cal-day{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  font-size:12px;font-weight:600;font-family:var(--font-mono);cursor:pointer;transition:background 0.15s,transform 0.1s;
-  border:1px solid transparent;-webkit-tap-highlight-color:transparent}
-.cal-day:active{transform:scale(0.92)}
-.cal-day.empty{pointer-events:none}
-.cal-day.today{border-color:rgba(255,255,255,0.2)}
-.cal-day.surplus{background:rgba(255,107,107,0.15);color:#FF9B9B}
+.cal-day{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center; font-size:12px;font-weight:600;font-family:var(--font-mono);cursor:pointer; border:1px solid transparent}
 .cal-day.deficit{background:rgba(107,227,164,0.15);color:#6BE3A4}
-.cal-day.neutral{background:rgba(242,192,99,0.1);color:#F2C063}
-.cal-day.none{background:rgba(255,255,255,0.03);color:var(--text-tertiary)}
-.cal-day-kcal{font-size:8px;margin-top:1px;opacity:0.7}
-.cal-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
-.cal-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-tertiary)}
-.cal-legend-dot{width:10px;height:10px;border-radius:4px}
-.cal-log-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,0.06);padding-top:14px;margin-top:6px}
-.cal-input{width:80px;padding:10px;border-radius:12px;background:rgba(255,255,255,0.07);
-  border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;font-family:var(--font-mono);outline:none;text-align:center}
-.cal-input:focus{border-color:rgba(255,255,255,0.2)}
-.cal-log-label{font-size:11px;color:var(--text-tertiary);font-weight:600}
-.cal-target-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
-
-/* Daily habits */
-.habits-card{margin-top:16px}
-.habit-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;
-  background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.06);margin-bottom:8px}
-.habit-icon{font-size:24px;flex-shrink:0}
-.habit-info{flex:1;min-width:0}
-.habit-name{font-size:14px;font-weight:600;margin-bottom:2px}
-.habit-sub{font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono)}
-.habit-value{display:flex;align-items:center;gap:8px}
-.habit-input{width:70px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.07);
-  border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:14px;font-family:var(--font-mono);
-  outline:none;text-align:center}
-.habit-input:focus{border-color:rgba(255,255,255,0.2)}
-.habit-unit{font-size:11px;color:var(--text-tertiary);font-weight:600}
+.cal-day.surplus{background:rgba(255,107,107,0.15);color:#FF9B9B}
+.habit-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px; background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.06);margin-bottom:8px}
 .habit-bar-bg{height:4px;border-radius:2px;background:rgba(255,255,255,0.06);margin-top:6px;overflow:hidden}
 .habit-bar-fill{height:100%;border-radius:2px;transition:width 0.4s ease}
-.habit-target-btn{background:none;border:none;color:var(--text-tertiary);font-size:11px;cursor:pointer;padding:2px 6px}
-.habit-target-btn:hover{color:var(--text-secondary)}
+
+/* --- Sport Styles --- */
+.workout-stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.ws-stat{flex:1;min-width:90px;text-align:center;padding:12px;border-radius:14px; background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)}
+.ws-stat-num{font-size:24px;font-weight:800}
+.workout-day-header{display:flex;align-items:center;justify-content:space-between; padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.035); border:1px solid rgba(255,255,255,0.06);cursor:pointer; margin-bottom:6px}
+.workout-day-header.done{background:rgba(107,227,164,0.04);border-color:rgba(107,227,164,0.1)}
+.exercise-list{display:none;padding:8px 0 12px;list-style:none}
+.exercise-list.open{display:block}
+.exercise-item{display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:4px; border-radius:10px;background:rgba(255,255,255,0.025)}
+.ex-input{width:60px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:12px;text-align:center;outline:none}
+.complete-workout-btn{width:100%;padding:14px;margin-top:10px;border:none;border-radius:14px;cursor:pointer; background:linear-gradient(180deg,rgba(107,227,164,0.2),rgba(107,227,164,0.08)); color:var(--success);font-size:14px;font-weight:700}
+.history-item{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:4px; border-radius:10px;background:rgba(255,255,255,0.025)}
 
 @media(max-width:480px){
   .page-title{font-size:22px}
-  .stack-num{font-size:28px}
-  .water-num{font-size:36px}
-  .wt-num{font-size:32px}
   .add-row{flex-direction:column}
-  .add-input,.add-small{width:100%}
-  .water-settings-grid{grid-template-columns:1fr}
-  .wt-log-row{flex-direction:column;align-items:stretch}
-  .cal-log-row{flex-direction:column;align-items:stretch}
-  .cal-target-row{flex-direction:column;align-items:stretch}
+  .add-input{width:100%}
 }
 </style>
 </head>
 <body>
 
-<h1 class="page-title">Здоровье</h1>
-
-<!-- Stack -->
-<div class="section">
-  <div class="section-title">Ежедневный стек</div>
-  <div class="card">
-    <div class="stack-progress">
-      <span class="stack-num" id="stackDone">0</span>
-      <span class="stack-total" id="stackTotal">/ 0</span>
-      <span class="stack-label" id="stackLabel">принято</span>
-    </div>
-    <div class="stack-bar" id="stackBar"></div>
-    <ul class="stack-list" id="stackList"></ul>
-    <div class="stack-empty" id="stackEmpty">Добавь свои добавки и витамины.</div>
-    <div class="add-row">
-      <input class="add-input" id="stackNameInput" type="text" placeholder="Название (витамин D, омега-3…)" autocomplete="off">
-      <input class="add-input add-small" id="stackDoseInput" type="text" placeholder="Дозировка" autocomplete="off">
-      <select class="add-select" id="stackTimeSelect">
-        <option value="morning">Утро</option>
-        <option value="afternoon">День</option>
-        <option value="evening">Вечер</option>
-      </select>
-      <button class="add-btn" id="stackAddBtn">+ Добавить</button>
-    </div>
-  </div>
-</div>
-
-<!-- Water -->
-<div class="section" id="water">
-  <div class="section-title">Вода</div>
-  <div class="card water-card">
-    <div class="water-header">
-      <div class="water-count">
-        <span class="water-num" id="waterDone">0</span>
-        <span class="water-total" id="waterTotal">/ 0</span>
-      </div>
-      <div class="water-unit" id="waterUnit">бутылок</div>
-    </div>
-    <div class="water-grid" id="waterGrid"></div>
-    <button class="water-add-btn" id="waterAddBtn">+ Выпить</button>
-
-    <details class="water-settings">
-      <summary>Настройки</summary>
-      <div class="water-settings-grid">
-        <div class="ws-field">
-          <span class="ws-label">Вес (кг)</span>
-          <input class="ws-input" id="wsWeight" type="number" min="30" max="200" value="75">
+<div class="combined-container">
+  <!-- LEFT COLUMN: HEALTH -->
+  <div class="health-column">
+    <h1 class="page-title">Здоровье</h1>
+    
+    <!-- Stack -->
+    <div class="section">
+      <div class="section-title">Ежедневный стек</div>
+      <div class="card">
+        <div class="stack-progress">
+          <span class="stack-num" id="stackDone">0</span>
+          <span class="stack-total" id="stackTotal">/ 0</span>
+          <span class="stack-label" id="stackLabel" style="margin-left:8px">принято</span>
         </div>
-        <div class="ws-field">
-          <span class="ws-label">Возраст</span>
-          <input class="ws-input" id="wsAge" type="number" min="10" max="100" value="25">
-        </div>
-        <div class="ws-field">
-          <span class="ws-label">Пол</span>
-          <select class="ws-input" id="wsSex"><option value="m">М</option><option value="f">Ж</option></select>
-        </div>
-        <div class="ws-field">
-          <span class="ws-label">Спорт (ч/нед)</span>
-          <input class="ws-input" id="wsActivity" type="number" min="0" max="30" value="5">
-        </div>
-        <div class="ws-field">
-          <span class="ws-label">Объём бутылки (мл)</span>
-          <input class="ws-input" id="wsBottle" type="number" min="100" max="2000" value="500">
-        </div>
-        <div class="ws-field">
-          <span class="ws-label">Кофеин (мг/день)</span>
-          <input class="ws-input" id="wsCaffeine" type="number" min="0" max="1000" value="200">
+        <div class="stack-bar" id="stackBar"></div>
+        <ul class="stack-list" id="stackList" style="list-style:none"></ul>
+        <div class="empty" id="stackEmpty">Добавь свои добавки и витамины.</div>
+        <div class="add-row">
+          <input class="add-input" id="stackNameInput" type="text" placeholder="Название..." autocomplete="off">
+          <select class="add-input" id="stackTimeSelect" style="flex:0 0 100px; min-width:auto">
+            <option value="morning">Утро</option>
+            <option value="afternoon">День</option>
+            <option value="evening">Вечер</option>
+          </select>
+          <button class="add-btn" id="stackAddBtn">+</button>
         </div>
       </div>
-    </details>
-  </div>
-</div>
-
-<!-- Weight tracker -->
-<div class="section">
-  <div class="section-title">Вес</div>
-  <div class="card wt-card">
-    <div class="wt-header">
-      <div class="wt-current">
-        <span class="wt-num" id="wtCurrent">—</span>
-        <span class="wt-unit-label">кг</span>
-      </div>
-      <div class="wt-goal-badge" id="wtGoalBadge">Цель: — кг</div>
     </div>
-    <div class="wt-delta" id="wtDelta"></div>
-    <div class="wt-chart" id="wtChart"></div>
-    <div class="wt-log-row">
-      <div>
-        <div class="wt-log-label">Сегодня</div>
-        <input class="wt-log-input" id="wtInput" type="number" step="0.1" min="30" max="300" placeholder="кг">
+
+    <!-- Water -->
+    <div class="section" id="water">
+      <div class="section-title">Вода</div>
+      <div class="card">
+        <div class="water-count" style="margin-bottom:16px">
+          <span class="water-num" id="waterDone">0</span>
+          <span class="water-total" style="font-size:20px; color:var(--text-tertiary)">/ 0</span>
+        </div>
+        <div class="water-grid" id="waterGrid"></div>
+        <button class="add-btn" id="waterAddBtn" style="width:100%; padding:14px">+ Выпить</button>
       </div>
-      <button class="add-btn" id="wtLogBtn">Записать</button>
-      <div style="margin-left:auto">
-        <div class="wt-log-label">Цель</div>
-        <input class="wt-goal-input" id="wtGoalInput" type="number" step="0.1" min="30" max="300" placeholder="кг">
+    </div>
+
+    <!-- Weight -->
+    <div class="section">
+      <div class="section-title">Вес</div>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px">
+          <span class="wt-num" id="wtCurrent">—</span>
+          <span id="wtGoalBadge" style="font-size:12px; color:var(--success)">Цель: —</span>
+        </div>
+        <div class="add-row" style="border:none; padding:0; margin:0">
+          <input class="add-input" id="wtInput" type="number" step="0.1" placeholder="кг">
+          <button class="add-btn" id="wtLogBtn">Ок</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Habits -->
+    <div class="section">
+      <div class="section-title">Привычки</div>
+      <div class="card">
+        <div class="habit-row">
+          <div style="flex:1">
+            <div style="font-size:14px; font-weight:600">Сон</div>
+            <div class="habit-bar-bg"><div class="habit-bar-fill" id="sleepBar" style="background:#C084FC"></div></div>
+          </div>
+          <input class="add-input" id="sleepInput" type="number" step="0.5" style="flex:0 0 60px; min-width:auto; text-align:center" placeholder="ч">
+        </div>
+        <div class="habit-row">
+          <div style="flex:1">
+            <div style="font-size:14px; font-weight:600">Шаги</div>
+            <div class="habit-bar-bg"><div class="habit-bar-fill" id="stepsBar" style="background:#F2C063"></div></div>
+          </div>
+          <input class="add-input" id="stepsInput" type="number" style="flex:0 0 80px; min-width:auto; text-align:center" placeholder="шагов">
+        </div>
+        <button class="add-btn" id="habitsLogBtn" style="width:100%; margin-top:8px">Записать</button>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Calorie calendar -->
-<div class="section">
-  <div class="section-title">Калории</div>
-  <div class="card cal-card">
-    <div class="cal-month">
-      <button class="cal-month-btn" id="calPrev">‹</button>
-      <div class="cal-month-label" id="calMonthLabel"></div>
-      <button class="cal-month-btn" id="calNext">›</button>
-    </div>
-    <div class="cal-weekdays">
-      <div class="cal-wd">Пн</div><div class="cal-wd">Вт</div><div class="cal-wd">Ср</div>
-      <div class="cal-wd">Чт</div><div class="cal-wd">Пт</div><div class="cal-wd">Сб</div><div class="cal-wd">Вс</div>
-    </div>
-    <div class="cal-grid" id="calGrid"></div>
-    <div class="cal-legend">
-      <div class="cal-legend-item"><div class="cal-legend-dot" style="background:rgba(107,227,164,0.4)"></div>Дефицит</div>
-      <div class="cal-legend-item"><div class="cal-legend-dot" style="background:rgba(242,192,99,0.4)"></div>Норма</div>
-      <div class="cal-legend-item"><div class="cal-legend-dot" style="background:rgba(255,107,107,0.4)"></div>Профицит</div>
-    </div>
-    <div class="cal-log-row">
-      <div>
-        <div class="cal-log-label">Съедено сегодня</div>
-        <input class="cal-input" id="calEatenInput" type="number" min="0" max="9999" placeholder="ккал">
-      </div>
-      <button class="add-btn" id="calLogBtn">Записать</button>
-    </div>
-    <div class="cal-target-row">
-      <div>
-        <div class="cal-log-label">Цель (ккал/день)</div>
-        <input class="cal-input" id="calTargetInput" type="number" min="500" max="9999" placeholder="2000">
-      </div>
-      <button class="add-btn" id="calTargetBtn" style="background:linear-gradient(180deg,rgba(255,255,255,0.1),rgba(255,255,255,0.06));color:var(--text-secondary);box-shadow:none;border:1px solid rgba(255,255,255,0.1)">Сохранить</button>
-    </div>
-  </div>
-</div>
+  <!-- RIGHT COLUMN: SPORT -->
+  <div class="sport-column">
+    <h1 class="page-title">Спорт</h1>
 
-<!-- Daily habits -->
-<div class="section">
-  <div class="section-title">Ежедневные привычки</div>
-  <div class="card habits-card">
-    <div class="habit-row" id="habitSleep">
-      <div class="habit-icon">😴</div>
-      <div class="habit-info">
-        <div class="habit-name">Сон</div>
-        <div class="habit-sub" id="sleepSub">Цель: 8ч</div>
-        <div class="habit-bar-bg"><div class="habit-bar-fill" id="sleepBar" style="background:#C084FC"></div></div>
-      </div>
-      <div class="habit-value">
-        <input class="habit-input" id="sleepInput" type="number" step="0.5" min="0" max="24" placeholder="—">
-        <div class="habit-unit">ч</div>
+    <!-- Gym Stats -->
+    <div class="workout-stats" id="workoutStats">
+      <div class="ws-stat"><div class="ws-stat-num" id="statWorkouts" style="color:var(--success)">0</div><div style="font-size:9px; color:var(--text-tertiary)">Всего</div></div>
+      <div class="ws-stat"><div class="ws-stat-num" id="statStreak" style="color:var(--warning)">0</div><div style="font-size:9px; color:var(--text-tertiary)">Стрик</div></div>
+      <div class="ws-stat"><div class="ws-stat-num" id="statThisWeek" style="color:#7DD3FC">0</div><div style="font-size:9px; color:var(--text-tertiary)">Неделя</div></div>
+    </div>
+
+    <!-- Program -->
+    <div class="section">
+      <div class="section-title">Программа</div>
+      <div class="card">
+        <div id="programList"></div>
+        <div class="empty" id="programEmpty">Нет программ.</div>
+        <div class="add-row">
+          <input class="add-input" id="dayNameInput" type="text" placeholder="Название дня...">
+          <button class="add-btn" id="dayAddBtn">+</button>
+        </div>
       </div>
     </div>
-    <div class="habit-row" id="habitSteps">
-      <div class="habit-icon">🚶</div>
-      <div class="habit-info">
-        <div class="habit-name">Шаги</div>
-        <div class="habit-sub" id="stepsSub">Цель: 10 000</div>
-        <div class="habit-bar-bg"><div class="habit-bar-fill" id="stepsBar" style="background:#F2C063"></div></div>
+
+    <!-- History -->
+    <div class="section">
+      <div class="section-title">История</div>
+      <div class="card">
+        <div id="historyList"></div>
+        <div class="empty" id="historyEmpty">Пусто.</div>
       </div>
-      <div class="habit-value">
-        <input class="habit-input" id="stepsInput" type="number" min="0" max="99999" placeholder="—" style="width:80px">
-        <div class="habit-unit">шаг</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-      <button class="add-btn" id="habitsLogBtn">Записать</button>
-      <button class="add-btn" id="habitTargetsBtn" style="background:linear-gradient(180deg,rgba(255,255,255,0.1),rgba(255,255,255,0.06));color:var(--text-secondary);box-shadow:none;border:1px solid rgba(255,255,255,0.1)">Цели</button>
     </div>
   </div>
 </div>
 
 <script>
+/* --- Combined Logic --- */
 (function(){
   'use strict';
   var G = window.Gamification;
-
   function dateKey(){
-    var d=new Date();
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    var d = new Date();
+    var offset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - offset).toISOString().slice(0, 10);
   }
+
+  /* --- HEALTH LOGIC --- */
   var TIME_LABELS = { morning: 'Утро', afternoon: 'День', evening: 'Вечер' };
-
-  // === STACK ===
   function getStack(){ return G.storeGet('stack:items') || []; }
-  function setStack(items){ G.storeSet('stack:items', items); }
-  function getTaken(){
-    var key = 'stack:taken:' + dateKey();
-    return G.storeGet(key) || {};
-  }
-  function setTaken(obj){
-    G.storeSet('stack:taken:' + dateKey(), obj);
-  }
-
+  function getTaken(){ return G.storeGet('stack:taken:' + dateKey()) || {}; }
   function renderStack(){
-    var items = getStack();
-    var taken = getTaken();
-    var list = document.getElementById('stackList');
-    var empty = document.getElementById('stackEmpty');
-    var bar = document.getElementById('stackBar');
-    list.innerHTML = '';
-    bar.innerHTML = '';
-    var doneCount = 0;
-    if(items.length === 0){ empty.style.display = ''; }
-    else {
-      empty.style.display = 'none';
-      items.forEach(function(item, i){
-        var isTaken = !!taken[item.id];
-        if(isTaken) doneCount++;
-        var seg = document.createElement('div');
-        seg.className = 'stack-bar-seg' + (isTaken ? ' taken' : '');
-        bar.appendChild(seg);
-
-        var li = document.createElement('li');
-        li.className = 'stack-item' + (isTaken ? ' taken' : '');
-        li.innerHTML =
-          '<label class="stack-cb-wrap"><input type="checkbox" class="stack-cb"'+(isTaken?' checked':'')+' data-id="'+item.id+'">' +
-          '<div class="stack-cb-vis"></div></label>' +
-          '<div class="stack-item-info"><div class="stack-item-name">'+item.name+'</div>' +
-          (item.dose ? '<div class="stack-item-dose">'+item.dose+'</div>' : '') + '</div>' +
-          '<span class="stack-item-time">'+(TIME_LABELS[item.time]||item.time)+'</span>' +
-          '<button class="stack-del" data-idx="'+i+'">×</button>';
-        list.appendChild(li);
-      });
-    }
-    document.getElementById('stackDone').textContent = doneCount;
+    var items = getStack(), taken = getTaken(), list = document.getElementById('stackList'), bar = document.getElementById('stackBar');
+    list.innerHTML = ''; bar.innerHTML = ''; var done = 0;
+    document.getElementById('stackEmpty').style.display = items.length ? 'none' : 'block';
+    items.forEach(function(it, i){
+      var isT = !!taken[it.id]; if(isT) done++;
+      var s = document.createElement('div'); s.className = 'stack-bar-seg'+(isT?' taken':''); bar.appendChild(s);
+      var li = document.createElement('li'); li.className = 'stack-item'+(isT?' taken':'');
+      li.innerHTML = '<label class="stack-cb-wrap"><input type="checkbox" class="stack-cb"'+(isT?' checked':'')+' data-id="'+it.id+'"><div class="stack-cb-vis"></div></label><div style="flex:1"><div class="stack-item-name">'+it.name+'</div></div><span style="font-size:10px; color:var(--text-tertiary)">'+(TIME_LABELS[it.time]||it.time)+'</span><button class="stack-del" style="margin-left:8px" data-idx="'+i+'">×</button>';
+      list.appendChild(li);
+    });
+    document.getElementById('stackDone').textContent = done;
     document.getElementById('stackTotal').textContent = '/ ' + items.length;
-    document.getElementById('stackLabel').textContent = items.length === 0 ? 'добавь стек' : (doneCount === items.length && items.length > 0 ? 'всё принято!' : 'принято');
-
-    list.querySelectorAll('.stack-cb').forEach(function(cb){
-      cb.addEventListener('change', function(){
-        var t = getTaken();
-        if(cb.checked) t[cb.dataset.id] = Date.now();
-        else delete t[cb.dataset.id];
-        setTaken(t);
-        renderStack();
-      });
-    });
-    list.querySelectorAll('.stack-del').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        var items = getStack();
-        items.splice(parseInt(btn.dataset.idx,10), 1);
-        setStack(items);
-        renderStack();
-      });
-    });
+    list.querySelectorAll('.stack-cb').forEach(function(cb){ cb.onclick = function(){ var t = getTaken(); if(cb.checked) t[cb.dataset.id]=Date.now(); else delete t[cb.dataset.id]; G.storeSet('stack:taken:'+dateKey(), t); renderStack(); }; });
+    list.querySelectorAll('.stack-del').forEach(function(btn){ btn.onclick = function(){ var its = getStack(); its.splice(btn.dataset.idx, 1); G.storeSet('stack:items', its); renderStack(); }; });
   }
-
-  document.getElementById('stackAddBtn').addEventListener('click', function(){
-    var name = document.getElementById('stackNameInput').value.trim();
-    if(!name) return;
-    var dose = document.getElementById('stackDoseInput').value.trim();
-    var time = document.getElementById('stackTimeSelect').value;
-    var items = getStack();
-    items.push({ id: 'sup_'+Date.now()+'_'+Math.random().toString(36).slice(2,6), name:name, dose:dose, time:time });
-    setStack(items);
-    document.getElementById('stackNameInput').value = '';
-    document.getElementById('stackDoseInput').value = '';
-    renderStack();
-  });
-  document.getElementById('stackNameInput').addEventListener('keydown', function(e){
-    if(e.key==='Enter') document.getElementById('stackAddBtn').click();
-  });
-
-  renderStack();
-
-  // === WATER ===
-  function getWaterState(){
-    var s = G.storeGet('po_water_v1');
-    if(!s) {
-      s = { unit:'bottle', bottleMl:500, glassMl:250, weightUnit:'kg',
-            profile:{weightKg:75,age:25,sex:'m',activityHrsPerWeek:5},
-            caffeineMgPerDay:200, substances:[], logs:{} };
-      G.storeSet('po_water_v1', s);
-    }
-    return s;
-  }
-  function calcWaterTarget(s){
-    var p = s.profile||{weightKg:75};
-    var wKg = p.weightKg||75;
-    var base = wKg*35;
-    var exercise = (p.activityHrsPerWeek||0)/7*500;
-    var caffeine = Math.max(0,(s.caffeineMgPerDay||0)-200)*1.5;
-    var adjust = 0;
-    if(p.sex==='m') adjust+=200;
-    if((p.age||0)>=50) adjust+=100;
-    var totalMl = base+exercise+caffeine+adjust;
-    var unitVol = s.bottleMl||500;
-    return Math.max(1, Math.ceil(totalMl/unitVol));
-  }
+  document.getElementById('stackAddBtn').onclick = function(){
+    var n = document.getElementById('stackNameInput').value; if(!n) return;
+    var its = getStack(); its.push({id:'s'+Date.now(), name:n, time:document.getElementById('stackTimeSelect').value});
+    G.storeSet('stack:items', its); document.getElementById('stackNameInput').value=''; renderStack();
+  };
 
   function renderWater(){
-    var s = getWaterState();
-    var today = dateKey();
-    var done = (s.logs||{})[today]||0;
-    var total = calcWaterTarget(s);
-    document.getElementById('waterDone').textContent = done;
-    document.getElementById('waterTotal').textContent = '/ '+total;
-    document.getElementById('waterUnit').textContent = (s.unit==='glass'?'стаканов':'бутылок');
-
-    var grid = document.getElementById('waterGrid');
-    grid.innerHTML = '';
-    for(var i=0; i<total; i++){
-      var drop = document.createElement('div');
-      drop.className = 'water-drop'+(i<done?' filled':'');
-      drop.textContent = i<done?'💧':'·';
-      grid.appendChild(drop);
-    }
-
-    document.getElementById('wsWeight').value = (s.profile||{}).weightKg||75;
-    document.getElementById('wsAge').value = (s.profile||{}).age||25;
-    document.getElementById('wsSex').value = (s.profile||{}).sex||'m';
-    document.getElementById('wsActivity').value = (s.profile||{}).activityHrsPerWeek||5;
-    document.getElementById('wsBottle').value = s.bottleMl||500;
-    document.getElementById('wsCaffeine').value = s.caffeineMgPerDay||200;
+    var s = G.storeGet('po_water_v1') || {logs:{}}; var done = (s.logs||{})[dateKey()]||0;
+    document.getElementById('waterDone').textContent = done; document.getElementById('waterTotal').textContent = '/ 8';
+    var grid = document.getElementById('waterGrid'); grid.innerHTML = '';
+    for(var i=0; i<8; i++){ var d = document.createElement('div'); d.className = 'water-drop'+(i<done?' filled':''); d.textContent = i<done?'💧':'·'; grid.appendChild(d); }
   }
-
-  document.getElementById('waterAddBtn').addEventListener('click', function(){
-    var s = getWaterState();
-    s.logs = s.logs||{};
-    var k = dateKey();
-    s.logs[k] = (s.logs[k]||0)+1;
-    G.storeSet('po_water_v1', s);
-    renderWater();
-  });
-
-  ['wsWeight','wsAge','wsSex','wsActivity','wsBottle','wsCaffeine'].forEach(function(id){
-    document.getElementById(id).addEventListener('change', function(){
-      var s = getWaterState();
-      s.profile = s.profile||{};
-      s.profile.weightKg = parseInt(document.getElementById('wsWeight').value,10)||75;
-      s.profile.age = parseInt(document.getElementById('wsAge').value,10)||25;
-      s.profile.sex = document.getElementById('wsSex').value;
-      s.profile.activityHrsPerWeek = parseInt(document.getElementById('wsActivity').value,10)||0;
-      s.bottleMl = parseInt(document.getElementById('wsBottle').value,10)||500;
-      s.caffeineMgPerDay = parseInt(document.getElementById('wsCaffeine').value,10)||0;
-      G.storeSet('po_water_v1', s);
-      renderWater();
-    });
-  });
-
-  renderWater();
-
-  // === WEIGHT TRACKER ===
-  function getWeightData(){ return G.storeGet('weight_v1') || { goal: null, entries: [] }; }
-  function setWeightData(d){ G.storeSet('weight_v1', d); }
+  document.getElementById('waterAddBtn').onclick = function(){
+    var s = G.storeGet('po_water_v1') || {logs:{}}; s.logs = s.logs || {}; s.logs[dateKey()] = (s.logs[dateKey()]||0)+1;
+    G.storeSet('po_water_v1', s); renderWater();
+  };
 
   function renderWeight(){
-    var data = getWeightData();
-    var entries = data.entries || [];
-    var last = entries.length > 0 ? entries[entries.length-1] : null;
-
-    document.getElementById('wtCurrent').textContent = last ? last.kg.toFixed(1) : '—';
-    document.getElementById('wtGoalBadge').textContent = data.goal ? ('Цель: '+data.goal.toFixed(1)+' кг') : 'Цель не задана';
-    document.getElementById('wtGoalInput').value = data.goal || '';
-
-    var todayKey = dateKey();
-    var todayEntry = entries.find(function(e){ return e.date === todayKey; });
-    if(todayEntry) document.getElementById('wtInput').value = todayEntry.kg;
-
-    // Delta
-    var deltaEl = document.getElementById('wtDelta');
-    if(entries.length >= 2){
-      var prev = entries[entries.length-2].kg;
-      var diff = last.kg - prev;
-      var sign = diff > 0 ? '+' : '';
-      var cls = diff > 0 ? 'up' : diff < 0 ? 'down' : 'same';
-      deltaEl.innerHTML = '<span class="'+cls+'">'+sign+diff.toFixed(1)+' кг</span> с прошлого взвешивания';
-    } else { deltaEl.textContent = ''; }
-
-    // Chart
-    renderWeightChart(data);
+    var d = G.storeGet('weight_v1') || {entries:[]}; var last = d.entries.length ? d.entries[d.entries.length-1].kg : '—';
+    document.getElementById('wtCurrent').textContent = last;
   }
-
-  function renderWeightChart(data){
-    var container = document.getElementById('wtChart');
-    var entries = (data.entries || []).slice(-30);
-    if(entries.length < 2){ container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-tertiary);font-size:12px">Нужно минимум 2 записи для графика</div>'; return; }
-
-    var vals = entries.map(function(e){ return e.kg; });
-    var mn = Math.min.apply(null, vals);
-    var mx = Math.max.apply(null, vals);
-    if(data.goal){ mn = Math.min(mn, data.goal); mx = Math.max(mx, data.goal); }
-    var range = mx - mn || 1;
-    var pad = range * 0.1;
-    mn -= pad; mx += pad; range = mx - mn;
-
-    var w = 400, h = 120;
-    var pts = entries.map(function(e,i){
-      var x = (i/(entries.length-1)) * (w - 20) + 10;
-      var y = h - 10 - ((e.kg - mn)/range) * (h - 20);
-      return { x:x, y:y };
-    });
-    var line = pts.map(function(p,i){ return (i===0?'M':'L')+p.x.toFixed(1)+','+p.y.toFixed(1); }).join(' ');
-    var area = line + ' L'+pts[pts.length-1].x.toFixed(1)+','+h+' L'+pts[0].x.toFixed(1)+','+h+' Z';
-
-    var goalLine = '';
-    if(data.goal){
-      var gy = h - 10 - ((data.goal - mn)/range) * (h - 20);
-      goalLine = '<line class="wt-chart-goal" x1="0" y1="'+gy.toFixed(1)+'" x2="'+w+'" y2="'+gy.toFixed(1)+'"/>';
-    }
-
-    var dots = pts.map(function(p){ return '<circle class="wt-chart-dot" cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="3"/>'; }).join('');
-
-    container.innerHTML = '<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none">' +
-      '<defs><linearGradient id="wtAreaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7DD3FC"/><stop offset="100%" stop-color="#7DD3FC" stop-opacity="0"/></linearGradient></defs>' +
-      '<path class="wt-chart-area" d="'+area+'"/>' +
-      '<path class="wt-chart-line" d="'+line+'"/>' +
-      goalLine + dots + '</svg>';
-  }
-
-  document.getElementById('wtLogBtn').addEventListener('click', function(){
-    var val = parseFloat(document.getElementById('wtInput').value);
-    if(!val || val < 20 || val > 400) return;
-    var data = getWeightData();
-    var today = dateKey();
-    var existing = data.entries.findIndex(function(e){ return e.date === today; });
-    if(existing >= 0) data.entries[existing].kg = val;
-    else data.entries.push({ date: today, kg: val });
-    data.entries.sort(function(a,b){ return a.date.localeCompare(b.date); });
-    setWeightData(data);
-    renderWeight();
-  });
-
-  document.getElementById('wtGoalInput').addEventListener('change', function(){
-    var val = parseFloat(this.value);
-    var data = getWeightData();
-    data.goal = (val && val > 20 && val < 400) ? val : null;
-    setWeightData(data);
-    renderWeight();
-  });
-
-  renderWeight();
-
-  // === CALORIE CALENDAR ===
-  var calViewDate = new Date();
-  function getCalData(){ return G.storeGet('calories_v1') || { target: 2000, entries: {} }; }
-  function setCalData(d){ G.storeSet('calories_v1', d); }
-
-  var MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-
-  function renderCalendar(){
-    var data = getCalData();
-    var year = calViewDate.getFullYear(), month = calViewDate.getMonth();
-    document.getElementById('calMonthLabel').textContent = MONTH_NAMES[month]+' '+year;
-
-    var firstDay = new Date(year, month, 1).getDay();
-    var offset = (firstDay + 6) % 7;
-    var daysInMonth = new Date(year, month + 1, 0).getDate();
-    var today = dateKey();
-
-    var grid = document.getElementById('calGrid');
-    grid.innerHTML = '';
-
-    for(var e = 0; e < offset; e++){
-      var empty = document.createElement('div');
-      empty.className = 'cal-day empty';
-      grid.appendChild(empty);
-    }
-
-    for(var d = 1; d <= daysInMonth; d++){
-      var dk = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-      var eaten = data.entries[dk];
-      var cell = document.createElement('div');
-      var cls = 'cal-day';
-      if(dk === today) cls += ' today';
-      if(eaten != null){
-        var diff = eaten - data.target;
-        if(diff > 100) cls += ' surplus';
-        else if(diff < -100) cls += ' deficit';
-        else cls += ' neutral';
-      } else { cls += ' none'; }
-      cell.className = cls;
-      cell.innerHTML = '<span>'+d+'</span>' + (eaten != null ? '<span class="cal-day-kcal">'+eaten+'</span>' : '');
-      cell.dataset.date = dk;
-      cell.addEventListener('click', function(){
-        var val = prompt('Калории за '+this.dataset.date+':', (data.entries[this.dataset.date] || ''));
-        if(val === null) return;
-        val = parseInt(val, 10);
-        if(isNaN(val) || val < 0) delete data.entries[this.dataset.date];
-        else data.entries[this.dataset.date] = val;
-        setCalData(data);
-        renderCalendar();
-      });
-      grid.appendChild(cell);
-    }
-
-    document.getElementById('calTargetInput').value = data.target;
-    var todayEntry = data.entries[today];
-    if(todayEntry != null) document.getElementById('calEatenInput').value = todayEntry;
-  }
-
-  document.getElementById('calPrev').addEventListener('click', function(){
-    calViewDate.setMonth(calViewDate.getMonth() - 1);
-    renderCalendar();
-  });
-  document.getElementById('calNext').addEventListener('click', function(){
-    calViewDate.setMonth(calViewDate.getMonth() + 1);
-    renderCalendar();
-  });
-  document.getElementById('calLogBtn').addEventListener('click', function(){
-    var val = parseInt(document.getElementById('calEatenInput').value, 10);
-    if(isNaN(val) || val < 0) return;
-    var data = getCalData();
-    data.entries[dateKey()] = val;
-    setCalData(data);
-    renderCalendar();
-  });
-  document.getElementById('calTargetBtn').addEventListener('click', function(){
-    var val = parseInt(document.getElementById('calTargetInput').value, 10);
-    if(!val || val < 500) return;
-    var data = getCalData();
-    data.target = val;
-    setCalData(data);
-    renderCalendar();
-  });
-
-  renderCalendar();
-
-  // === DAILY HABITS (Sleep & Steps) ===
-  function getHabits(){ return G.storeGet('habits_v1') || { sleepGoal: 8, stepsGoal: 10000, entries: {} }; }
-  function setHabits(d){ G.storeSet('habits_v1', d); }
+  document.getElementById('wtLogBtn').onclick = function(){
+    var v = parseFloat(document.getElementById('wtInput').value); if(!v) return;
+    var d = G.storeGet('weight_v1') || {entries:[]}; d.entries.push({date:dateKey(), kg:v});
+    G.storeSet('weight_v1', d); renderWeight();
+  };
 
   function renderHabits(){
-    var data = getHabits();
-    var today = dateKey();
-    var entry = data.entries[today] || {};
-
-    document.getElementById('sleepSub').textContent = 'Цель: '+data.sleepGoal+'ч';
-    document.getElementById('stepsSub').textContent = 'Цель: '+data.stepsGoal.toLocaleString();
-
-    var sleep = entry.sleep || 0;
-    var steps = entry.steps || 0;
-    if(sleep) document.getElementById('sleepInput').value = sleep;
-    if(steps) document.getElementById('stepsInput').value = steps;
-
-    var sleepPct = Math.min(100, (sleep / data.sleepGoal) * 100);
-    var stepsPct = Math.min(100, (steps / data.stepsGoal) * 100);
-    document.getElementById('sleepBar').style.width = sleepPct+'%';
-    document.getElementById('stepsBar').style.width = stepsPct+'%';
+    var d = G.storeGet('habits_v1') || {sleepGoal:8, stepsGoal:10000, entries:{}}; var e = d.entries[dateKey()] || {};
+    document.getElementById('sleepBar').style.width = Math.min(100, ((e.sleep||0)/d.sleepGoal)*100)+'%';
+    document.getElementById('stepsBar').style.width = Math.min(100, ((e.steps||0)/d.stepsGoal)*100)+'%';
   }
+  document.getElementById('habitsLogBtn').onclick = function(){
+    var d = G.storeGet('habits_v1') || {entries:{}}; var today = dateKey(); d.entries[today] = d.entries[today] || {};
+    var s = parseFloat(document.getElementById('sleepInput').value), st = parseInt(document.getElementById('stepsInput').value);
+    if(s) d.entries[today].sleep = s; if(st) d.entries[today].steps = st;
+    G.storeSet('habits_v1', d); renderHabits();
+  };
 
-  document.getElementById('habitsLogBtn').addEventListener('click', function(){
-    var data = getHabits();
-    var today = dateKey();
-    if(!data.entries[today]) data.entries[today] = {};
-    var sleepVal = parseFloat(document.getElementById('sleepInput').value);
-    var stepsVal = parseInt(document.getElementById('stepsInput').value, 10);
-    if(sleepVal > 0) data.entries[today].sleep = sleepVal;
-    if(stepsVal > 0) data.entries[today].steps = stepsVal;
-    setHabits(data);
-    renderHabits();
-  });
+  /* --- SPORT LOGIC --- */
+  function getProgram(){ return G.storeGet('gym_program_v1') || []; }
+  function getHistory(){ return G.storeGet('gym_history_v1') || []; }
+  function renderGym(){
+    var prog = getProgram(), hist = getHistory(), container = document.getElementById('programList');
+    document.getElementById('statWorkouts').textContent = hist.length;
+    document.getElementById('programEmpty').style.display = prog.length ? 'none' : 'block';
+    container.innerHTML = '';
+    prog.forEach(function(day, di){
+      var h = document.createElement('div'); h.className = 'workout-day-header';
+      h.innerHTML = '<div class="wdh-left"><span class="wdh-icon">💪</span><div class="wdh-name">'+day.name+'</div></div>';
+      var exList = document.createElement('div'); exList.className = 'exercise-list';
+      (day.exercises||[]).forEach(function(ex){ var li = document.createElement('div'); li.className='exercise-item'; li.innerHTML='<span class="ex-name">'+ex.name+'</span><span class="ex-sets">'+ex.sets+'×'+ex.reps+'</span>'; exList.appendChild(li); });
+      var btn = document.createElement('button'); btn.className='complete-workout-btn'; btn.textContent='Завершить';
+      btn.onclick = function(){ hist.unshift({dayName:day.name, date:new Date().toISOString()}); G.storeSet('gym_history_v1', hist); G.completeTask('health', 'hard'); renderGym(); };
+      exList.appendChild(btn); h.onclick = function(){ exList.classList.toggle('open'); };
+      container.appendChild(h); container.appendChild(exList);
+    });
+    var hList = document.getElementById('historyList'); hList.innerHTML = '';
+    hist.slice(0,5).forEach(function(h){ var it = document.createElement('div'); it.className='history-item'; it.innerHTML='<span class="hi-date">'+h.date.slice(5,10)+'</span><span class="hi-name">'+h.dayName+'</span>'; hList.appendChild(it); });
+  }
+  document.getElementById('dayAddBtn').onclick = function(){
+    var n = document.getElementById('dayNameInput').value; if(!n) return;
+    var p = getProgram(); p.push({id:'d'+Date.now(), name:n, exercises:[]});
+    G.storeSet('gym_program_v1', p); document.getElementById('dayNameInput').value=''; renderGym();
+  };
 
-  document.getElementById('habitTargetsBtn').addEventListener('click', function(){
-    var data = getHabits();
-    var newSleep = prompt('Цель по сну (часов):', data.sleepGoal);
-    if(newSleep !== null){
-      var s = parseFloat(newSleep);
-      if(s > 0 && s <= 24) data.sleepGoal = s;
-    }
-    var newSteps = prompt('Цель по шагам:', data.stepsGoal);
-    if(newSteps !== null){
-      var st = parseInt(newSteps, 10);
-      if(st > 0 && st <= 100000) data.stepsGoal = st;
-    }
-    setHabits(data);
-    renderHabits();
-  });
-
-  renderHabits();
+  function renderAll(){ renderStack(); renderWater(); renderWeight(); renderHabits(); renderGym(); }
+  renderAll(); window.addEventListener('gamification-update', renderAll);
 })();
 </script>
 </body>
