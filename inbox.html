@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Inbox">
+<meta name="theme-color" content="#1C1E24">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="app-icon.svg">
+<title>Разгрузка (Inbox)</title>
+<script src="gamification.js?v=7"></script>
+<script src="supabase-sync.js?v=26-sb" defer></script>
+<script src="topbar.js?v=18" defer></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --font-sans:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;
+  --text-primary:#FAFAFA;--text-secondary:#D1D1D1;--text-tertiary:#A0A0A0;
+  --success:#6BE3A4;--warning:#F2C063;--danger:#FF6B6B;
+  --card-bg:rgba(255,255,255,0.09);--card-radius:16px;
+}
+html{background:#1C1E24; scrollbar-gutter: stable;}
+body{font-family:var(--font-sans);color:var(--text-primary);background:#1C1E24;
+  min-height:100vh;max-width:800px;margin:0 auto;-webkit-font-smoothing:antialiased}
+
+body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(192,132,252,0.12),transparent),
+  radial-gradient(ellipse 50% 50% at 18% 90%,rgba(125,211,252,0.08),transparent);
+  filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
+@keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
+
+.page-title{font-size:28px;font-weight:700;letter-spacing:-0.025em;
+  background:linear-gradient(180deg,#FFF 0%,#C7C4BC 120%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin:16px 0 4px}
+
+.inbox-input-card {
+    background: var(--card-bg); border-radius: 20px; padding: 24px;
+    border: 1px solid rgba(255,255,255,0.1); margin-bottom: 32px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+.inbox-input {
+    width: 100%; background: none; border: none; font-size: 20px;
+    color: #fff; outline: none; font-family: inherit;
+    padding: 0; margin-bottom: 12px;
+}
+.inbox-input::placeholder { color: var(--text-tertiary); opacity: 0.5; }
+.inbox-hint { font-size: 11px; color: var(--text-tertiary); }
+
+/* Item Card */
+.inbox-item {
+    background: rgba(255,255,255,0.05); border-radius: 16px; padding: 16px 20px;
+    border: 1px solid rgba(255,255,255,0.06); margin-bottom: 12px;
+    transition: transform 0.2s, border-color 0.2s;
+    animation: slideIn 0.3s ease-out backwards;
+}
+@keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.inbox-item:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
+.inbox-text { font-size: 15px; font-weight: 500; margin-bottom: 14px; line-height: 1.4; color: var(--text-secondary); }
+
+.inbox-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.action-btn {
+    padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05); color: var(--text-secondary);
+    font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: all 0.15s;
+}
+.action-btn:hover { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.2); }
+.action-btn.btn-task:hover { color: var(--success); border-color: rgba(107,227,164,0.3); background: rgba(107,227,164,0.05); }
+.action-btn.btn-goal:hover { color: var(--warning); border-color: rgba(242,192,99,0.3); background: rgba(242,192,99,0.05); }
+.action-btn.btn-del:hover { color: var(--danger); border-color: rgba(255,107,107,0.3); background: rgba(255,107,107,0.05); }
+
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-tertiary); }
+.empty-icon { font-size: 48px; margin-bottom: 16px; display: block; opacity: 0.3; }
+
+/* Modal for moving */
+.modal-overlay{display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.8);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
+.modal-overlay.show{display:flex}
+.modal-box{background:#1C1E24;border-radius:24px;padding:28px;max-width:380px;width:100%;border:1px solid rgba(255,255,255,0.14);box-shadow:0 24px 60px rgba(0,0,0,0.6)}
+.modal-title{font-size:18px; font-weight:800; margin-bottom:20px; text-align:center;}
+.modal-grid{display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;}
+.modal-btn{padding:14px; border-radius:14px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:#fff; font-size:13px; font-weight:700; cursor:pointer; text-align:center; transition:all 0.15s;}
+.modal-btn:hover{background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.3);}
+.modal-btn.primary{background:linear-gradient(180deg, #fff, #e0e0e0); color:#1c1e24; border:none;}
+</style>
+</head>
+<body>
+
+<h1 class="page-title">Разгрузка мозга</h1>
+<p style="font-size:12px; color:var(--text-tertiary); margin-bottom:24px;">Выгружай всё, что держишь в голове. Сортируй потом.</p>
+
+<div class="inbox-input-card">
+    <input type="text" class="inbox-input" id="inboxInput" placeholder="Что на уме?" autofocus autocomplete="off">
+    <div class="inbox-hint">Нажми Enter, чтобы сохранить мысль.</div>
+</div>
+
+<div id="inboxList">
+  <!-- Items here -->
+</div>
+
+<!-- Modal: Move to Goals -->
+<div class="modal-overlay" id="goalModal">
+  <div class="modal-box">
+    <h3 class="modal-title">На какой горизонт?</h3>
+    <div class="modal-grid">
+      <button class="modal-btn" onclick="moveToGoal('week')">🌱 Неделя</button>
+      <button class="modal-btn" onclick="moveToGoal('month')">📈 Месяц</button>
+      <button class="modal-btn" onclick="moveToGoal('quarter')">🏗️ Квартал</button>
+      <button class="modal-btn" onclick="moveToGoal('year')">🏰 Год</button>
+      <button class="modal-btn" onclick="moveToGoal('5year')">🌍 5 Лет</button>
+      <button class="modal-btn" onclick="moveToGoal('life')">♾️ Жизнь</button>
+    </div>
+    <button class="modal-btn" style="width:100%; margin-top:8px; opacity:0.5" onclick="closeModals()">Отмена</button>
+  </div>
+</div>
+
+<!-- Modal: Move to Tasks -->
+<div class="modal-overlay" id="taskModal">
+  <div class="modal-box">
+    <h3 class="modal-title">Когда сделать?</h3>
+    <div class="modal-grid">
+      <button class="modal-btn" onclick="moveToTask('today')">☀️ Сегодня</button>
+      <button class="modal-btn" onclick="moveToTask('tomorrow')">⛅ Завтра</button>
+      <button class="modal-btn" onclick="moveToTask('backlog')">📦 Бэклог</button>
+      <button class="modal-btn" onclick="moveToTask('next_week')">📅 Через неделю</button>
+    </div>
+    <button class="modal-btn" style="width:100%; margin-top:8px; opacity:0.5" onclick="closeModals()">Отмена</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var G = window.Gamification;
+
+  function getInbox(){ return G.storeGet('inbox_v1') || []; }
+  function setInbox(data){ G.storeSet('inbox_v1', data); }
+
+  var activeItemId = null;
+
+  function render(){
+    var items = getInbox();
+    var list = document.getElementById('inboxList');
+    list.innerHTML = '';
+
+    if(items.length === 0){
+        list.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">🧠</span>
+                <p>Голова чиста. Кайфуй.</p>
+            </div>
+        `;
+        return;
+    }
+
+    items.forEach(function(it){
+        var el = document.createElement('div');
+        el.className = 'inbox-item';
+        el.innerHTML = `
+            <div class="inbox-text">${it.text}</div>
+            <div class="inbox-actions">
+                <button class="action-btn btn-task" onclick="window.prepareMove('${it.id}', 'task')">➡️ В Задачи</button>
+                <button class="action-btn btn-goal" onclick="window.prepareMove('${it.id}', 'goal')">🎯 В Цели</button>
+                <button class="action-btn btn-del" onclick="window.deleteItem('${it.id}')">🗑️ Удалить</button>
+            </div>
+        `;
+        list.appendChild(el);
+    });
+  }
+
+  document.getElementById('inboxInput').onkeydown = function(e){
+    if(e.key === 'Enter'){
+        var val = this.value.trim();
+        if(!val) return;
+        var data = getInbox();
+        data.unshift({ id: 'in_'+Date.now(), text: val, date: new Date().toISOString() });
+        setInbox(data);
+        this.value = '';
+        render();
+    }
+  };
+
+  window.deleteItem = function(id){
+    var data = getInbox();
+    setInbox(data.filter(it => it.id !== id));
+    render();
+  };
+
+  window.prepareMove = function(id, type){
+    activeItemId = id;
+    if(type === 'task') document.getElementById('taskModal').classList.add('show');
+    else document.getElementById('goalModal').classList.add('show');
+  };
+
+  window.closeModals = function(){
+    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('show'));
+  };
+
+  window.moveToGoal = function(horizon){
+    var items = getInbox();
+    var it = items.find(i => i.id === activeItemId);
+    if(it){
+        var goalsData = G.storeGet('horizons_goals_v2') || { goals: [] };
+        goalsData.goals.push({
+            id: 'hg_'+Date.now(),
+            title: it.text,
+            horizon: horizon,
+            type: 'check',
+            current: 0,
+            done: false
+        });
+        G.storeSet('horizons_goals_v2', goalsData);
+        window.deleteItem(activeItemId);
+    }
+    closeModals();
+  };
+
+  window.moveToTask = function(time){
+    var items = getInbox();
+    var it = items.find(i => i.id === activeItemId);
+    if(it){
+        // Tasks logic placeholder (will be improved in Step 3)
+        var date = new Date();
+        if(time === 'tomorrow') date.setDate(date.getDate() + 1);
+        else if(time === 'next_week') date.setDate(date.getDate() + 7);
+        
+        var dateStr = date.toISOString().slice(0, 10);
+        var key = 'goals:' + dateStr; // Existing tasks key
+        if(time === 'backlog') key = 'backlog_tasks_v1';
+        
+        var tasks = G.storeGet(key) || [];
+        tasks.push({ text: it.text, done: false, sphere: null, createdAt: new Date().toISOString() });
+        G.storeSet(key, tasks);
+        
+        window.deleteItem(activeItemId);
+    }
+    closeModals();
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>
