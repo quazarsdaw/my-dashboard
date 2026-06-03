@@ -93,15 +93,55 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 </style>
 </head>
 <body>
-
 <h1 class="page-title">Горизонты Целей</h1>
-<p style="font-size:12px; color:var(--text-tertiary); margin-bottom:24px;">Фокусируйся на важном, скрывай лишнее.</p>
 
-<div id="horizonsList">
-  <!-- Dynamic horizons will be here -->
+<!-- Year Progress Visual -->
+<div class="year-progress-card" style="background: var(--card-bg); border-radius: 20px; padding: 20px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 24px;">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px;">
+        <span style="font-size:14px; font-weight:700;">Прогресс 2026 года</span>
+        <span id="yearPctText" style="font-size:24px; font-weight:800; font-family:var(--font-mono); color:var(--warning);">0%</span>
+    </div>
+    <div style="width:100%; height:8px; background:rgba(255,255,255,0.05); border-radius:4px; overflow:hidden; margin-bottom:16px;">
+        <div id="yearProgressBar" style="height:100%; width:0%; background:linear-gradient(90deg, var(--warning), #FF923C); transition: width 1s ease-out;"></div>
+    </div>
+    <div class="months-grid" style="display:grid; grid-template-columns: repeat(6, 1fr); gap:6px;">
+        <!-- Months will be injected here -->
+    </div>
 </div>
 
-<!-- Add Goal -->
+<style>
+.month-tag { 
+    font-size: 9px; font-weight: 800; text-align: center; padding: 6px 0; 
+    border-radius: 6px; background: rgba(255,255,255,0.03); color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid transparent;
+}
+.month-tag.past { text-decoration: line-through; opacity: 0.3; background: none; }
+.month-tag.current { color: var(--warning); border-color: rgba(242,192,99,0.3); background: rgba(242,192,99,0.05); box-shadow: 0 0 10px rgba(242,192,99,0.1); }
+</style>
+...
+  function updateYearProgress() {
+    var now = new Date();
+    var start = new Date(now.getFullYear(), 0, 1);
+    var end = new Date(now.getFullYear() + 1, 0, 1);
+    var pct = Math.floor((now - start) / (end - start) * 100);
+
+    document.getElementById('yearPctText').textContent = pct + '%';
+    document.getElementById('yearProgressBar').style.width = pct + '%';
+
+    var months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+    var currentMonth = now.getMonth();
+    var grid = document.querySelector('.months-grid');
+    grid.innerHTML = '';
+
+    months.forEach((m, i) => {
+        var div = document.createElement('div');
+        div.className = 'month-tag' + (i < currentMonth ? ' past' : (i === currentMonth ? ' current' : ''));
+        div.textContent = m;
+        grid.appendChild(div);
+    });
+  }
+  updateYearProgress();
+  render();
 <div class="add-card">
   <h3 style="font-size:14px; margin-bottom:14px;">Новая цель</h3>
   <input class="add-input" id="addTitle" type="text" placeholder="Чего хочешь достичь?" autocomplete="off">
