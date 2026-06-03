@@ -113,6 +113,12 @@ body {\
     return 'main';
   }
 
+  function getLocalDateKey() {
+    var d = new Date();
+    var offset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - offset).toISOString().slice(0, 10);
+  }
+
   function inject() {
     if (document.getElementById('topbar') || isEmbedded()) return;
     var style = document.createElement('style');
@@ -131,7 +137,7 @@ body {\
     var state = null;
     try { state = JSON.parse(localStorage.getItem('po_water_v1')); } catch (e) {}
     if (!state) return { done: 0, total: 8 };
-    var todayKey = new Date().toISOString().slice(0, 10);
+    var todayKey = getLocalDateKey();
     var done = (state.logs || {})[todayKey] || 0;
     var p = state.profile || { weightKg: 75 };
     var wKg = p.weightKg || 75;
@@ -170,7 +176,7 @@ body {\
     try { state = JSON.parse(localStorage.getItem('po_water_v1')); } catch (e) {}
     if (!state || typeof state !== 'object') state = { logs: {} };
     state.logs = state.logs || {};
-    var k = new Date().toISOString().slice(0, 10);
+    var k = getLocalDateKey();
     state.logs[k] = (state.logs[k] || 0) + 1;
     localStorage.setItem('po_water_v1', JSON.stringify(state));
     render();

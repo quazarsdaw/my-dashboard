@@ -343,7 +343,7 @@ body::after {
   </div>
 </div>
 
-<!-- Pomodoro counter (manual, syncs with TickTick count) -->
+<!-- Pomodoro counter (manual) -->
 <div class="pomo-card" id="pomoCard">
   <div class="pomo-icon">🍅</div>
   <div class="pomo-info">
@@ -352,12 +352,27 @@ body::after {
       <span class="pomo-num" id="pomoNum">0</span>
       <span class="pomo-reward-text" id="pomoReward"></span>
     </div>
+    <!-- Time selection -->
+    <div style="display:flex; gap:6px; margin-top:8px;">
+      <button class="pomo-time-btn active" data-min="25">25м</button>
+      <button class="pomo-time-btn" data-min="40">40м</button>
+      <button class="pomo-time-btn" data-min="60">60м</button>
+    </div>
   </div>
   <div class="pomo-controls">
     <button class="pomo-btn pomo-minus" id="pomoMinus">−</button>
     <button class="pomo-btn pomo-plus" id="pomoPlus">+</button>
   </div>
 </div>
+
+<style>
+.pomo-time-btn {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px; color: var(--text-tertiary); font-size: 10px; font-weight: 700;
+  padding: 4px 8px; cursor: pointer; transition: all 0.15s;
+}
+.pomo-time-btn.active { background: rgba(107,227,164,0.15); color: var(--success); border-color: rgba(107,227,164,0.3); }
+</style>
 
 <!-- Day-skip penalty notice (injected by JS if needed) -->
 <div id="dayskipNotice" style="display:none"></div>
@@ -605,34 +620,54 @@ body::after {
   });
 
   // --- Pomodoro counter ---
-  var POMO_XP = 40; // XP per pomodoro to career
-  var POMO_COINS = 5; // coins per pomodoro, rounded from the proportional 4.8
-  function getPomoKey() { return 'pomo:' + getActiveDateString(); }
-  function getPomoCount() { return storeGet(getPomoKey()) || 0; }
-  function setPomoCount(n) { storeSet(getPomoKey(), n); }
+  var currentPomoMins = 25;
+  document.querySelectorAll('.pomo-time-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.pomo-time-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      currentPomoMins = parseInt(btn.getAttribute('data-min'), 10);
+    });
+  });
+
+  function getPomoKey() { return 'pomo_sessions:' + getActiveDateString(); }
+  function getPomoSessions() { return storeGet(getPomoKey()) || []; }
+  function setPomoSessions(sessions) { storeSet(getPomoKey(), sessions); }
+
   function renderPomo() {
-    var count = getPomoCount();
-    document.getElementById('pomoNum').textContent = count;
-    document.getElementById('pomoReward').textContent = count > 0 ? ('+' + (count * POMO_COINS) + ' 🪙 заработано') : '';
+    var sessions = getPomoSessions();
+    var totalXp = sessions.reduce(function(sum, s) { return sum + s.mins; }, 0);
+    document.getElementById('pomoNum').textContent = sessions.length;
+    document.getElementById('pomoReward').textContent = totalXp > 0 ? ('+' + totalXp + ' XP заработано') : '';
   }
+
   document.getElementById('pomoPlus').addEventListener('click', function () {
-    var count = getPomoCount() + 1;
-    setPomoCount(count);
-    G.earnCoins(POMO_COINS, '🍅 Помодорка #' + count);
-    G.addXpToSphere('career', POMO_XP);
+    var sessions = getPomoSessions();
+    var mins = currentPomoMins;
+    var coins = Math.round(mins * 0.2);
+    sessions.push({ mins: mins, coins: coins });
+    setPomoSessions(sessions);
+    
+    G.earnCoins(coins, '🍅 Помодорка (' + mins + 'м)');
+    G.addXpToSphere('growth', mins);
+    
     renderPomo();
     window.dispatchEvent(new CustomEvent('gamification-update'));
   });
+
   document.getElementById('pomoMinus').addEventListener('click', function () {
-    var count = getPomoCount();
-    if (count <= 0) return;
-    setPomoCount(count - 1);
-    // Reverse the coins & XP that were earned
-    G.spendCoins(POMO_COINS, '🍅 Отмена помодорки', true);
-    G.addXpToSphere('career', -POMO_XP);
+    var sessions = getPomoSessions();
+    if (sessions.length === 0) return;
+    
+    var last = sessions.pop();
+    setPomoSessions(sessions);
+    
+    G.spendCoins(last.coins, '🍅 Отмена помодорки', true);
+    G.addXpToSphere('growth', -last.mins);
+    
     renderPomo();
     window.dispatchEvent(new CustomEvent('gamification-update'));
   });
+
   renderPomo();
 
   // --- Manual penalty ---
