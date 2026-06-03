@@ -357,6 +357,7 @@ body::after {
       <button class="pomo-time-btn active" data-min="25">25м</button>
       <button class="pomo-time-btn" data-min="40">40м</button>
       <button class="pomo-time-btn" data-min="60">60м</button>
+      <button class="pomo-time-btn" id="pomoCustomBtn">✏️</button>
     </div>
   </div>
   <div class="pomo-controls">
@@ -620,12 +621,25 @@ body::after {
   });
 
   // --- Pomodoro counter ---
-  var currentPomoMins = 25;
+  var selectedPomoMin = 25;
   document.querySelectorAll('.pomo-time-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      document.querySelectorAll('.pomo-time-btn').forEach(function(b) { b.classList.remove('active'); });
-      btn.classList.add('active');
-      currentPomoMins = parseInt(btn.getAttribute('data-min'), 10);
+      if (btn.id === 'pomoCustomBtn') {
+        var m = prompt('Сколько минут?', '15');
+        var parsed = parseInt(m, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          selectedPomoMin = parsed;
+          btn.textContent = parsed + 'м';
+          document.querySelectorAll('.pomo-time-btn').forEach(function(b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+        }
+      } else {
+        document.querySelectorAll('.pomo-time-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        selectedPomoMin = parseInt(btn.getAttribute('data-min'), 10);
+        var customBtn = document.getElementById('pomoCustomBtn');
+        if (customBtn) customBtn.textContent = '✏️';
+      }
     });
   });
 
@@ -637,12 +651,12 @@ body::after {
     var sessions = getPomoSessions();
     var totalXp = sessions.reduce(function(sum, s) { return sum + s.mins; }, 0);
     document.getElementById('pomoNum').textContent = sessions.length;
-    document.getElementById('pomoReward').textContent = totalXp > 0 ? ('+' + totalXp + ' XP заработано') : '';
+    document.getElementById('pomoReward').textContent = totalXp > 0 ? ('(всего +' + totalXp + ' XP)') : '';
   }
 
   document.getElementById('pomoPlus').addEventListener('click', function () {
     var sessions = getPomoSessions();
-    var mins = currentPomoMins;
+    var mins = selectedPomoMin;
     var coins = Math.round(mins * 0.2);
     sessions.push({ mins: mins, coins: coins });
     setPomoSessions(sessions);
