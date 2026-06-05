@@ -37,6 +37,31 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   background:linear-gradient(180deg,#FFF 0%,#C7C4BC 120%);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin:16px 0 4px}
 
+/* Year Summary with Ring */
+.year-summary-card {
+  background: var(--card-bg); border-radius: 20px; padding: 24px;
+  border: 1px solid rgba(255,255,255,0.1); margin-bottom: 24px;
+  display: flex; align-items: center; gap: 24px;
+}
+.year-ring { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
+.year-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.year-ring-bg { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 8; }
+.year-ring-fg { fill: none; stroke: var(--warning); stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease; }
+.year-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.year-ring-pct { font-size: 24px; font-weight: 800; font-family: var(--font-mono); }
+.year-ring-label { font-size: 8px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.1em; }
+
+.year-info { flex: 1; }
+.year-info-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.months-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 12px; }
+.month-tag { 
+    font-size: 8px; font-weight: 800; text-align: center; padding: 4px 0; 
+    border-radius: 4px; background: rgba(255,255,255,0.03); color: var(--text-tertiary);
+    text-transform: uppercase; border: 1px solid transparent;
+}
+.month-tag.past { text-decoration: line-through; opacity: 0.3; }
+.month-tag.current { color: var(--warning); border-color: rgba(242,192,99,0.2); background: rgba(242,192,99,0.05); }
+
 /* Horizon Accordions */
 .horizon-section { margin-bottom: 12px; }
 .horizon-header {
@@ -47,29 +72,16 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 }
 .horizon-header:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.15); }
 .horizon-icon { font-size: 18px; width: 24px; text-align: center; }
-.horizon-title { flex: 1; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; }
+.horizon-title { flex: 1; font-size: 14px; font-weight: 700; }
 .horizon-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 6px; }
-.horizon-arrow { font-size: 12px; color: var(--text-tertiary); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.horizon-arrow { font-size: 10px; color: var(--text-tertiary); transition: transform 0.3s; }
 .horizon-section.collapsed .horizon-arrow { transform: rotate(-90deg); }
-.horizon-content { 
-  max-height: 2000px; overflow: hidden; transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s; 
-  padding: 10px 4px 20px;
-}
+.horizon-content { max-height: 3000px; overflow: hidden; transition: max-height 0.4s, opacity 0.3s; padding: 10px 4px 20px; }
 .horizon-section.collapsed .horizon-content { max-height: 0; opacity: 0; padding: 0; pointer-events: none; }
 
-/* Colors for horizons */
-.h-week .horizon-icon { color: #6BE3A4; }
-.h-month .horizon-icon { color: #7DD3FC; }
-.h-quarter .horizon-icon { color: #F2C063; }
-.h-year .horizon-icon { color: #C084FC; }
-.h-5year .horizon-icon { color: #FF6B6B; }
-.h-life .horizon-icon { color: #FAFAFA; }
-
 /* Goal card */
-.goal-card{background:rgba(255,255,255,0.04); border-radius:14px;
-  border: 1px solid rgba(255,255,255,0.05); padding:14px 16px; margin-bottom:8px;
-  transition: transform 0.15s, border-color 0.15s; cursor:pointer}
-.goal-card:hover{ border-color:rgba(255,255,255,0.15); transform: translateY(-1px); }
+.goal-card{background:rgba(255,255,255,0.04); border-radius:14px; border: 1px solid rgba(255,255,255,0.05); padding:14px 16px; margin-bottom:8px; cursor:pointer}
+.goal-card:hover{ border-color:rgba(255,255,255,0.15); }
 .goal-card.completed{ opacity: 0.6; background: rgba(107,227,164,0.02); }
 .goal-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .goal-title{flex:1;font-size:14px;font-weight:600;}
@@ -82,11 +94,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 .add-card{background:var(--card-bg); border-radius:var(--card-radius); padding:20px; margin:20px 0 40px; border:1px solid rgba(255,255,255,0.08)}
 .add-input{width:100%; padding:12px 16px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#fff; outline:none; margin-bottom:12px;}
 .add-row-flex { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-.add-select { flex: 1; min-width: 120px; padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #fff; cursor: pointer; outline: none; }
-.add-btn-main { width: 100%; padding: 14px; border-radius: 12px; border: none; background: linear-gradient(180deg, #fff, #e0e0e0); color: #1c1e24; font-weight: 800; cursor: pointer; transition: transform 0.1s; }
-.add-btn-main:active { transform: scale(0.98); }
+.add-select { flex: 1; min-width: 120px; padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #fff; cursor: pointer; }
+.add-btn-main { width: 100%; padding: 14px; border-radius: 12px; border: none; background: linear-gradient(180deg, #fff, #e0e0e0); color: #1c1e24; font-weight: 800; cursor: pointer; }
 
-/* Edit modal */
+/* Modal */
 .modal-overlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);align-items:center;justify-content:center;padding:20px}
 .modal-overlay.show{display:flex}
 .modal-box{background:#1C1E24;border-radius:24px;padding:24px;max-width:360px;width:100%;border:1px solid rgba(255,255,255,0.1);box-shadow:0 20px 50px rgba(0,0,0,0.5)}
@@ -95,11 +106,27 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 <body>
 
 <h1 class="page-title">Горизонты Целей</h1>
-<p style="font-size:12px; color:var(--text-tertiary); margin-bottom:24px;">Фокусируйся на важном, скрывай лишнее.</p>
 
-<div id="horizonsList">
-  <!-- Dynamic horizons will be here -->
+<!-- Year Progress -->
+<div class="year-summary-card">
+  <div class="year-ring">
+    <svg viewBox="0 0 100 100">
+      <circle class="year-ring-bg" cx="50" cy="50" r="42"/>
+      <circle class="year-ring-fg" id="yearRingFg" cx="50" cy="50" r="42"/>
+    </svg>
+    <div class="year-ring-center">
+      <div class="year-ring-pct" id="yearPctText">0%</div>
+      <div class="year-ring-label">Год</div>
+    </div>
+  </div>
+  <div class="year-info">
+    <div class="year-info-title" id="yearStatusText">Загрузка...</div>
+    <div id="goalsProgressLabel" style="font-size:12px; color:var(--text-tertiary); font-family:var(--font-mono);">0 из 0 целей выполнено</div>
+    <div class="months-grid" id="monthsGrid"></div>
+  </div>
 </div>
+
+<div id="horizonsList"></div>
 
 <!-- Add Goal -->
 <div class="add-card">
@@ -126,7 +153,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   <button class="add-btn-main" id="addBtn">Создать цель</button>
 </div>
 
-<!-- Edit Progress Modal -->
+<!-- Modal -->
 <div class="modal-overlay" id="editModal">
   <div class="modal-box">
     <h3 id="modalGoalTitle" style="margin-bottom:16px; font-size:16px;"></h3>
@@ -135,10 +162,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
         <input class="add-input" id="editCurrent" type="number" style="margin-top:6px;">
     </div>
     <div style="display:flex; gap:8px;">
-        <button class="add-btn-main" id="saveBtn">Сохранить</button>
+        <button class="add-btn-main" id="saveBtn" style="flex:1">Сохранить</button>
         <button class="add-btn-main" id="closeBtn" style="background:rgba(255,255,255,0.05); color:#fff; width:100px;">Отмена</button>
     </div>
-    <button id="delBtn" style="width:100%; margin-top:20px; background:none; border:none; color:var(--danger); font-size:11px; cursor:pointer;">Удалить цель навсегда</button>
+    <button id="delBtn" style="width:100%; margin-top:20px; background:none; border:none; color:var(--danger); font-size:11px; cursor:pointer;">Удалить цель</button>
   </div>
 </div>
 
@@ -151,7 +178,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     { id: 'week',    name: 'Неделя',      icon: '🌱' },
     { id: 'month',   name: 'Месяц',       icon: '📈' },
     { id: 'quarter', name: 'Квартал',     icon: '🏗️' },
-    { id: 'year',    name: 'Год',         icon: '🏰' },
+    { id: 'year',    name: 'Год',         icon: ' castles' },
     { id: '5year',   name: '5 Лет',       icon: '🌍' },
     { id: 'life',    name: 'Жизнь',       icon: '♾️' }
   ];
@@ -159,16 +186,42 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   function getData(){
     var d = G.storeGet('horizons_goals_v2');
     if(!d) {
-        // Initial migration from old yearly goals
         var old = G.storeGet('yearly_goals_v1') || { goals: [] };
         d = { goals: old.goals.map(function(g){ g.horizon = 'year'; return g; }) || [] };
     }
     return d;
   }
   function setData(d){ G.storeSet('horizons_goals_v2', d); }
-
   function getCollapsed(){ return G.storeGet('goals_collapsed_v1') || {}; }
   function setCollapsed(c){ G.storeSet('goals_collapsed_v1', c); }
+
+  function updateYearProgress(){
+    var now = new Date();
+    var start = new Date(now.getFullYear(), 0, 1);
+    var end = new Date(now.getFullYear() + 1, 0, 1);
+    var pct = Math.floor((now - start) / (end - start) * 100);
+    
+    document.getElementById('yearPctText').textContent = pct + '%';
+    var C = 2 * Math.PI * 42;
+    var ring = document.getElementById('yearRingFg');
+    ring.setAttribute('stroke-dasharray', C);
+    ring.setAttribute('stroke-dashoffset', C * (1 - pct / 100));
+
+    var months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+    var grid = document.getElementById('monthsGrid');
+    grid.innerHTML = '';
+    months.forEach((m, i) => {
+        var div = document.createElement('div');
+        div.className = 'month-tag' + (i < now.getMonth() ? ' past' : (i === now.getMonth() ? ' current' : ''));
+        div.textContent = m;
+        grid.appendChild(div);
+    });
+
+    var data = getData();
+    var done = data.goals.filter(g => g.done).length;
+    document.getElementById('yearStatusText').textContent = '2026 год';
+    document.getElementById('goalsProgressLabel').textContent = done + ' из ' + data.goals.length + ' целей достигнуто';
+  }
 
   function render(){
     var data = getData();
@@ -181,21 +234,19 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       var isCollapsed = !!collapsed[h.id];
 
       var sec = document.createElement('div');
-      sec.className = 'horizon-section h-' + h.id + (isCollapsed ? ' collapsed' : '');
-      
+      sec.className = 'horizon-section' + (isCollapsed ? ' collapsed' : '');
       sec.innerHTML = `
         <div class="horizon-header" onclick="window.toggleHorizon('${h.id}')">
-          <span class="horizon-icon">${h.icon}</span>
           <span class="horizon-title">${h.name}</span>
           <span class="horizon-count">${goals.length}</span>
           <span class="horizon-arrow">▼</span>
         </div>
-        <div class="horizon-content" id="content-${h.id}"></div>
+        <div class="horizon-content"></div>
       `;
 
       var content = sec.querySelector('.horizon-content');
       if(goals.length === 0) {
-        content.innerHTML = '<div style="text-align:center; padding:20px; font-size:12px; color:var(--text-tertiary);">Нет целей на этот горизонт.</div>';
+        content.innerHTML = '<div style="text-align:center; padding:16px; font-size:12px; color:var(--text-tertiary);">Пусто</div>';
       } else {
         goals.forEach(function(g){
             var pct = g.type === 'check' ? (g.done?100:0) : Math.min(100, Math.round((g.current||0)/(g.target||1)*100));
@@ -209,7 +260,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
                 </div>
                 <div class="goal-bar-bg"><div class="goal-bar-fill" style="width:${pct}%"></div></div>
                 <div class="goal-meta">
-                    <span>${g.type==='number' ? (g.current||0)+' / '+g.target+' '+(g.unit||'') : (g.done?'Выполнено':'В процессе')}</span>
+                    <span>${g.type==='number' ? (g.current||0)+' / '+g.target+' '+(g.unit||'') : (g.done?'✓ Готово':'В процессе')}</span>
                 </div>
             `;
             content.appendChild(card);
@@ -217,13 +268,11 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       }
       container.appendChild(sec);
     });
+    updateYearProgress();
   }
 
   window.toggleHorizon = function(id){
-    var c = getCollapsed();
-    c[id] = !c[id];
-    setCollapsed(c);
-    render();
+    var c = getCollapsed(); c[id] = !c[id]; setCollapsed(c); render();
   };
 
   var editingId = null;
@@ -240,21 +289,16 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     var g = data.goals.find(it => it.id === editingId);
     if(g){
         g.current = parseInt(document.getElementById('editCurrent').value, 10) || 0;
-        if(g.type === 'number') g.done = g.current >= g.target;
-        else g.done = g.current >= 1;
-        setData(data);
-        render();
+        if(g.type === 'number') g.done = g.current >= g.target; else g.done = g.current >= 1;
+        setData(data); render();
     }
     document.getElementById('editModal').classList.remove('show');
   };
 
   document.getElementById('delBtn').onclick = function(){
-    if(!confirm('Удалить эту цель?')) return;
-    var data = getData();
-    data.goals = data.goals.filter(it => it.id !== editingId);
-    setData(data);
-    render();
-    document.getElementById('editModal').classList.remove('show');
+    if(!confirm('Удалить цель?')) return;
+    var data = getData(); data.goals = data.goals.filter(it => it.id !== editingId);
+    setData(data); render(); document.getElementById('editModal').classList.remove('show');
   };
 
   document.getElementById('addType').onchange = function(){
@@ -262,22 +306,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   };
 
   document.getElementById('addBtn').onclick = function(){
-    var title = document.getElementById('addTitle').value.trim();
-    if(!title) return;
+    var title = document.getElementById('addTitle').value.trim(); if(!title) return;
     var data = getData();
-    data.goals.push({
-        id: 'hg_'+Date.now(),
-        title: title,
-        horizon: document.getElementById('addHorizon').value,
-        type: document.getElementById('addType').value,
-        target: parseInt(document.getElementById('addTarget').value, 10) || 1,
-        unit: document.getElementById('addUnit').value || '',
-        current: 0,
-        done: false
-    });
-    setData(data);
-    document.getElementById('addTitle').value = '';
-    render();
+    data.goals.push({ id:'hg'+Date.now(), title:title, horizon:document.getElementById('addHorizon').value, type:document.getElementById('addType').value, target:parseInt(document.getElementById('addTarget').value,10)||1, unit:document.getElementById('addUnit').value||'', current:0, done:false });
+    setData(data); document.getElementById('addTitle').value = ''; render();
   };
 
   render();
