@@ -63,6 +63,24 @@ html { scrollbar-gutter: stable; }\
   width: 44px; height: 40px; border: 1px solid rgba(125,211,252,0.15); background: rgba(125,211,252,0.2); color: #FFF; font-size: 20px; font-weight: 700; cursor: pointer; border-radius: 0 12px 12px 0; transition: background 0.15s;\
 }\
 .topbar-water-add.flash { background: rgba(125,211,252,0.6); }\
+\
+/* Achievement Toast */\
+#achToast {\
+  position: fixed; top: 82px; left: 50%; transform: translateX(-50%) translateY(-20px);\
+  z-index: 10001; pointer-events: none; opacity: 0;\
+  display: flex; align-items: center; gap: 12px;\
+  padding: 10px 18px; border-radius: 16px;\
+  background: rgba(28,30,36,0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);\
+  border: 1px solid rgba(242,192,99,0.4);\
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);\
+  transition: all 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);\
+}\
+#achToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }\
+.ach-toast-icon { font-size: 26px; }\
+.ach-toast-info { display: flex; flex-direction: column; }\
+.ach-toast-label { font-size: 8px; font-weight: 800; color: #F2C063; text-transform: uppercase; letter-spacing: 0.12em; }\
+.ach-toast-name { font-size: 14px; font-weight: 700; color: #fff; }\
+\
 body {\
   padding-top: 82px !important; padding-bottom: 96px !important; padding-left: 16px !important; padding-right: 16px !important;\
 }\
@@ -86,7 +104,14 @@ body {\
     </a>\
     <button class="topbar-water-add" id="topbarWaterAdd" type="button">+</button>\
   </div>\
-</header>';
+</header>\
+<div id="achToast">\
+  <div class="ach-toast-icon" id="achToastIcon">🏅</div>\
+  <div class="ach-toast-info">\
+    <div class="ach-toast-label">Награда получена!</div>\
+    <div class="ach-toast-name" id="achToastName"></div>\
+  </div>\
+</div>';
 
   var bottombarHtml = '\
 <nav class="bottombar" id="bottombar">\
@@ -133,6 +158,24 @@ body {\
       if(t.getAttribute('data-page') === active) t.classList.add('active');
     });
     document.body.classList.add('has-bottombar');
+
+    // Add achievement listener
+    var achToastTimer = null;
+    window.addEventListener('achievement-unlocked', function (e) {
+      var list = e.detail || [];
+      if (list.length === 0) return;
+      var a = list[0];
+      var iconEl = document.getElementById('achToastIcon');
+      var nameEl = document.getElementById('achToastName');
+      var toastEl = document.getElementById('achToast');
+      if (!iconEl || !nameEl || !toastEl) return;
+      
+      iconEl.textContent = a.icon || '🏅';
+      nameEl.textContent = a.name || a.id;
+      toastEl.classList.add('show');
+      clearTimeout(achToastTimer);
+      achToastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 4000);
+    });
   }
 
   function getWaterProgress() {
@@ -182,7 +225,6 @@ body {\
     state.logs[k] = (state.logs[k] || 0) + 1;
     localStorage.setItem('po_water_v1', JSON.stringify(state));
     
-    // Play sound
     if (window.Gamification && window.Gamification.Juice) {
         window.Gamification.Juice.playWater();
     }

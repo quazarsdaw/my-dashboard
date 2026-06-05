@@ -13,7 +13,7 @@
 <title>Dashboard</title>
 <script src="gamification.js?v=7"></script>
 <script src="supabase-sync.js?v=26-sb" defer></script>
-<script src="topbar.js?v=20" defer></script>
+<script src="topbar.js?v=24" defer></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -298,13 +298,6 @@ body::after {
 .sphere-picker-item span:first-child { font-size: 18px; }
 .sphere-picker-item span:last-child { font-size: 13px; font-weight: 600; }
 
-/* --- Achievement toast --- */
-.ach-toast { position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-20px); z-index: 200; background: rgba(26,26,29,0.95); border: 1px solid rgba(242,192,99,0.3); border-radius: 14px; padding: 12px 20px; display: flex; align-items: center; gap: 10px; opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none; backdrop-filter: blur(12px); }
-.ach-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-.ach-toast-icon { font-size: 28px; }
-.ach-toast-text { font-size: 13px; font-weight: 700; color: var(--warning); }
-.ach-toast-name { font-size: 11px; color: var(--text-secondary); }
-
 /* --- Task Details Modal --- */
 .task-details-overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; backdrop-filter: blur(4px); }
 .task-details-overlay.show { display: flex; }
@@ -542,15 +535,6 @@ body::after {
   </div>
 </div>
 
-<!-- Achievement toast -->
-<div class="ach-toast" id="achToast">
-  <span class="ach-toast-icon" id="achToastIcon"></span>
-  <div>
-    <div class="ach-toast-text">Достижение!</div>
-    <div class="ach-toast-name" id="achToastName"></div>
-  </div>
-</div>
-
 <!-- Task Details Modal -->
 <div class="task-details-overlay" id="taskDetailsModal">
   <div class="task-details-box">
@@ -655,20 +639,6 @@ body::after {
   });
   pickerOverlay.addEventListener('click', function (e) { if (e.target === pickerOverlay) { pickerOverlay.classList.remove('show'); pickerCallback = null; } });
   function openSpherePicker(cb) { pickerCallback = cb; pickerOverlay.classList.add('show'); }
-
-  // --- Achievement toast ---
-  var achToastTimer = null;
-  window.addEventListener('achievement-unlocked', function (e) {
-    var list = e.detail || [];
-    if (list.length === 0) return;
-    var a = list[0];
-    document.getElementById('achToastIcon').textContent = a.icon || '🏅';
-    document.getElementById('achToastName').textContent = a.name || a.id;
-    var toast = document.getElementById('achToast');
-    toast.classList.add('show');
-    clearTimeout(achToastTimer);
-    achToastTimer = setTimeout(function () { toast.classList.remove('show'); }, 3500);
-  });
 
   // --- Pomodoro counter ---
   var selectedPomoMin = 25;
