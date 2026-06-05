@@ -4,43 +4,48 @@
   // --- Juice (Sounds & Haptic) ---
   var Juice = {
     ctx: null,
-    init: function() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
+    init: function() { 
+      if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+    },
     vibrate: function(ms) { if (navigator.vibrate) navigator.vibrate(ms || 10); },
     
-    // Apple-style clean "ding"
     playSuccess: function() {
-      this.init(); var osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+      this.init(); 
+      var osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
       osc.type = 'sine'; osc.frequency.setValueAtTime(880, this.ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(1320, this.ctx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0, this.ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.3, this.ctx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
       osc.connect(gain); gain.connect(this.ctx.destination);
-      osc.start(); osc.stop(this.ctx.currentTime + 0.2); this.vibrate(15);
+      osc.start(); osc.stop(this.ctx.currentTime + 0.3); this.vibrate(15);
     },
 
-    // Achievement chime
     playAchievement: function() {
-      this.init(); [440, 554.37, 659.25, 880].forEach((f, i) => {
+      this.init(); 
+      [440, 554.37, 659.25, 880].forEach((f, i) => {
         var osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
         osc.type = 'sine'; osc.frequency.value = f;
         gain.gain.setValueAtTime(0, this.ctx.currentTime + i * 0.1);
-        gain.gain.linearRampToValueAtTime(0.1, this.ctx.currentTime + i * 0.1 + 0.05);
-        gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + i * 0.1 + 0.3);
+        gain.gain.linearRampToValueAtTime(0.2, this.ctx.currentTime + i * 0.1 + 0.05);
+        gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + i * 0.1 + 0.4);
         osc.connect(gain); gain.connect(this.ctx.destination);
-        osc.start(this.ctx.currentTime + i * 0.1); osc.stop(this.ctx.currentTime + i * 0.1 + 0.3);
+        osc.start(this.ctx.currentTime + i * 0.1); osc.stop(this.ctx.currentTime + i * 0.1 + 0.4);
       });
       this.vibrate([30, 50, 30]);
     },
 
-    // Water "plop"
     playWater: function() {
-        this.init(); var osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+        this.init(); 
+        var osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
         osc.type = 'sine'; osc.frequency.setValueAtTime(600, this.ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(900, this.ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.3, this.ctx.currentTime + 0.02);
+        gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.2);
         osc.connect(gain); gain.connect(this.ctx.destination);
-        osc.start(); osc.stop(this.ctx.currentTime + 0.15); this.vibrate(10);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.2); this.vibrate(10);
     }
   };
 
