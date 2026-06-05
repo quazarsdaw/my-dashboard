@@ -90,7 +90,9 @@
   }
   function removeSphere(id){ SPHERES = SPHERES.filter(function(s){ return s.id !== id; }); setSphereDefs(SPHERES); }
 
-  var MAX_LEVEL = 100, XP_BASE = 100, XP_EXPONENT = 1.5;
+  var MAX_LEVEL = 999;
+  var XP_BASE = 100;
+  var XP_EXPONENT = 1.5;
   var DIFFICULTY_COIN_MULT = { easy: 0.1, medium: 0.2, hard: 0.4 };
   var DIFFICULTY_LABELS = { easy: 'Лёгкая', medium: 'Средняя', hard: 'Сложная' };
 
