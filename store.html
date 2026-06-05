@@ -170,7 +170,7 @@ body::after {
 .add-icon-btn:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); }
 .emoji-popup {
   display: none; position: absolute; z-index: 50; bottom: calc(100% + 8px); left: 0;
-  background: #1a1a1c; border: 1px solid rgba(255,255,255,0.12); border-radius: 16px;
+  background: #1C1E24; border: 1px solid rgba(255,255,255,0.12); border-radius: 16px;
   padding: 12px; width: 260px; max-height: 220px; overflow-y: auto;
   box-shadow: 0 12px 40px rgba(0,0,0,0.6);
   display: none; flex-wrap: wrap; gap: 6px;
@@ -296,7 +296,7 @@ body::after {
         '<div class="reward-top">' +
           '<span class="reward-icon">' + r.icon + '</span>' +
           '<div class="reward-info">' +
-            '<div class="reward-name">' + r.name + '</div>' +
+            '<div class="reward-name">' + G.esc(r.name) + '</div>' +
             '<div class="reward-price">🪙 ' + r.price + '</div>' +
           '</div>' +
         '</div>' +
@@ -345,7 +345,7 @@ body::after {
       var dateStr = d.getDate() + '.' + String(d.getMonth()+1).padStart(2,'0') + ' ' +
                     String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
       item.innerHTML =
-        '<span class="history-name">' + (p.name || p.rewardId) + '</span>' +
+        '<span class="history-name">' + G.esc(p.name || p.rewardId) + '</span>' +
         '<span class="history-price">−' + p.price + ' 🪙</span>' +
         '<span class="history-date">' + dateStr + '</span>';
       list.appendChild(item);

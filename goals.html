@@ -259,7 +259,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
             card.onclick = () => openEdit(g);
             card.innerHTML = `
                 <div class="goal-top">
-                    <span class="goal-title">${g.title}</span>
+                    <span class="goal-title">${G.esc(g.title)}</span>
                     <span class="goal-pct">${pct}%</span>
                 </div>
                 <div class="goal-bar-bg"><div class="goal-bar-fill" style="width:${pct}%"></div></div>

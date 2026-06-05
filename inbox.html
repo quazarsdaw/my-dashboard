@@ -159,10 +159,9 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
         var el = document.createElement('div');
         el.className = 'inbox-item';
         el.innerHTML = `
-            <div class="inbox-text">${it.text}</div>
+            <div class="inbox-text">${G.esc(it.text)}</div>
             <div class="inbox-actions">
-                <button class="action-btn btn-task" onclick="window.prepareMove('${it.id}', 'task')">➡️ В Задачи</button>
-                <button class="action-btn btn-goal" onclick="window.prepareMove('${it.id}', 'goal')">🎯 В Цели</button>
+                <button class="action-btn btn-task" onclick="window.prepareMove('${it.id}', 'task')">➡️ В Задачи</button>                <button class="action-btn btn-goal" onclick="window.prepareMove('${it.id}', 'goal')">🎯 В Цели</button>
                 <button class="action-btn btn-del" onclick="window.deleteItem('${it.id}')">🗑️ Удалить</button>
             </div>
         `;

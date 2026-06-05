@@ -384,7 +384,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
         var sev = h.severity || 'medium';
         penaltyTag = '<span class="penalty-tag">' + (PENALTY_LABELS[sev] || '−10') + '🪙</span>';
       }
-      nameCell.innerHTML = h.name + penaltyTag + '<button class="habit-del" data-idx="'+idx+'" data-type="'+type+'" title="Удалить">×</button>';
+      nameCell.innerHTML = G.esc(h.name) + penaltyTag + '<button class="habit-del" data-idx="'+idx+'" data-type="'+type+'" title="Удалить">×</button>';
       tr.appendChild(nameCell);
 
       dates.forEach(function(d){

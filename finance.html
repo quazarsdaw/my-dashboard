@@ -520,7 +520,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
       var row = document.createElement('div');
       row.className = 'cat-row';
       row.innerHTML =
-        '<span class="cat-name" title="'+c.name+'">'+c.name+'</span>' +
+        '<span class="cat-name" title="'+G.esc(c.name)+'">'+G.esc(c.name)+'</span>' +
         '<div class="cat-bar-wrap"><div class="cat-bar '+type+'" style="width:'+barW+'%"></div></div>' +
         '<span class="cat-amount '+type+'">' +
         (type === 'exp' ? '-' : '+') + formatNum(Math.round(c.amount)) +
@@ -679,7 +679,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
         el.className = 'nw-account';
         el.innerHTML =
           '<span class="nw-acc-icon">'+(a.icon||'🏦')+'</span>' +
-          '<span class="nw-acc-name">'+escHtml(a.name)+'</span>' +
+          '<span class="nw-acc-name">'+G.esc(a.name)+'</span>' +
           '<span class="nw-acc-amount">'+formatNum(a.amount)+' ₽</span>' +
           '<button class="nw-acc-del" data-idx="'+i+'">×</button>';
         container.appendChild(el);
@@ -731,7 +731,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
         el.className = 'sub-item';
         el.innerHTML =
           '<span class="sub-icon">'+(s.icon||'📦')+'</span>' +
-          '<div class="sub-info"><div class="sub-name">'+escHtml(s.name)+'</div>' +
+          '<div class="sub-info"><div class="sub-name">'+G.esc(s.name)+'</div>' +
           '<div class="sub-cycle">ежемесячно</div></div>' +
           '<span class="sub-price">'+formatNum(s.price)+' ₽</span>' +
           '<button class="sub-del" data-idx="'+i+'">×</button>';
@@ -781,9 +781,9 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
         var el = document.createElement('div');
         el.className = 'wish-item';
         el.innerHTML =
-          '<span class="wish-name">'+escHtml(w.name)+'</span>' +
+          '<span class="wish-name">'+G.esc(w.name)+'</span>' +
           (w.price ? '<span class="wish-price">'+formatNum(w.price)+' ₽</span>' : '') +
-          (w.link ? '<a class="wish-link" href="'+escHtml(w.link)+'" target="_blank" rel="noopener">🔗</a>' : '') +
+          (w.link ? '<a class="wish-link" href="'+G.esc(w.link)+'" target="_blank" rel="noopener">🔗</a>' : '') +
           '<button class="wish-del" data-idx="'+i+'">×</button>';
         container.appendChild(el);
       });

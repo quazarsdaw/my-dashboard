@@ -249,7 +249,7 @@ body::after {
 }
 .modal-overlay.open { display: flex; }
 .modal-box {
-  background: #1a1a1c; border: 1px solid rgba(255,255,255,0.1);
+  background: #1C1E24; border: 1px solid rgba(255,255,255,0.1);
   border-radius: 20px; padding: 28px 24px; max-width: 340px; width: 100%;
 }
 .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; text-align: center; }
@@ -586,8 +586,8 @@ body::after {
         card.innerHTML =
           '<div class="ach-rarity-tag">' + r.id.toUpperCase() + '</div>' +
           '<div class="ach-icon">' + a.icon + '</div>' +
-          '<div class="ach-name">' + a.name + '</div>' +
-          '<div class="ach-desc">' + a.desc + '</div>' +
+          '<div class="ach-name">' + G.esc(a.name) + '</div>' +
+          '<div class="ach-desc">' + G.esc(a.desc) + '</div>' +
           (a.bonus ? '<div class="ach-bonus">+' + a.bonus + ' 🪙</div>' : '') +
           (unlocked ? '<div class="ach-date">' + formatShortDate(achievements.unlocked[a.id]) + '</div>' : '');
         grid.appendChild(card);

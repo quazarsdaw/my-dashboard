@@ -1,6 +1,13 @@
 (function () {
   'use strict';
 
+  // --- Security: HTML Escaping ---
+  function escapeHTML(str) {
+    if (!str || typeof str !== 'string') return str;
+    var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return str.replace(/[&<>"']/g, function(m) { return map[m]; });
+  }
+
   // --- Juice (Sounds & Haptic) ---
   var Juice = {
     ctx: null,
@@ -353,6 +360,7 @@
   function setProfile(data) { storeSet('profile_v1', data); window.dispatchEvent(new CustomEvent('gamification-update')); }
 
   window.Gamification = {
+    esc: escapeHTML,
     Juice: Juice,
     SPHERES: SPHERES, getSphereDefs: getSphereDefs, setSphereDefs: setSphereDefs, renameSphere: renameSphere, addSphere: addSphere, removeSphere: removeSphere,
     MAX_LEVEL: MAX_LEVEL, DIFFICULTY_COIN_MULT: DIFFICULTY_COIN_MULT, DIFFICULTY_LABELS: DIFFICULTY_LABELS, ACHIEVEMENT_DEFS: ACHIEVEMENT_DEFS,

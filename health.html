@@ -433,9 +433,9 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
         li.innerHTML =
           '<label class="stack-cb-wrap"><input type="checkbox" class="stack-cb"'+(isTaken?' checked':'')+' data-id="'+item.id+'">' +
           '<div class="stack-cb-vis"></div></label>' +
-          '<div class="stack-item-info"><div class="stack-item-name">'+item.name+'</div>' +
-          (item.dose ? '<div class="stack-item-dose">'+item.dose+'</div>' : '') + '</div>' +
-          '<span class="stack-item-time">'+(TIME_LABELS[item.time]||item.time)+'</span>' +
+          '<div class="stack-item-info"><div class="stack-item-name">'+G.esc(item.name)+'</div>' +
+          (item.dose ? '<div class="stack-item-dose">'+G.esc(item.dose)+'</div>' : '') + '</div>' +
+          '<span class="stack-item-time">'+G.esc(TIME_LABELS[item.time]||item.time)+'</span>' +
           '<button class="stack-del" data-idx="'+i+'">×</button>';
         list.appendChild(li);
       });

@@ -230,7 +230,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
       header.innerHTML =
         '<div class="wdh-left">' +
           '<span class="wdh-icon">'+(DAY_ICONS[dayIdx % DAY_ICONS.length])+'</span>' +
-          '<div><div class="wdh-name">'+day.name+'</div>' +
+          '<div><div class="wdh-name">'+G.esc(day.name)+'</div>' +
           (day.muscles ? '<div class="wdh-muscles">'+day.muscles+'</div>' : '') + '</div>' +
         '</div>' +
         '<span class="wdh-status '+(isDone?'done':'pending')+'">'+(isDone?'Done':'—')+'</span>';
@@ -250,7 +250,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
         var li = document.createElement('li');
         li.className = 'exercise-item';
         li.innerHTML =
-          '<span class="ex-name">'+ex.name+'</span>' +
+          '<span class="ex-name">'+G.esc(ex.name)+'</span>' +
           '<span class="ex-sets">'+ex.sets+'×'+ex.reps+'</span>' +
           '<input class="ex-input" type="number" value="'+currentWeight+'" data-key="'+wKey+'" title="Вес (кг)"> кг' +
           '<span class="ex-pr" id="pr_'+wKey+'">PR!</span>' +
@@ -382,7 +382,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
       item.className = 'history-item';
       item.innerHTML =
         '<span class="hi-date">'+dateStr+'</span>' +
-        '<span class="hi-name">'+h.dayName+'</span>' +
+        '<span class="hi-name">'+G.esc(h.dayName)+'</span>' +
         '<span class="hi-exercises">'+(h.exercises||[]).length+' упр.</span>';
       container.appendChild(item);
     });
