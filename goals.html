@@ -73,7 +73,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 .goal-card.completed{ opacity: 0.6; background: rgba(107,227,164,0.02); }
 .goal-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .goal-title{flex:1;font-size:14px;font-weight:600;}
-.goal-pct{font-size:12px;font-weight:800;font-family:var(--font-mono);color:var(--success)}
+.goal-pct{font-size:13px;font-weight:900;font-family:var(--font-mono);color:var(--success);text-shadow:0 0 10px rgba(107,227,164,0.3)}
 .goal-bar-bg{width:100%;height:4px;border-radius:2px;background:rgba(255,255,255,0.06);overflow:hidden;margin-bottom:6px}
 .goal-bar-fill{height:100%;border-radius:2px;transition:width 0.4s;background:var(--success)}
 .goal-meta{display:flex;align-items:center;justify-content:space-between; font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)}
@@ -95,7 +95,31 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 <body>
 
 <h1 class="page-title">Горизонты Целей</h1>
-<p style="font-size:12px; color:var(--text-tertiary); margin-bottom:24px;">Фокусируйся на важном, скрывай лишнее.</p>
+
+<!-- Year Summary with Ring -->
+<div class="year-summary-card" style="background: var(--card-bg); border-radius: 20px; padding: 24px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 24px; display: flex; align-items: center; gap: 24px;">
+  <div class="year-ring" style="position: relative; width: 80px; height: 80px; flex-shrink: 0;">
+    <svg viewBox="0 0 100 100" style="width:100%; height:100%; transform: rotate(-90deg);">
+      <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8"/>
+      <circle id="yearRingFg" cx="50" cy="50" r="42" fill="none" stroke="var(--warning)" stroke-width="8" stroke-linecap="round" transition="stroke-dashoffset 0.8s ease"/>
+    </svg>
+    <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+      <div id="yearPctText" style="font-size: 18px; font-weight: 800; font-family: var(--font-mono);">0%</div>
+      <div style="font-size: 7px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase;">ГОД</div>
+    </div>
+  </div>
+  <div style="flex: 1;">
+    <div id="yearStatusText" style="font-size: 15px; font-weight: 700; margin-bottom: 4px;">2026 год</div>
+    <div id="goalsProgressLabel" style="font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono);">0 из 0 целей выполнено</div>
+    <div class="months-grid" id="monthsGrid" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 10px;"></div>
+  </div>
+</div>
+
+<style>
+.month-tag { font-size: 8px; font-weight: 800; text-align: center; padding: 3px 0; border-radius: 4px; background: rgba(255,255,255,0.03); color: var(--text-tertiary); text-transform: uppercase; }
+.month-tag.past { text-decoration: line-through; opacity: 0.3; }
+.month-tag.current { color: var(--warning); border: 1px solid rgba(242,192,99,0.2); background: rgba(242,192,99,0.05); }
+</style>
 
 <div id="horizonsList">
   <!-- Dynamic horizons will be here -->
@@ -170,8 +194,39 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   function getCollapsed(){ return G.storeGet('goals_collapsed_v1') || {}; }
   function setCollapsed(c){ G.storeSet('goals_collapsed_v1', c); }
 
+  function updateYearProgress(data) {
+    var now = new Date();
+    var start = new Date(now.getFullYear(), 0, 1);
+    var end = new Date(now.getFullYear() + 1, 0, 1);
+    var pct = Math.min(100, Math.max(0, (now - start) / (end - start) * 100));
+    
+    document.getElementById('yearPctText').textContent = Math.round(pct) + '%';
+    
+    var ring = document.getElementById('yearRingFg');
+    var c = 2 * Math.PI * 42;
+    ring.style.strokeDasharray = c;
+    ring.style.strokeDashoffset = c - (pct / 100) * c;
+    
+    document.getElementById('yearStatusText').textContent = now.getFullYear() + ' год';
+    
+    var goals = data.goals.filter(function(g) { return g.horizon === 'year'; });
+    var doneCount = goals.filter(function(g) { return g.done; }).length;
+    document.getElementById('goalsProgressLabel').textContent = doneCount + ' из ' + goals.length + ' целей выполнено';
+    
+    var grid = document.getElementById('monthsGrid');
+    var monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+    var currentMonth = now.getMonth();
+    grid.innerHTML = monthNames.map(function(m, i) {
+      var cls = 'month-tag';
+      if (i < currentMonth) cls += ' past';
+      else if (i === currentMonth) cls += ' current';
+      return '<div class="' + cls + '">' + m + '</div>';
+    }).join('');
+  }
+
   function render(){
     var data = getData();
+    updateYearProgress(data);
     var collapsed = getCollapsed();
     var container = document.getElementById('horizonsList');
     container.innerHTML = '';

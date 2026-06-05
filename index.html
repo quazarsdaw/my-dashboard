@@ -1075,10 +1075,16 @@ body::after {
       if (undone.length > 0) {
         var current = storeGet('goals:' + today) || [];
         var exist = {}; current.forEach(function (g) { exist[g.text] = true; });
-        undone.forEach(function (g) { if (!exist[g.text]) current.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin }); });
-        storeSet('goals:' + today, current);
+        var added = false;
+        undone.forEach(function (g) { 
+          if (!exist[g.text]) {
+            current.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin }); 
+            exist[g.text] = true;
+            added = true;
+          }
+        });
+        if (added) storeSet('goals:' + today, current);
       }
-      localStorage.removeItem(k);
     }
   })();
 

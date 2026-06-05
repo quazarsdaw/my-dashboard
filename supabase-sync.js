@@ -469,7 +469,11 @@
     pullNow: pullFromCloud,
     pushNow: pushAllToCloud,
     clearCloudData: function() {
-      if (!supabase || !currentUser) return Promise.resolve();
+      if (!supabase || !currentUser) {
+        console.warn('Supabase: Невозможно удалить данные (нет сессии)');
+        return Promise.resolve({ error: 'No session' });
+      }
+      console.log('Supabase: Удаление облачных данных для', currentUser.id);
       return supabase.from('user_data').delete().eq('user_id', currentUser.id);
     }
   };

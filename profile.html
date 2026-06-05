@@ -723,25 +723,38 @@ body::after {
 
   // --- Reset ---
   document.getElementById('resetBtn').addEventListener('click', function () {
-    if (!confirm('Точно сбросить ВСЕ данные? Это удалит всё и в браузере, и в облаке.')) return;
-    if (!confirm('ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ. Восстановить данные будет невозможно.')) return;
+    if (!confirm('ВНИМАНИЕ: Это удалит ВСЕ данные (монеты, задачи, ачивки) и в этом браузере, и в облаке Supabase.')) return;
+    if (!confirm('Вы уверены? Восстановить данные будет НЕВОЗМОЖНО.')) return;
 
     var btn = this;
     btn.disabled = true;
-    btn.textContent = 'Сбрасываю...';
+    btn.textContent = 'УДАЛЕНИЕ...';
 
-    // 1. Clear Cloud if Supabase is active
-    var cloudPromise = (window.SupabaseSync && window.SupabaseSync.isSignedIn()) 
-        ? window.SupabaseSync.clearCloudData() 
-        : Promise.resolve();
+    // 1. Clear Cloud Data
+    var sync = window.SupabaseSync;
+    var promise = (sync && sync.isSignedIn()) ? sync.clearCloudData() : Promise.resolve({ data: [] });
 
-    cloudPromise.then(function() {
-        // 2. Clear LocalStorage
+    promise.then(function(res) {
+        if (res.error) {
+            console.error('Cloud delete error:', res.error);
+            if (!confirm('Не удалось удалить данные из облака (' + res.error.message + '). Очистить локальные данные всё равно?')) {
+                throw new Error('User cancelled');
+            }
+        }
+        console.log('Cloud data cleared. Logging out...');
+        // 2. Sign Out (to clear Supabase session)
+        if (window.supabase && window.supabase.auth) {
+            return window.supabase.auth.signOut();
+        }
+    }).then(function() {
+        // 3. Clear EVERYTHING in localStorage
         localStorage.clear();
-        alert('Данные полностью удалены.');
+        alert('Все данные стерты. Приложение будет перезагружено.');
         window.location.reload();
     }).catch(function(err) {
-        alert('Ошибка при очистке облака: ' + err.message);
+        if (err.message !== 'User cancelled') {
+            alert('Ошибка при сбросе: ' + err.message);
+        }
         btn.disabled = false;
         btn.textContent = 'Сбросить всё';
     });
