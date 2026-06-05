@@ -181,6 +181,12 @@ body {\
     var k = getLocalDateKey();
     state.logs[k] = (state.logs[k] || 0) + 1;
     localStorage.setItem('po_water_v1', JSON.stringify(state));
+    
+    // Play sound
+    if (window.Gamification && window.Gamification.Juice) {
+        window.Gamification.Juice.playWater();
+    }
+    
     render();
     var btn = document.getElementById('topbarWaterAdd');
     if (btn) { btn.classList.add('flash'); setTimeout(function(){ btn.classList.remove('flash'); }, 200); }
