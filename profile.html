@@ -723,13 +723,28 @@ body::after {
 
   // --- Reset ---
   document.getElementById('resetBtn').addEventListener('click', function () {
-    if (!confirm('Точно сбросить ВСЕ данные геймификации? Это нельзя отменить.')) return;
-    if (!confirm('Последнее предупреждение. Все уровни, монеты и достижения будут удалены.')) return;
-    // Nuke everything dashboard-related
-    var keep = []; // nothing to keep
-    var allKeys = Object.keys(localStorage);
-    allKeys.forEach(function (k) { localStorage.removeItem(k); });
-    window.location.reload();
+    if (!confirm('Точно сбросить ВСЕ данные? Это удалит всё и в браузере, и в облаке.')) return;
+    if (!confirm('ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ. Восстановить данные будет невозможно.')) return;
+
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Сбрасываю...';
+
+    // 1. Clear Cloud if Supabase is active
+    var cloudPromise = (window.SupabaseSync && window.SupabaseSync.isSignedIn()) 
+        ? window.SupabaseSync.clearCloudData() 
+        : Promise.resolve();
+
+    cloudPromise.then(function() {
+        // 2. Clear LocalStorage
+        localStorage.clear();
+        alert('Данные полностью удалены.');
+        window.location.reload();
+    }).catch(function(err) {
+        alert('Ошибка при очистке облака: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = 'Сбросить всё';
+    });
   });
 
   // --- Data transfer: Export / Import ---

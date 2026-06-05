@@ -467,7 +467,11 @@
     isSignedIn: function () { return !!currentUser; },
     getUser: function () { return currentUser; },
     pullNow: pullFromCloud,
-    pushNow: pushAllToCloud
+    pushNow: pushAllToCloud,
+    clearCloudData: function() {
+      if (!supabase || !currentUser) return Promise.resolve();
+      return supabase.from('user_data').delete().eq('user_id', currentUser.id);
+    }
   };
 
 })();
