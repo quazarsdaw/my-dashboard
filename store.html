@@ -13,8 +13,7 @@
 <title>Магазин наград</title>
 <script src="gamification.js?v=8"></script>
 <script src="supabase-sync.js?v=26-sb" defer></script>
-<script src="topbar.js?v=25" defer></script>
-<style>
+<script src="topbar.js?v=26" defer></script><style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -78,15 +77,23 @@ body::after {
 }
 .balance-stat span { font-weight: 700; color: var(--text-secondary); }
 
-/* Section */
-.section { margin-bottom: 32px; }
-.section-title {
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em;
-  text-transform: uppercase; color: var(--text-tertiary);
-  display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+/* Collapsible Section */
+.store-section { margin-bottom: 12px; }
+.store-header {
+  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+  background: var(--card-bg); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px; cursor: pointer; user-select: none;
+  transition: background 0.2s, border-color 0.2s;
 }
-.section-title::before { content: ''; width: 18px; height: 1px; background: var(--text-tertiary); opacity: 0.6; }
-.section-title::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent); }
+.store-header:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.15); }
+.store-title { flex: 1; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; color: var(--text-secondary); text-transform: uppercase; }
+.store-arrow { font-size: 10px; color: var(--text-tertiary); transition: transform 0.3s; }
+.store-section.collapsed .store-arrow { transform: rotate(-90deg); }
+.store-content { 
+  max-height: 2000px; overflow: hidden; transition: max-height 0.4s ease, opacity 0.3s; 
+  padding-top: 12px;
+}
+.store-section.collapsed .store-content { max-height: 0; opacity: 0; padding-top: 0; pointer-events: none; }
 
 /* Rewards grid */
 .rewards-grid {
@@ -141,7 +148,7 @@ body::after {
 /* Add reward */
 .add-reward-card {
   background: var(--card-bg); border-radius: var(--card-radius); padding: 18px;
-  border: 1px solid rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.07); margin-top: 24px;
 }
 .add-reward-row {
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
@@ -245,36 +252,48 @@ body::after {
   </div>
 </div>
 
-<div class="section">
-  <div class="section-title">Каталог идей</div>
-  <div class="rewards-grid" id="catalogGrid"></div>
+<div class="store-section" id="section-catalog">
+  <div class="store-header" onclick="window.toggleSection('catalog')">
+    <span class="store-title">Каталог идей</span>
+    <span class="store-arrow">▼</span>
+  </div>
+  <div class="store-content">
+    <div class="rewards-grid" id="catalogGrid"></div>
+  </div>
 </div>
 
-<div class="section">
-  <div class="section-title">Мои личные награды</div>
-  <div class="rewards-grid" id="customRewardsGrid"></div>
-</div>
-
-<div class="section">
-  <div class="section-title">Создать свою награду</div>
-  <div class="add-reward-card">
-    <div class="add-reward-row">
-      <div class="add-icon-wrap">
-        <button class="add-icon-btn" id="addIconBtn" type="button" title="Выбрать эмодзи">🎁</button>
-        <div class="emoji-popup" id="emojiPopup"></div>
+<div class="store-section" id="section-custom">
+  <div class="store-header" onclick="window.toggleSection('custom')">
+    <span class="store-title">Мои личные награды</span>
+    <span class="store-arrow">▼</span>
+  </div>
+  <div class="store-content">
+    <div class="rewards-grid" id="customRewardsGrid"></div>
+    <div class="add-reward-card">
+      <div style="font-size: 11px; font-weight: 800; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.1em;">Создать свою награду</div>
+      <div class="add-reward-row">
+        <div class="add-icon-wrap">
+          <button class="add-icon-btn" id="addIconBtn" type="button" title="Выбрать эмодзи">🎁</button>
+          <div class="emoji-popup" id="emojiPopup"></div>
+        </div>
+        <input class="add-input" id="addName" type="text" placeholder="Название награды" autocomplete="off">
+        <input class="add-price" id="addPrice" type="number" placeholder="Цена" min="1">
+        <button class="add-btn" id="addBtn">+ Добавить</button>
       </div>
-      <input class="add-input" id="addName" type="text" placeholder="Название награды" autocomplete="off">
-      <input class="add-price" id="addPrice" type="number" placeholder="Цена" min="1">
-      <button class="add-btn" id="addBtn">+ Добавить</button>
     </div>
   </div>
 </div>
 
-<div class="section">
-  <div class="section-title">История покупок</div>
-  <div id="historyContainer">
-    <div class="empty-history" id="emptyHistory">Покупок пока нет.</div>
-    <div class="history-list" id="historyList"></div>
+<div class="store-section" id="section-history">
+  <div class="store-header" onclick="window.toggleSection('history')">
+    <span class="store-title">История покупок</span>
+    <span class="store-arrow">▼</span>
+  </div>
+  <div class="store-content">
+    <div id="historyContainer">
+      <div class="empty-history" id="emptyHistory">Покупок пока нет.</div>
+      <div class="history-list" id="historyList"></div>
+    </div>
   </div>
 </div>
 
@@ -282,6 +301,16 @@ body::after {
 (function () {
   'use strict';
   var G = window.Gamification;
+
+  function getCollapsed() { return G.storeGet('store_sections_collapsed') || {}; }
+  function setCollapsed(c) { G.storeSet('store_sections_collapsed', c); }
+
+  window.toggleSection = function(id) {
+    var c = getCollapsed();
+    c[id] = !c[id];
+    setCollapsed(c);
+    renderAll();
+  };
 
   function renderBalance() {
     var coins = G.getCoins();
@@ -340,7 +369,8 @@ body::after {
     });
 
     document.querySelectorAll('.reward-buy-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
         var id = btn.getAttribute('data-id');
         var result = G.purchaseReward(id);
         if (result) {
@@ -352,7 +382,8 @@ body::after {
     });
 
     document.querySelectorAll('.reward-del-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
         var id = btn.getAttribute('data-id');
         if (confirm('Удалить эту награду?')) {
             G.removeReward(id);
@@ -362,7 +393,8 @@ body::after {
     });
 
     document.querySelectorAll('.reward-edit-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
         var id = btn.getAttribute('data-id');
         var newPrice = prompt('Введите новую цену в монетах:');
         if (newPrice !== null) {
@@ -393,7 +425,7 @@ body::after {
         item.className = 'history-item';
         var d = new Date(p.date);
         var dateStr = d.getDate() + '.' + String(d.getMonth()+1).padStart(2,'0') + ' ' +
-                      String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+                    String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
         item.innerHTML =
           '<span class="history-name">' + G.esc(p.name || p.rewardId) + '</span>' +
           '<span class="history-price">−' + p.price + ' 🪙</span>' +
@@ -409,6 +441,12 @@ body::after {
     renderBalance();
     renderRewards();
     renderHistory();
+    
+    var collapsed = getCollapsed();
+    ['catalog', 'custom', 'history'].forEach(function(id) {
+        var sec = document.getElementById('section-' + id);
+        if (sec) sec.classList.toggle('collapsed', !!collapsed[id]);
+    });
   }
 
   // Emoji picker
