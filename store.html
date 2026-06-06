@@ -11,9 +11,9 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Магазин наград</title>
-<script src="gamification.js?v=7"></script>
+<script src="gamification.js?v=8"></script>
 <script src="supabase-sync.js?v=26-sb" defer></script>
-<script src="topbar.js?v=24" defer></script>
+<script src="topbar.js?v=25" defer></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -285,9 +285,13 @@ body::after {
 
   function renderBalance() {
     var coins = G.getCoins();
-    document.getElementById('balanceAmount').textContent = coins.balance;
-    document.getElementById('statEarned').textContent = coins.earned;
-    document.getElementById('statSpent').textContent = coins.spent;
+    if (!coins) return;
+    var bAmount = document.getElementById('balanceAmount');
+    var sEarned = document.getElementById('statEarned');
+    var sSpent = document.getElementById('statSpent');
+    if (bAmount) bAmount.textContent = coins.balance || 0;
+    if (sEarned) sEarned.textContent = coins.earned || 0;
+    if (sSpent) sSpent.textContent = coins.spent || 0;
   }
 
   function createRewardCard(r, canDelete, canEditPrice) {
@@ -313,17 +317,26 @@ body::after {
 
   function renderRewards() {
     var store = G.getStore();
+    if (!store || !store.catalog || !store.customRewards) return;
     var cGrid = document.getElementById('catalogGrid');
     var customGrid = document.getElementById('customRewardsGrid');
-    cGrid.innerHTML = '';
-    customGrid.innerHTML = '';
+    if (cGrid) cGrid.innerHTML = '';
+    if (customGrid) customGrid.innerHTML = '';
 
     store.catalog.forEach(function (r) {
-      cGrid.appendChild(createRewardCard(r, false, true));
+      try {
+        cGrid.appendChild(createRewardCard(r, false, true));
+      } catch (e) {
+        console.error('Failed to render catalog reward:', e, r);
+      }
     });
 
     store.customRewards.forEach(function (r) {
-      customGrid.appendChild(createRewardCard(r, true, false));
+      try {
+        customGrid.appendChild(createRewardCard(r, true, false));
+      } catch (e) {
+        console.error('Failed to render custom reward:', e, r);
+      }
     });
 
     document.querySelectorAll('.reward-buy-btn').forEach(function (btn) {
@@ -365,25 +378,30 @@ body::after {
 
   function renderHistory() {
     var store = G.getStore();
+    if (!store || !store.purchases) return;
     var list = document.getElementById('historyList');
     var empty = document.getElementById('emptyHistory');
-    list.innerHTML = '';
+    if (list) list.innerHTML = '';
     if (store.purchases.length === 0) {
-      empty.style.display = '';
+      if (empty) empty.style.display = '';
       return;
     }
-    empty.style.display = 'none';
+    if (empty) empty.style.display = 'none';
     store.purchases.slice(0, 50).forEach(function (p) {
-      var item = document.createElement('div');
-      item.className = 'history-item';
-      var d = new Date(p.date);
-      var dateStr = d.getDate() + '.' + String(d.getMonth()+1).padStart(2,'0') + ' ' +
-                    String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-      item.innerHTML =
-        '<span class="history-name">' + G.esc(p.name || p.rewardId) + '</span>' +
-        '<span class="history-price">−' + p.price + ' 🪙</span>' +
-        '<span class="history-date">' + dateStr + '</span>';
-      list.appendChild(item);
+      try {
+        var item = document.createElement('div');
+        item.className = 'history-item';
+        var d = new Date(p.date);
+        var dateStr = d.getDate() + '.' + String(d.getMonth()+1).padStart(2,'0') + ' ' +
+                      String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+        item.innerHTML =
+          '<span class="history-name">' + G.esc(p.name || p.rewardId) + '</span>' +
+          '<span class="history-price">−' + p.price + ' 🪙</span>' +
+          '<span class="history-date">' + dateStr + '</span>';
+        list.appendChild(item);
+      } catch (e) {
+        console.error('Failed to render history item:', e, p);
+      }
     });
   }
 

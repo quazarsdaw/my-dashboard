@@ -176,7 +176,6 @@
         var old = storeGet('store_v1') || { rewards: [], purchases: [] };
         data = { customRewards: old.rewards || [], catalogOverrides: {}, purchases: old.purchases || [] };
     }
-    // Mix catalog with overrides
     var catalog = DEFAULT_REWARDS.map(function(r) {
         var item = Object.assign({}, r);
         if (data.catalogOverrides && data.catalogOverrides[r.id]) {
@@ -202,16 +201,13 @@
     var allItems = storeData.catalog.concat(storeData.customRewards);
     var reward = allItems.find(function(it) { return it.id === rewardId; });
     if (!reward) return null;
-    
     var coins = spendCoins(reward.price, reward.name);
     if (!coins) return null;
-    
     var data = storeGet('store_v2');
     if (!data) data = { customRewards: storeData.customRewards, catalogOverrides: storeData.catalogOverrides, purchases: storeData.purchases };
     data.purchases.unshift({ rewardId: rewardId, name: reward.name, price: reward.price, date: new Date().toISOString() });
     if (data.purchases.length > 200) data.purchases.length = 200;
     storeSet('store_v2', data);
-    
     setTimeout(checkAchievements, 100);
     return { coins: coins, store: data };
   }
@@ -355,11 +351,24 @@
     { id: 'chinazes', rarity: 'legendary', bonus: 600, name: 'Чиназес', icon: '😎', desc: '1000 выполненных задач' },
     { id: 'capitalist', rarity: 'legendary', bonus: 800, name: 'Капиталист', icon: '🏦', desc: 'Баланс финансов > 1 000 000' },
     { id: 'level_75', rarity: 'legendary', bonus: 600, name: 'Легенда', icon: '🔱', desc: 'Достигни 75 уровня' },
+    { id: 'tasks_500', rarity: 'legendary', bonus: 300, name: 'Сверхчеловек', icon: '⚡', desc: '500 выполненных задач' },
+    { id: 'tasks_1000', rarity: 'legendary', bonus: 500, name: 'АБСОЛЮТ', icon: '🏛️', desc: '1000 выполненных задач' },
+    { id: 'hours_500', rarity: 'legendary', bonus: 500, name: 'Повелитель времени', icon: '⏳', desc: '500 часов в фокусе' },
+    { id: 'days_100', rarity: 'legendary', bonus: 400, name: 'Стодневник', icon: '🏆', desc: '100 активных дней' },
+    { id: 'days_365', rarity: 'legendary', bonus: 1500, name: 'Год жизни', icon: '🌍', desc: '365 активных дней' },
+    { id: 'coins_25000', rarity: 'legendary', bonus: 600, name: 'Золотой фонд', icon: '🏺', desc: 'Набери 25000 монет всего' },
+    { id: 'gym_100', rarity: 'legendary', bonus: 400, name: 'Олимпиец', icon: '🥇', desc: '100 тренировок' },
+    { id: 'all_max_lvl', rarity: 'legendary', bonus: 500, name: 'Магистр сфер', icon: '🔮', desc: '10 уровень во всех сферах' },
+    { id: 'streak_30', rarity: 'legendary', bonus: 300, name: 'Несгораемый', icon: '🧨', desc: '30 активных дней' },
+    { id: 'finance_balance_100000', rarity: 'legendary', bonus: 500, name: 'Капиталист JR', icon: '🏦', desc: 'Баланс финансов > 100000' },
+    { id: 'pomo_100', rarity: 'legendary', bonus: 250, name: 'Дзен', icon: '🧘', desc: '100 сессий таймера' },
 
-    { id: 'tasks_5000', rarity: 'mythic', bonus: 2500, name: 'Творец миров', icon: '🌌', desc: '5000 выполненных задач' },
-    { id: 'level_100', rarity: 'mythic', bonus: 5000, name: 'БОЖЕСТВО', icon: '🪐', desc: 'Достигни 100 уровня' },
-    { id: 'billionaire', rarity: 'mythic', bonus: 10000, name: 'Властелин богатства', icon: '♾️', desc: 'Заработай 100к монет за всё время' },
-    { id: 'perfectionist', rarity: 'mythic', bonus: 3000, name: 'Перфекционист', icon: '💎', desc: 'Все сферы на 50 уровне' }
+    { id: 'tasks_5000', rarity: 'mythic', bonus: 2000, name: 'Творец миров', icon: '🌌', desc: '5000 выполненных задач' },
+    { id: 'hours_2000', rarity: 'mythic', bonus: 3000, name: 'Вне времени', icon: '🌀', desc: '2000 часов продуктивности' },
+    { id: 'level_100', rarity: 'mythic', bonus: 2500, name: 'БОЖЕСТВО', icon: '🪐', desc: 'Достигни 100 уровня' },
+    { id: 'billionaire', rarity: 'mythic', bonus: 5000, name: 'Властелин богатства', icon: '♾️', desc: 'Заработай 100к монет всего' },
+    { id: 'perfectionist', rarity: 'mythic', bonus: 2000, name: 'Перфекционист', icon: '💎', desc: 'Все сферы на 50 уровне' },
+    { id: 'pomo_500', rarity: 'mythic', bonus: 1500, name: 'Абсолютный фокус', icon: '🧿', desc: '500 сессий таймера' },
   ];
 
   function getAchievements() { return storeGet('achievements_v1') || { unlocked: {} }; }
@@ -383,7 +392,7 @@
     var daysSinceGym = d.lastGymDate ? (Date.now() - new Date(d.lastGymDate).getTime()) / (1000*3600*24) : 0;
     var achievements = getAchievements(), newUnlocks = [];
     var checker = {
-      first_task: function(d) { return d.totalTasks >= 1; }, altushka: function(d) { return d.totalPurchases >= 1; }, tasks_10: function(d) { return d.totalTasks >= 10; }, hours_1: function(d) { return d.totalMinutes >= 60; }, days_3: function(d) { return d.totalDays >= 3; }, coins_50: function(d) { return d.coinsEarned >= 50; }, level_5: function(d) { return d.overallLevel >= 5; }, gym_1: function(d) { return d.totalWorkouts >= 1; }, sphere_xp: function(d) { return d.activeSpheres >= 1; }, early_bird: function(d) { return d.earlyTask; }, number_67: function(d) { return d.totalTasks === 67; }, clothing_78: function(d) { return d.totalTasks >= 8; }, tasks_50: function(d) { return d.totalTasks >= 50; }, temshik: function(d) { return d.coinsEarned >= 1000; }, surgut: function(d) { return d.totalWorkouts >= 10; }, technik: function(d) { return d.totalPurchases >= 10; }, skuf: function(d) { return daysSinceGym >= 30; }, hours_20: function(d) { return d.totalMinutes >= 1200; }, days_7: function(d) { return d.totalDays >= 7; }, level_15: function(d) { return d.overallLevel >= 15; }, all_spheres: function(d) { return d.activeSpheres >= d.totalSpheres; }, svo: function(d) { return d.hardStreak; }, borov: function(d) { return d.coinsEarned >= 5000; }, mamont: function(d) { return (d.coinsEarned - d.coinBalance) >= 5000; }, mamkin_investor: function(d) { return d.finBalance >= 10000; }, dedinsight: function(d) { return d.nightTask; }, sigma: function(d) { return d.totalWorkouts >= 50; }, hours_100: function(d) { return d.totalMinutes >= 6000; }, days_60: function(d) { return d.totalDays >= 60; }, river_walker: function(d) { return d.totalMinutes >= 30000; }, gigachad: function(d) { return d.totalWorkouts >= 100; }, moms_friend_son: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, chinazes: function(d) { return d.totalTasks >= 1000; }, level_75: function(d) { return d.overallLevel >= 75; }, capitalist: function(d) { return d.finBalance >= 1000000; }, tasks_5000: function(d) { return d.totalTasks >= 5000; }, level_100: function(d) { return d.overallLevel >= 100; }, billionaire: function(d) { return d.coinsEarned >= 100000; }, perfectionist: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 50) m = false; return m; }
+      first_task: function(d) { return d.totalTasks >= 1; }, altushka: function(d) { return d.totalPurchases >= 1; }, tasks_5: function(d) { return d.totalTasks >= 5; }, tasks_10: function(d) { return d.totalTasks >= 10; }, hours_1: function(d) { return d.totalMinutes >= 60; }, hours_5: function(d) { return d.totalMinutes >= 300; }, days_3: function(d) { return d.totalDays >= 3; }, coins_50: function(d) { return d.coinsEarned >= 50; }, coins_200: function(d) { return d.coinsEarned >= 200; }, level_3: function(d) { return d.overallLevel >= 3; }, level_5: function(d) { return d.overallLevel >= 5; }, gym_1: function(d) { return d.totalWorkouts >= 1; }, gym_3: function(d) { return d.totalWorkouts >= 3; }, finance_1: function(d) { return d.sphereLevels['finance'] >= 1; }, sphere_xp: function(d) { return d.activeSpheres >= 1; }, early_bird: function(d) { return d.earlyTask; }, number_67: function(d) { return d.totalTasks === 67; }, clothing_78: function(d) { return d.totalTasks >= 8; }, tasks_50: function(d) { return d.totalTasks >= 50; }, tasks_75: function(d) { return d.totalTasks >= 75; }, temshik: function(d) { return d.coinsEarned >= 1000; }, surgut: function(d) { return d.totalWorkouts >= 10; }, technik: function(d) { return d.totalPurchases >= 10; }, skuf: function(d) { return daysSinceGym >= 30; }, hours_20: function(d) { return d.totalMinutes >= 1200; }, hours_40: function(d) { return d.totalMinutes >= 2400; }, days_7: function(d) { return d.totalDays >= 7; }, days_14: function(d) { return d.totalDays >= 14; }, level_10: function(d) { return d.overallLevel >= 10; }, level_15: function(d) { return d.overallLevel >= 15; }, gym_10: function(d) { return d.totalWorkouts >= 10; }, gym_streak: function(d) { return d.totalWorkouts >= 3; }, all_spheres: function(d) { return d.activeSpheres >= d.totalSpheres; }, store_5: function(d) { return d.totalPurchases >= 5; }, health_5: function(d) { return d.sphereLevels['health'] >= 5; }, finance_5: function(d) { return d.sphereLevels['finance'] >= 5; }, career_5: function(d) { return d.sphereLevels['career'] >= 5; }, night_owl_3: function(d) { return d.nightTask; }, early_bird_10: function(d) { return d.earlyTask; }, gym_variety: function(d) { return d.totalWorkouts >= 5; }, habit_7: function(d) { return d.totalDays >= 7; }, svo: function(d) { return d.hardStreak; }, borov: function(d) { return d.coinsEarned >= 5000; }, mamont: function(d) { return (d.coinsEarned - d.coinBalance) >= 5000; }, mamkin_investor: function(d) { return d.finBalance >= 10000; }, dedinsight: function(d) { return d.nightTask; }, sigma: function(d) { return d.totalWorkouts >= 50; }, tasks_150: function(d) { return d.totalTasks >= 150; }, tasks_300: function(d) { return d.totalTasks >= 300; }, hours_100: function(d) { return d.totalMinutes >= 6000; }, hours_150: function(d) { return d.totalMinutes >= 9000; }, days_30: function(d) { return d.totalDays >= 30; }, days_60: function(d) { return d.totalDays >= 60; }, level_25: function(d) { return d.overallLevel >= 25; }, level_40: function(d) { return d.overallLevel >= 40; }, gym_30: function(d) { return d.totalWorkouts >= 30; }, gym_50: function(d) { return d.totalWorkouts >= 50; }, finance_master: function(d) { return d.sphereLevels['finance'] >= 15; }, career_master: function(d) { return d.sphereLevels['career'] >= 15; }, growth_master: function(d) { return d.sphereLevels['growth'] >= 15; }, pomo_master: function(d) { return d.pomoCount >= 50; }, night_owl: function(d) { return d.nightTask; }, finance_balance_10000: function(d) { return d.finBalance >= 10000; }, task_spree_20: function(d) { return d.totalTasks >= 20; }, all_spheres_5: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, big_spender: function(d) { return (d.coinsEarned - d.coinBalance) >= 5000; }, saver: function(d) { return d.coinBalance >= 2000; }, river_walker: function(d) { return d.totalMinutes >= 30000; }, gigachad: function(d) { return d.totalWorkouts >= 100; }, moms_friend_son: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, chinazes: function(d) { return d.totalTasks >= 1000; }, tasks_500: function(d) { return d.totalTasks >= 500; }, tasks_1000: function(d) { return d.totalTasks >= 1000; }, hours_500: function(d) { return d.totalMinutes >= 30000; }, days_100: function(d) { return d.totalDays >= 100; }, days_365: function(d) { return d.totalDays >= 365; }, level_75: function(d) { return d.overallLevel >= 75; }, gym_100: function(d) { return d.totalWorkouts >= 100; }, all_max_lvl: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, streak_30: function(d) { return d.totalDays >= 30; }, finance_balance_100000: function(d) { return d.finBalance >= 100000; }, pomo_100: function(d) { return d.pomoCount >= 100; }, capitalist: function(d) { return d.finBalance >= 1000000; }, tasks_5000: function(d) { return d.totalTasks >= 5000; }, hours_2000: function(d) { return d.totalMinutes >= 120000; }, level_100: function(d) { return d.overallLevel >= 100; }, billionaire: function(d) { return d.coinsEarned >= 100000; }, perfectionist: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 50) m = false; return m; }, pomo_500: function(d) { return d.pomoCount >= 500; }
     };
     var playAchSound = false;
     for (var j = 0; j < ACHIEVEMENT_DEFS.length; j++) {
