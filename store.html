@@ -79,7 +79,7 @@ body::after {
 .balance-stat span { font-weight: 700; color: var(--text-secondary); }
 
 /* Section */
-.section { margin-bottom: 24px; }
+.section { margin-bottom: 32px; }
 .section-title {
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em;
   text-transform: uppercase; color: var(--text-tertiary);
@@ -129,12 +129,14 @@ body::after {
   background: rgba(107,227,164,0.15); color: var(--success);
   box-shadow: none; pointer-events: none;
 }
-.reward-del-btn {
-  width: 38px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px; color: var(--text-tertiary); font-size: 16px;
+.reward-del-btn, .reward-edit-btn {
+  width: 38px; height: 38px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; color: var(--text-tertiary); font-size: 14px;
   cursor: pointer; transition: color 0.15s, background 0.15s;
+  display: flex; align-items: center; justify-content: center;
 }
 .reward-del-btn:hover { color: var(--danger); background: rgba(255,107,107,0.08); }
+.reward-edit-btn:hover { color: var(--warning); background: rgba(242,192,99,0.08); }
 
 /* Add reward */
 .add-reward-card {
@@ -173,7 +175,7 @@ body::after {
   background: #1C1E24; border: 1px solid rgba(255,255,255,0.12); border-radius: 16px;
   padding: 12px; width: 260px; max-height: 220px; overflow-y: auto;
   box-shadow: 0 12px 40px rgba(0,0,0,0.6);
-  display: none; flex-wrap: wrap; gap: 6px;
+  flex-wrap: wrap; gap: 6px;
 }
 .emoji-popup.open { display: flex; }
 .emoji-popup-opt {
@@ -244,12 +246,17 @@ body::after {
 </div>
 
 <div class="section">
-  <div class="section-title">Награды</div>
-  <div class="rewards-grid" id="rewardsGrid"></div>
+  <div class="section-title">Каталог идей</div>
+  <div class="rewards-grid" id="catalogGrid"></div>
 </div>
 
 <div class="section">
-  <div class="section-title">Добавить награду</div>
+  <div class="section-title">Мои личные награды</div>
+  <div class="rewards-grid" id="customRewardsGrid"></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Создать свою награду</div>
   <div class="add-reward-card">
     <div class="add-reward-row">
       <div class="add-icon-wrap">
@@ -283,31 +290,43 @@ body::after {
     document.getElementById('statSpent').textContent = coins.spent;
   }
 
+  function createRewardCard(r, canDelete, canEditPrice) {
+    var coins = G.getCoins();
+    var card = document.createElement('div');
+    card.className = 'reward-card';
+    var canBuy = coins.balance >= r.price;
+    card.innerHTML =
+      '<div class="reward-top">' +
+        '<span class="reward-icon">' + r.icon + '</span>' +
+        '<div class="reward-info">' +
+          '<div class="reward-name">' + G.esc(r.name) + '</div>' +
+          '<div class="reward-price">🪙 ' + r.price + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="reward-actions">' +
+        '<button class="reward-buy-btn" data-id="' + r.id + '"' + (canBuy ? '' : ' disabled') + '>Купить</button>' +
+        (canEditPrice ? '<button class="reward-edit-btn" data-id="' + r.id + '" title="Изменить цену">✏️</button>' : '') +
+        (canDelete ? '<button class="reward-del-btn" data-id="' + r.id + '" title="Удалить">×</button>' : '') +
+      '</div>';
+    return card;
+  }
+
   function renderRewards() {
     var store = G.getStore();
-    var coins = G.getCoins();
-    var grid = document.getElementById('rewardsGrid');
-    grid.innerHTML = '';
-    store.rewards.forEach(function (r) {
-      var card = document.createElement('div');
-      card.className = 'reward-card';
-      var canBuy = coins.balance >= r.price;
-      card.innerHTML =
-        '<div class="reward-top">' +
-          '<span class="reward-icon">' + r.icon + '</span>' +
-          '<div class="reward-info">' +
-            '<div class="reward-name">' + G.esc(r.name) + '</div>' +
-            '<div class="reward-price">🪙 ' + r.price + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="reward-actions">' +
-          '<button class="reward-buy-btn" data-id="' + r.id + '"' + (canBuy ? '' : ' disabled') + '>Купить</button>' +
-          '<button class="reward-del-btn" data-id="' + r.id + '" title="Удалить">×</button>' +
-        '</div>';
-      grid.appendChild(card);
+    var cGrid = document.getElementById('catalogGrid');
+    var customGrid = document.getElementById('customRewardsGrid');
+    cGrid.innerHTML = '';
+    customGrid.innerHTML = '';
+
+    store.catalog.forEach(function (r) {
+      cGrid.appendChild(createRewardCard(r, false, true));
     });
 
-    grid.querySelectorAll('.reward-buy-btn').forEach(function (btn) {
+    store.customRewards.forEach(function (r) {
+      customGrid.appendChild(createRewardCard(r, true, false));
+    });
+
+    document.querySelectorAll('.reward-buy-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-id');
         var result = G.purchaseReward(id);
@@ -319,11 +338,27 @@ body::after {
       });
     });
 
-    grid.querySelectorAll('.reward-del-btn').forEach(function (btn) {
+    document.querySelectorAll('.reward-del-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-id');
-        G.removeReward(id);
-        renderAll();
+        if (confirm('Удалить эту награду?')) {
+            G.removeReward(id);
+            renderAll();
+        }
+      });
+    });
+
+    document.querySelectorAll('.reward-edit-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-id');
+        var newPrice = prompt('Введите новую цену в монетах:');
+        if (newPrice !== null) {
+            var price = parseInt(newPrice, 10);
+            if (price > 0) {
+                G.setCatalogPrice(id, price);
+                renderAll();
+            }
+        }
       });
     });
   }
@@ -360,7 +395,7 @@ body::after {
 
   // Emoji picker
   var REWARD_EMOJIS = [
-    '🎁','📺','🎮','🍔','😴','🛍️','🏖️','📱','🍕','🍫','☕','🎬','🎵','🎧','📖','🧖','🛒','🍰','🍦','🎂','🌴','✈️','🎪','🎨','🧘','💆',' popcorn','🥤','🎯','🏋️',
+    '🎁','📺','🎮','🍔','😴','🛍️','🏖️','📱','🍕','🍫','☕','🎬','🎵','🎧','📖','🧖','🛒','🍰','🍦','🎂','🌴','✈️','🎪','🎨','🧘','💆','🍿','🥤','🎯','🏋️',
     '🍕','🍔','🍟','🌭','🍿','🥓','🍗','🍖','🥩','🥩','🌮','🌯','🥙','🥘','🍲','🥣','🥗','🍣','🍱','🍛','🍜','🍝','🥧','🧁','🍰','🎂','🍦','🍨','🍩','🍪','🍫','🍬','🍭','🍮','🍯','🥛','☕','🍵','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉',
     '🎭','🎟️','🎫','🎬','🎤','🎧','🎨','🖌️','🧵','🎼','🎹','🎸','🎺','🎻','🎲','🎮','🕹️','🎰','🧩','🎳','🎯','🛹','🚲','🚴','🏎️','🚀','🛸','🛸','🛳️','🏖️','🏕️','⛺','🛶','🛶','🏰','🎡','🎢','🎠','🌅','🌅','🌃','🏔️','🌋','🌍',
     '💎','💍','💄','👔','👕','👗','👜','🎒','👞','🕶️','⌚','📱','💻','⌨️','🖥️','🖨️','📷','📸','🕯️','📖','📕','📚','💰','💸','💵','💳','📦','📬','📬','📫','📮','🏷️','🪄','🔮','🧿','🧿','🧸','🧸','🧺','🧼','🛁','🚿','🛏️','🛋️'
