@@ -169,22 +169,26 @@
     { id: 'new_app',       name: 'Платное приложение',      price: 70,  icon: '📱' },
     { id: 'nice_dinner',   name: 'Ужин в ресторане',       price: 250, icon: '🍽️' },
   ];
-
-  function getStore() { 
-    var data = storeGet('store_v2'); 
-    if (!data) {
-        var old = storeGet('store_v1') || { rewards: [], purchases: [] };
-        data = { customRewards: old.rewards || [], catalogOverrides: {}, purchases: old.purchases || [] };
-    }
-    var catalog = DEFAULT_REWARDS.map(function(r) {
-        var item = Object.assign({}, r);
-        if (data.catalogOverrides && data.catalogOverrides[r.id]) {
-            item.price = data.catalogOverrides[r.id];
-        }
-        return item;
-    });
-    return { catalog: catalog, customRewards: data.customRewards, purchases: data.purchases, catalogOverrides: data.catalogOverrides || {} };
+function getStore() { 
+  var data = storeGet('store_v2'); 
+  if (!data) {
+      var old = storeGet('store_v1') || { rewards: [], purchases: [] };
+      data = { customRewards: old.rewards || [], catalogOverrides: {}, hiddenCatalogIds: [], purchases: old.purchases || [] };
   }
+  if (!data.hiddenCatalogIds) data.hiddenCatalogIds = [];
+
+  // Mix catalog with overrides and filter hidden
+  var catalog = DEFAULT_REWARDS.filter(function(r) {
+      return data.hiddenCatalogIds.indexOf(r.id) === -1;
+  }).map(function(r) {
+      var item = Object.assign({}, r);
+      if (data.catalogOverrides && data.catalogOverrides[r.id]) {
+          item.price = data.catalogOverrides[r.id];
+      }
+      return item;
+  });
+  return { catalog: catalog, customRewards: data.customRewards, purchases: data.purchases, catalogOverrides: data.catalogOverrides || {}, hiddenCatalogIds: data.hiddenCatalogIds };
+}
 
   function setCatalogPrice(rewardId, newPrice) {
     var data = storeGet('store_v2');
@@ -225,8 +229,19 @@
   function removeReward(rewardId) { 
     var storeData = getStore();
     var data = storeGet('store_v2');
-    if (!data) data = { customRewards: storeData.customRewards, catalogOverrides: storeData.catalogOverrides, purchases: storeData.purchases };
-    data.customRewards = data.customRewards.filter(function (r) { return r.id !== rewardId; });
+    if (!data) data = { customRewards: storeData.customRewards, catalogOverrides: storeData.catalogOverrides, hiddenCatalogIds: [], purchases: storeData.purchases };
+    
+    var isCatalog = DEFAULT_REWARDS.some(function(it) { return it.id === rewardId; });
+    
+    if (isCatalog) {
+        if (!data.hiddenCatalogIds) data.hiddenCatalogIds = [];
+        if (data.hiddenCatalogIds.indexOf(rewardId) === -1) {
+            data.hiddenCatalogIds.push(rewardId);
+        }
+    } else {
+        data.customRewards = data.customRewards.filter(function (r) { return r.id !== rewardId; });
+    }
+    
     storeSet('store_v2', data);
     return data;
   }

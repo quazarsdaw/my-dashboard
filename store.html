@@ -325,7 +325,7 @@ body::after {
 
     store.catalog.forEach(function (r) {
       try {
-        cGrid.appendChild(createRewardCard(r, false, true));
+        cGrid.appendChild(createRewardCard(r, true, true));
       } catch (e) {
         console.error('Failed to render catalog reward:', e, r);
       }
