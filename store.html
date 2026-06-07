@@ -11,9 +11,9 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Магазин наград</title>
-<script src="gamification.js?v=10"></script>
+<script src="gamification.js?v=11"></script>
 <script src="supabase-sync.js?v=26-sb" defer></script>
-<script src="topbar.js?v=28" defer></script>
+<script src="topbar.js?v=51" defer></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -384,38 +384,39 @@ body::after {
     var now = Date.now();
     var activeCount = 0;
 
-    store.purchases.forEach(function (p) {
-        var expiresAt = p.expiresAt;
-        if (!expiresAt && p.date) {
-            // Fallback: 24h after purchase
-            expiresAt = new Date(new Date(p.date).getTime() + 24 * 3600000).toISOString();
-        }
-
-        if (expiresAt) {
-            var expiry = new Date(expiresAt).getTime();
-            if (expiry > now) {
-                activeCount++;
-                var diff = expiry - now;
-                var hours = Math.floor(diff / 3600000);
-                var mins = Math.floor((diff % 3600000) / 60000);
-                
-                var el = document.createElement('div');
-                el.className = 'active-reward-card';
-                el.innerHTML = `
-                    <span style="font-size: 24px;">${p.icon || '🎁'}</span>
-                    <div style="flex: 1;">
-                        <div style="font-size: 14px; font-weight: 700;">${G.esc(p.name)}</div>
-                        <div style="font-size: 11px; color: var(--text-tertiary);">Куплено: ${new Date(p.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                    </div>
-                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-                        <div class="active-reward-time">Осталось: ${hours}ч ${mins}м</div>
-                        <button class="active-reward-refund" data-pur-id="${p.id}">Возврат</button>
-                    </div>
-                `;
-                container.appendChild(el);
+    if (store && store.purchases) {
+        store.purchases.forEach(function (p) {
+            var expiresAt = p.expiresAt;
+            if (!expiresAt && p.date) {
+                expiresAt = new Date(new Date(p.date).getTime() + 24 * 3600000).toISOString();
             }
-        }
-    });
+
+            if (expiresAt) {
+                var expiry = new Date(expiresAt).getTime();
+                if (expiry > now) {
+                    activeCount++;
+                    var diff = expiry - now;
+                    var hours = Math.floor(diff / 3600000);
+                    var mins = Math.floor((diff % 3600000) / 60000);
+                    
+                    var el = document.createElement('div');
+                    el.className = 'active-reward-card';
+                    el.innerHTML = `
+                        <span style="font-size: 24px;">${p.icon || '🎁'}</span>
+                        <div style="flex: 1;">
+                            <div style="font-size: 14px; font-weight: 700;">${G.esc(p.name)}</div>
+                            <div style="font-size: 11px; color: var(--text-tertiary);">Куплено: ${new Date(p.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                        </div>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+                            <div class="active-reward-time">Осталось: ${hours}ч ${mins}м</div>
+                            <button class="active-reward-refund" data-pur-id="${p.id || ''}">Возврат</button>
+                        </div>
+                    `;
+                    container.appendChild(el);
+                }
+            }
+        });
+    }
 
     if (activeCount === 0) {
         container.innerHTML = '<div style="text-align:center; padding:20px; font-size:12px; color:var(--text-tertiary);">Нет активных наград. Время действовать!</div>';
@@ -423,6 +424,7 @@ body::after {
         container.querySelectorAll('.active-reward-refund').forEach(function(btn) {
             btn.onclick = function() {
                 var pid = btn.dataset.purId;
+                if (!pid) { alert('Эту старую покупку нельзя вернуть.'); return; }
                 if (confirm('Вернуть монетки за эту покупку?')) {
                     G.refundReward(pid);
                     renderAll();
@@ -540,10 +542,7 @@ body::after {
 
   // Emoji picker
   var REWARD_EMOJIS = [
-    '🎁','📺','🎮','🍔','😴','🛍️','🏖️','📱','🍕','🍫','☕','🎬','🎵','🎧','📖','🧖','🛒','🍰','🍦','🎂','🌴','✈️','🎪','🎨','🧘','💆','🍿','🥤','🎯','🏋️',
-    '🍕','🍔','🍟','🌭','🍿','🥓','🍗','🍖','🥩','🥩','🌮','🌯','🥙','🥘','🍲','🥣','🥗','🍣','🍱','🍛','🍜','🍝','🥧','🧁','🍰','🎂','🍦','🍨','🍩','🍪','🍫','🍬','🍭','🍮','🍯','🥛','☕','🍵','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉',
-    '🎭','🎟️','🎫','🎬','🎤','🎧','🎨','🖌️','🧵','🎼','🎹','🎸','🎺','🎻','🎲','🎮','🕹️','🎰','🧩','🎳','🎯','🛹','🚲','🚴','🏎️','🚀','🛸','🛸','🛳️','🏖️','🏕️','⛺','🛶','🛶','🏰','🎡','🎢','🎠','🌅','🌅','🌃','🏔️','🌋','🌍',
-    '💎','💍','💄','👔','👕','👗','👜','🎒','👞','🕶️','⌚','📱','💻','⌨️','🖥️','🖨️','📷','📸','🕯️','📖','📕','📚','💰','💸','💵','💳','📦','📬','📬','📫','📮','🏷️','🪄','🔮','🧿','🧿','🧸','🧸','🧺','🧼','🛁','🚿','🛏️','🛋️'
+    '🎁','📺','🎮','🍔','🍕','🌮','🍜','🍿','🍩','🍰','🍦','🍺','🍷','☕','🎮','🎬','🎵','🎧','🎸','🎨','🎭','🎟️','📱','💻','⌚','📚','📖','⛺','🏝️','✈️','🚲','🚗','🛹','🎳','🧩','🎯','💎','💍','💄','👔','🛍️','📦','🚿','🛁','🧖','🛏️','🛋️','🧸','🪙','💰'
   ];
   var selectedIcon = '🎁';
 
@@ -594,7 +593,7 @@ body::after {
   });
 
   renderAll();
-  setInterval(renderActiveRewards, 30000); // Update timers every 30s
+  setInterval(renderActiveRewards, 30000); 
   window.addEventListener('dashboard-sync-applied', renderAll);
   window.addEventListener('gamification-update', renderAll);
   window.addEventListener('storage', renderAll);
