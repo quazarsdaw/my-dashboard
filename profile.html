@@ -11,9 +11,9 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Профиль</title>
-<script src="gamification.js?v=12"></script>
+<script src="gamification.js?v=200"></script>
 <script src="supabase-sync.js?v=26-sb" defer></script>
-<script src="topbar.js?v=28" defer></script><style>
+<script src="topbar.js?v=200" defer></script><style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -216,7 +216,7 @@ body::after {
 .ach-detail-icon { font-size: 72px; margin-bottom: 20px; }
 .ach-detail-name { font-size: 26px; font-weight: 800; margin-bottom: 12px; color: #fff; }
 .ach-detail-lore { 
-    font-size: 16px; line-height: 1.5; color: var(--warning); 
+    font-size: 16px; line-height: 1.5; color: #FFD27D; 
     margin-bottom: 24px; font-style: italic; font-weight: 600;
     padding: 0 10px;
 }
@@ -508,6 +508,7 @@ body::after {
   window.showAchievementDetail = function(id) {
     var def = G.ACHIEVEMENT_DEFS.find(function(a) { return a.id === id; });
     if (!def) return;
+    console.log(def);
     var achievements = G.getAchievements();
     var unlockedDate = achievements.unlocked[id];
 
@@ -535,10 +536,10 @@ body::after {
     nameEl.textContent = def.name;
     
     // Funny description (Lore)
-    loreEl.textContent = def.desc || 'Секретное достижение...';
+    loreEl.textContent = def.desc || 'Описание отсутствует';
     
     // Technical requirement
-    reqEl.textContent = def.req || def.desc || 'Условие скрыто';
+    reqEl.textContent = def.req || 'Условие скрыто';
     bonusEl.textContent = def.bonus ? '🎁 Награда: ' + def.bonus + ' 🪙' : '';
     
     if (unlockedDate) {
@@ -665,7 +666,7 @@ body::after {
         var unlocked = !!achievements.unlocked[a.id];
         var card = document.createElement('div');
         card.className = 'ach-card rarity-' + r.id + ' ' + (unlocked ? 'unlocked' : 'locked');
-        card.setAttribute('onclick', 'window.showAchievementDetail("' + a.id + '")');
+        card.onclick = function() { window.showAchievementDetail(a.id); };
         card.innerHTML =
           '<div class="ach-rarity-tag">' + r.id.toUpperCase() + '</div>' +
           '<div class="ach-icon">' + a.icon + '</div>' +
