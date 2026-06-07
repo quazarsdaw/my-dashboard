@@ -13,7 +13,8 @@
 <title>Магазин наград</title>
 <script src="gamification.js?v=8"></script>
 <script src="supabase-sync.js?v=26-sb" defer></script>
-<script src="topbar.js?v=26" defer></script><style>
+<script src="topbar.js?v=26" defer></script>
+<style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -145,6 +146,20 @@ body::after {
 .reward-del-btn:hover { color: var(--danger); background: rgba(255,107,107,0.08); }
 .reward-edit-btn:hover { color: var(--warning); background: rgba(242,192,99,0.08); }
 
+/* Active Reward Styles */
+.active-reward-card {
+  background: linear-gradient(135deg, rgba(107,227,164,0.1) 0%, rgba(125,211,252,0.05) 100%);
+  border: 1px solid rgba(107,227,164,0.2);
+  border-radius: 16px; padding: 12px 16px;
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 8px;
+}
+.active-reward-time {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+  color: var(--success); background: rgba(107,227,164,0.1);
+  padding: 4px 10px; border-radius: 8px;
+}
+
 /* Add reward */
 .add-reward-card {
   background: var(--card-bg); border-radius: var(--card-radius); padding: 18px;
@@ -252,6 +267,16 @@ body::after {
   </div>
 </div>
 
+<div class="store-section" id="section-active">
+  <div class="store-header" onclick="window.toggleSection('active')">
+    <span class="store-title">💎 Активные награды (Куплено)</span>
+    <span class="store-arrow">▼</span>
+  </div>
+  <div class="store-content">
+    <div id="activeRewardsList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+  </div>
+</div>
+
 <div class="store-section" id="section-catalog">
   <div class="store-header" onclick="window.toggleSection('catalog')">
     <span class="store-title">Каталог идей</span>
@@ -342,6 +367,44 @@ body::after {
         (canDelete ? '<button class="reward-del-btn" data-id="' + r.id + '" title="Удалить">×</button>' : '') +
       '</div>';
     return card;
+  }
+
+  function renderActiveRewards() {
+    var store = G.getStore();
+    var container = document.getElementById('activeRewardsList');
+    if (!container) return;
+    container.innerHTML = '';
+
+    var now = Date.now();
+    var activeCount = 0;
+
+    store.purchases.forEach(function (p) {
+        if (p.expiresAt) {
+            var expiry = new Date(p.expiresAt).getTime();
+            if (expiry > now) {
+                activeCount++;
+                var diff = expiry - now;
+                var hours = Math.floor(diff / 3600000);
+                var mins = Math.floor((diff % 3600000) / 60000);
+                
+                var el = document.createElement('div');
+                el.className = 'active-reward-card';
+                el.innerHTML = `
+                    <span style="font-size: 24px;">${p.icon || '🎁'}</span>
+                    <div style="flex: 1;">
+                        <div style="font-size: 14px; font-weight: 700;">${G.esc(p.name)}</div>
+                        <div style="font-size: 11px; color: var(--text-tertiary);">Куплено: ${new Date(p.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                    </div>
+                    <div class="active-reward-time">Осталось: ${hours}ч ${mins}м</div>
+                `;
+                container.appendChild(el);
+            }
+        }
+    });
+
+    if (activeCount === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; font-size:12px; color:var(--text-tertiary);">Нет активных наград. Время действовать!</div>';
+    }
   }
 
   function renderRewards() {
@@ -439,11 +502,12 @@ body::after {
 
   function renderAll() {
     renderBalance();
+    renderActiveRewards();
     renderRewards();
     renderHistory();
     
     var collapsed = getCollapsed();
-    ['catalog', 'custom', 'history'].forEach(function(id) {
+    ['active', 'catalog', 'custom', 'history'].forEach(function(id) {
         var sec = document.getElementById('section-' + id);
         if (sec) sec.classList.toggle('collapsed', !!collapsed[id]);
     });
@@ -505,6 +569,7 @@ body::after {
   });
 
   renderAll();
+  setInterval(renderActiveRewards, 30000); // Update timers every 30s
   window.addEventListener('dashboard-sync-applied', renderAll);
   window.addEventListener('gamification-update', renderAll);
   window.addEventListener('storage', renderAll);

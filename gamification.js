@@ -143,52 +143,53 @@
   }
 
   var DEFAULT_REWARDS = [
-    { id: 'series_1h',     name: '1 час сериала',         price: 50,  icon: '📺' },
-    { id: 'gaming_1h',     name: '1 час игр',             price: 50,  icon: '🎮' },
-    { id: 'junk_food',     name: 'Фастфуд',               price: 80,  icon: '🍔' },
-    { id: 'sleep_in',      name: 'Поспать подольше',       price: 30,  icon: '😴' },
-    { id: 'shopping',      name: 'Покупка до 1000₽',      price: 150, icon: '🛍️' },
-    { id: 'day_off',       name: 'Выходной без дел',       price: 300, icon: '🏖️' },
-    { id: 'social_scroll', name: '30 мин соцсети',         price: 20,  icon: '📱' },
-    { id: 'coffee_break',  name: 'Вкусный кофе',           price: 25,  icon: '☕' },
-    { id: 'pizza_night',   name: 'Пицца-вечер',            price: 100, icon: '🍕' },
-    { id: 'movie_theater', name: 'Поход в кино',           price: 120, icon: '🍿' },
-    { id: 'music_relax',   name: '30 мин музыки',          price: 15,  icon: '🎧' },
-    { id: 'book_time',     name: '1 час чтения',           price: 30,  icon: '📖' },
-    { id: 'dessert',       name: 'Десерт',                 price: 40,  icon: '🍰' },
-    { id: 'walk_park',     name: 'Прогулка в парке',       price: 20,  icon: '🌳' },
-    { id: 'hobby_hour',    name: '1 час хобби',            price: 40,  icon: '🎨' },
-    { id: 'spa_bath',      name: 'Горячая ванна/Спа',      price: 35,  icon: '🛁' },
-    { id: 'expensive_buy', name: 'Крупная покупка',        price: 500, icon: '💎' },
-    { id: 'vacation_day',  name: 'День отпуска',           price: 800, icon: '✈️' },
-    { id: 'rest_evening',  name: 'Вечер без гаджетов',     price: 50,  icon: '🕯️' },
-    { id: 'fast_food_2',   name: 'Мороженое',              price: 20,  icon: '🍦' },
-    { id: 'concert_tick',  name: 'Билет на концерт',       price: 400, icon: '🎸' },
-    { id: 'sushi_time',    name: 'Суши/Роллы',             price: 130, icon: '🍣' },
-    { id: 'drink_wine',    name: 'Бокал вина',             price: 60,  icon: '🍷' },
-    { id: 'new_app',       name: 'Платное приложение',      price: 70,  icon: '📱' },
-    { id: 'nice_dinner',   name: 'Ужин в ресторане',       price: 250, icon: '🍽️' },
+    { id: 'series_1h',     name: '1 час сериала',         price: 50,  icon: '📺', expiresIn: 12 },
+    { id: 'gaming_1h',     name: '1 час игр',             price: 50,  icon: '🎮', expiresIn: 12 },
+    { id: 'junk_food',     name: 'Фастфуд',               price: 80,  icon: '🍔', expiresIn: 6 },
+    { id: 'sleep_in',      name: 'Поспать подольше',       price: 30,  icon: '😴', expiresIn: 18 },
+    { id: 'shopping',      name: 'Покупка до 1000₽',      price: 150, icon: '🛍️', expiresIn: 24 },
+    { id: 'day_off',       name: 'Выходной без дел',       price: 300, icon: '🏖️', expiresIn: 24 },
+    { id: 'social_scroll', name: '30 мин соцсети',         price: 20,  icon: '📱', expiresIn: 4 },
+    { id: 'coffee_break',  name: 'Вкусный кофе',           price: 25,  icon: '☕', expiresIn: 4 },
+    { id: 'pizza_night',   name: 'Пицца-вечер',            price: 100, icon: '🍕', expiresIn: 8 },
+    { id: 'movie_theater', name: 'Поход в кино',           price: 120, icon: '🍿', expiresIn: 24 },
+    { id: 'music_relax',   name: '30 мин музыки',          price: 15,  icon: '🎧', expiresIn: 4 },
+    { id: 'book_time',     name: '1 час чтения',           price: 30,  icon: '📖', expiresIn: 12 },
+    { id: 'dessert',       name: 'Десерт',                 price: 40,  icon: '🍰', expiresIn: 6 },
+    { id: 'walk_park',     name: 'Прогулка в парке',       price: 20,  icon: '🌳', expiresIn: 8 },
+    { id: 'hobby_hour',    name: '1 час хобби',            price: 40,  icon: '🎨', expiresIn: 12 },
+    { id: 'spa_bath',      name: 'Горячая ванна/Спа',      price: 35,  icon: '🛁', expiresIn: 6 },
+    { id: 'expensive_buy', name: 'Крупная покупка',        price: 500, icon: '💎', expiresIn: 48 },
+    { id: 'vacation_day',  name: 'День отпуска',           price: 800, icon: '✈️', expiresIn: 72 },
+    { id: 'rest_evening',  name: 'Вечер без гаджетов',     price: 50,  icon: '🕯️', expiresIn: 12 },
+    { id: 'fast_food_2',   name: 'Мороженое',              price: 20,  icon: '🍦', expiresIn: 4 },
+    { id: 'concert_tick',  name: 'Билет на концерт',       price: 400, icon: '🎸', expiresIn: 168 },
+    { id: 'sushi_time',    name: 'Суши/Роллы',             price: 130, icon: '🍣', expiresIn: 8 },
+    { id: 'drink_wine',    name: 'Бокал вина',             price: 60,  icon: '🍷', expiresIn: 6 },
+    { id: 'new_app',       name: 'Платное приложение',      price: 70,  icon: '📱', expiresIn: 24 },
+    { id: 'nice_dinner',   name: 'Ужин в ресторане',       price: 250, icon: '🍽️', expiresIn: 12 },
   ];
-function getStore() { 
-  var data = storeGet('store_v2'); 
-  if (!data) {
-      var old = storeGet('store_v1') || { rewards: [], purchases: [] };
-      data = { customRewards: old.rewards || [], catalogOverrides: {}, hiddenCatalogIds: [], purchases: old.purchases || [] };
-  }
-  if (!data.hiddenCatalogIds) data.hiddenCatalogIds = [];
 
-  // Mix catalog with overrides and filter hidden
-  var catalog = DEFAULT_REWARDS.filter(function(r) {
-      return data.hiddenCatalogIds.indexOf(r.id) === -1;
-  }).map(function(r) {
-      var item = Object.assign({}, r);
-      if (data.catalogOverrides && data.catalogOverrides[r.id]) {
-          item.price = data.catalogOverrides[r.id];
-      }
-      return item;
-  });
-  return { catalog: catalog, customRewards: data.customRewards, purchases: data.purchases, catalogOverrides: data.catalogOverrides || {}, hiddenCatalogIds: data.hiddenCatalogIds };
-}
+  function getStore() { 
+    var data = storeGet('store_v2'); 
+    if (!data) {
+        var old = storeGet('store_v1') || { rewards: [], purchases: [] };
+        data = { customRewards: old.rewards || [], catalogOverrides: {}, hiddenCatalogIds: [], purchases: old.purchases || [] };
+    }
+    if (!data.hiddenCatalogIds) data.hiddenCatalogIds = [];
+
+    // Mix catalog with overrides and filter hidden
+    var catalog = DEFAULT_REWARDS.filter(function(r) {
+        return data.hiddenCatalogIds.indexOf(r.id) === -1;
+    }).map(function(r) {
+        var item = Object.assign({}, r);
+        if (data.catalogOverrides && data.catalogOverrides[r.id]) {
+            item.price = data.catalogOverrides[r.id];
+        }
+        return item;
+    });
+    return { catalog: catalog, customRewards: data.customRewards, purchases: data.purchases, catalogOverrides: data.catalogOverrides || {}, hiddenCatalogIds: data.hiddenCatalogIds };
+  }
 
   function setCatalogPrice(rewardId, newPrice) {
     var data = storeGet('store_v2');
@@ -205,13 +206,29 @@ function getStore() {
     var allItems = storeData.catalog.concat(storeData.customRewards);
     var reward = allItems.find(function(it) { return it.id === rewardId; });
     if (!reward) return null;
+    
     var coins = spendCoins(reward.price, reward.name);
     if (!coins) return null;
+    
     var data = storeGet('store_v2');
     if (!data) data = { customRewards: storeData.customRewards, catalogOverrides: storeData.catalogOverrides, purchases: storeData.purchases };
-    data.purchases.unshift({ rewardId: rewardId, name: reward.name, price: reward.price, date: new Date().toISOString() });
+    
+    // Add expiration
+    var expiresAt = null;
+    var hours = reward.expiresIn || 24; // Default 24h
+    expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
+
+    data.purchases.unshift({ 
+      rewardId: rewardId, 
+      name: reward.name, 
+      price: reward.price, 
+      icon: reward.icon,
+      date: new Date().toISOString(),
+      expiresAt: expiresAt
+    });
     if (data.purchases.length > 200) data.purchases.length = 200;
     storeSet('store_v2', data);
+    
     setTimeout(checkAchievements, 100);
     return { coins: coins, store: data };
   }
@@ -221,7 +238,7 @@ function getStore() {
     var id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
     var data = storeGet('store_v2');
     if (!data) data = { customRewards: storeData.customRewards, catalogOverrides: storeData.catalogOverrides, purchases: storeData.purchases };
-    data.customRewards.push({ id: id, name: name, price: price, icon: icon || '🎁' });
+    data.customRewards.push({ id: id, name: name, price: price, icon: icon || '🎁', expiresIn: 24 });
     storeSet('store_v2', data);
     return data;
   }
@@ -407,7 +424,7 @@ function getStore() {
     var daysSinceGym = d.lastGymDate ? (Date.now() - new Date(d.lastGymDate).getTime()) / (1000*3600*24) : 0;
     var achievements = getAchievements(), newUnlocks = [];
     var checker = {
-      first_task: function(d) { return d.totalTasks >= 1; }, altushka: function(d) { return d.totalPurchases >= 1; }, tasks_5: function(d) { return d.totalTasks >= 5; }, tasks_10: function(d) { return d.totalTasks >= 10; }, hours_1: function(d) { return d.totalMinutes >= 60; }, hours_5: function(d) { return d.totalMinutes >= 300; }, days_3: function(d) { return d.totalDays >= 3; }, coins_50: function(d) { return d.coinsEarned >= 50; }, coins_200: function(d) { return d.coinsEarned >= 200; }, level_3: function(d) { return d.overallLevel >= 3; }, level_5: function(d) { return d.overallLevel >= 5; }, gym_1: function(d) { return d.totalWorkouts >= 1; }, gym_3: function(d) { return d.totalWorkouts >= 3; }, finance_1: function(d) { return d.sphereLevels['finance'] >= 1; }, sphere_xp: function(d) { return d.activeSpheres >= 1; }, early_bird: function(d) { return d.earlyTask; }, number_67: function(d) { return d.totalTasks === 67; }, clothing_78: function(d) { return d.totalTasks >= 8; }, tasks_50: function(d) { return d.totalTasks >= 50; }, tasks_75: function(d) { return d.totalTasks >= 75; }, temshik: function(d) { return d.coinsEarned >= 1000; }, surgut: function(d) { return d.totalWorkouts >= 10; }, technik: function(d) { return d.totalPurchases >= 10; }, skuf: function(d) { return daysSinceGym >= 30; }, hours_20: function(d) { return d.totalMinutes >= 1200; }, hours_40: function(d) { return d.totalMinutes >= 2400; }, days_7: function(d) { return d.totalDays >= 7; }, days_14: function(d) { return d.totalDays >= 14; }, level_10: function(d) { return d.overallLevel >= 10; }, level_15: function(d) { return d.overallLevel >= 15; }, gym_10: function(d) { return d.totalWorkouts >= 10; }, gym_streak: function(d) { return d.totalWorkouts >= 3; }, all_spheres: function(d) { return d.activeSpheres >= d.totalSpheres; }, store_5: function(d) { return d.totalPurchases >= 5; }, health_5: function(d) { return d.sphereLevels['health'] >= 5; }, finance_5: function(d) { return d.sphereLevels['finance'] >= 5; }, career_5: function(d) { return d.sphereLevels['career'] >= 5; }, night_owl_3: function(d) { return d.nightTask; }, early_bird_10: function(d) { return d.earlyTask; }, gym_variety: function(d) { return d.totalWorkouts >= 5; }, habit_7: function(d) { return d.totalDays >= 7; }, svo: function(d) { return d.hardStreak; }, borov: function(d) { return d.coinsEarned >= 5000; }, mamont: function(d) { return (d.coinsEarned - d.coinBalance) >= 5000; }, mamkin_investor: function(d) { return d.finBalance >= 10000; }, dedinsight: function(d) { return d.nightTask; }, sigma: function(d) { return d.totalWorkouts >= 50; }, tasks_150: function(d) { return d.totalTasks >= 150; }, tasks_300: function(d) { return d.totalTasks >= 300; }, hours_100: function(d) { return d.totalMinutes >= 6000; }, hours_150: function(d) { return d.totalMinutes >= 9000; }, days_30: function(d) { return d.totalDays >= 30; }, days_60: function(d) { return d.totalDays >= 60; }, level_25: function(d) { return d.overallLevel >= 25; }, level_40: function(d) { return d.overallLevel >= 40; }, gym_30: function(d) { return d.totalWorkouts >= 30; }, gym_50: function(d) { return d.totalWorkouts >= 50; }, finance_master: function(d) { return d.sphereLevels['finance'] >= 15; }, career_master: function(d) { return d.sphereLevels['career'] >= 15; }, growth_master: function(d) { return d.sphereLevels['growth'] >= 15; }, pomo_master: function(d) { return d.pomoCount >= 50; }, night_owl: function(d) { return d.nightTask; }, finance_balance_10000: function(d) { return d.finBalance >= 10000; }, task_spree_20: function(d) { return d.totalTasks >= 20; }, all_spheres_5: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, big_spender: function(d) { return (d.coinsEarned - d.coinBalance) >= 5000; }, saver: function(d) { return d.coinBalance >= 2000; }, river_walker: function(d) { return d.totalMinutes >= 30000; }, gigachad: function(d) { return d.totalWorkouts >= 100; }, moms_friend_son: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, chinazes: function(d) { return d.totalTasks >= 1000; }, tasks_500: function(d) { return d.totalTasks >= 500; }, tasks_1000: function(d) { return d.totalTasks >= 1000; }, hours_500: function(d) { return d.totalMinutes >= 30000; }, days_100: function(d) { return d.totalDays >= 100; }, days_365: function(d) { return d.totalDays >= 365; }, level_75: function(d) { return d.overallLevel >= 75; }, gym_100: function(d) { return d.totalWorkouts >= 100; }, all_max_lvl: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, streak_30: function(d) { return d.totalDays >= 30; }, finance_balance_100000: function(d) { return d.finBalance >= 100000; }, pomo_100: function(d) { return d.pomoCount >= 100; }, capitalist: function(d) { return d.finBalance >= 1000000; }, tasks_5000: function(d) { return d.totalTasks >= 5000; }, hours_2000: function(d) { return d.totalMinutes >= 120000; }, level_100: function(d) { return d.overallLevel >= 100; }, billionaire: function(d) { return d.coinsEarned >= 100000; }, perfectionist: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 50) m = false; return m; }, pomo_500: function(d) { return d.pomoCount >= 500; }
+      first_task: function(d) { return d.totalTasks >= 1; }, altushka: function(d) { return d.totalPurchases >= 1; }, tasks_10: function(d) { return d.totalTasks >= 10; }, hours_1: function(d) { return d.totalMinutes >= 60; }, hours_5: function(d) { return d.totalMinutes >= 300; }, days_3: function(d) { return d.totalDays >= 3; }, coins_50: function(d) { return d.coinsEarned >= 50; }, level_5: function(d) { return d.overallLevel >= 5; }, gym_1: function(d) { return d.totalWorkouts >= 1; }, sphere_xp: function(d) { return d.activeSpheres >= 1; }, early_bird: function(d) { return d.earlyTask; }, number_67: function(d) { return d.totalTasks === 67; }, clothing_78: function(d) { return d.totalTasks >= 8; }, tasks_50: function(d) { return d.totalTasks >= 50; }, temshik: function(d) { return d.coinsEarned >= 1000; }, surgut: function(d) { return d.totalWorkouts >= 10; }, technik: function(d) { return d.totalPurchases >= 10; }, skuf: function(d) { return daysSinceGym >= 30; }, hours_20: function(d) { return d.totalMinutes >= 1200; }, days_7: function(d) { return d.totalDays >= 7; }, level_15: function(d) { return d.overallLevel >= 15; }, all_spheres: function(d) { return d.activeSpheres >= d.totalSpheres; }, svo: function(d) { return d.hardStreak; }, borov: function(d) { return d.coinsEarned >= 5000; }, mamont: function(d) { return (d.coinsEarned - d.coinBalance) >= 5000; }, mamkin_investor: function(d) { return d.finBalance >= 10000; }, dedinsight: function(d) { return d.nightTask; }, sigma: function(d) { return d.totalWorkouts >= 50; }, hours_100: function(d) { return d.totalMinutes >= 6000; }, days_60: function(d) { return d.totalDays >= 60; }, river_walker: function(d) { return d.totalMinutes >= 30000; }, gigachad: function(d) { return d.totalWorkouts >= 100; }, moms_friend_son: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 10) m = false; return m; }, chinazes: function(d) { return d.totalTasks >= 1000; }, level_75: function(d) { return d.overallLevel >= 75; }, capitalist: function(d) { return d.finBalance >= 1000000; }, tasks_5000: function(d) { return d.totalTasks >= 5000; }, level_100: function(d) { return d.overallLevel >= 100; }, billionaire: function(d) { return d.coinsEarned >= 100000; }, perfectionist: function(d) { var m = true; for(var k in d.sphereLevels) if(d.sphereLevels[k] < 50) m = false; return m; }
     };
     var playAchSound = false;
     for (var j = 0; j < ACHIEVEMENT_DEFS.length; j++) {
