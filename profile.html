@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Профиль</title>
-<script src="gamification.js?v=11"></script>
+<script src="gamification.js?v=12"></script>
 <script src="supabase-sync.js?v=26-sb" defer></script>
 <script src="topbar.js?v=28" defer></script><style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -210,15 +210,20 @@ body::after {
   background: #1C1E24; border: 1px solid rgba(255,255,255,0.1);
   border-radius: 24px; padding: 32px 28px; max-width: 400px; width: 100%;
   text-align: center; position: relative;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
 }
 .ach-detail-rarity { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; margin-bottom: 16px; }
-.ach-detail-icon { font-size: 64px; margin-bottom: 16px; filter: drop-shadow(0 0 15px currentColor); }
-.ach-detail-name { font-size: 24px; font-weight: 800; margin-bottom: 12px; }
-.ach-detail-lore { font-size: 14px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 24px; font-style: italic; }
-.ach-detail-req-box { background: rgba(255,255,255,0.04); border-radius: 16px; padding: 16px; margin-bottom: 20px; }
-.ach-detail-req-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 6px; display: block; }
-.ach-detail-req-text { font-size: 13px; color: var(--text-primary); font-weight: 600; }
-.ach-detail-bonus { color: #F2C063; font-weight: 800; font-family: var(--font-mono); margin-top: 12px; font-size: 14px; }
+.ach-detail-icon { font-size: 72px; margin-bottom: 20px; }
+.ach-detail-name { font-size: 26px; font-weight: 800; margin-bottom: 12px; color: #fff; }
+.ach-detail-lore { 
+    font-size: 16px; line-height: 1.5; color: var(--warning); 
+    margin-bottom: 24px; font-style: italic; font-weight: 600;
+    padding: 0 10px;
+}
+.ach-detail-req-box { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.05); border-radius: 18px; padding: 18px; margin-bottom: 20px; }
+.ach-detail-req-label { font-size: 10px; font-weight: 800; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 8px; display: block; letter-spacing: 0.05em; }
+.ach-detail-req-text { font-size: 14px; color: var(--text-primary); font-weight: 600; }
+.ach-detail-bonus { color: #F2C063; font-weight: 800; font-family: var(--font-mono); margin-top: 12px; font-size: 15px; }
 .ach-detail-status { font-size: 11px; margin-top: 24px; color: var(--text-tertiary); }
 
 /* Activity log */
@@ -527,11 +532,14 @@ body::after {
     rarityEl.textContent = r.name;
     rarityEl.style.color = r.color;
     iconEl.textContent = def.icon;
-    iconEl.style.color = r.color;
     nameEl.textContent = def.name;
-    loreEl.textContent = def.desc || 'Нет описания.';
-    reqEl.textContent = def.req || def.desc || 'Секретное условие';
-    bonusEl.textContent = def.bonus ? '+' + def.bonus + ' 🪙 бонус' : '';
+    
+    // Funny description (Lore)
+    loreEl.textContent = def.desc || 'Секретное достижение...';
+    
+    // Technical requirement
+    reqEl.textContent = def.req || def.desc || 'Условие скрыто';
+    bonusEl.textContent = def.bonus ? '🎁 Награда: ' + def.bonus + ' 🪙' : '';
     
     if (unlockedDate) {
         statusEl.textContent = 'Разблокировано: ' + formatDate(unlockedDate);
@@ -662,7 +670,7 @@ body::after {
           '<div class="ach-rarity-tag">' + r.id.toUpperCase() + '</div>' +
           '<div class="ach-icon">' + a.icon + '</div>' +
           '<div class="ach-name">' + G.esc(a.name) + '</div>' +
-          '<div class="ach-desc-short">' + G.esc(a.desc) + '</div>' +
+          '<div class="ach-desc-short" style="color:var(--text-tertiary);">' + G.esc(a.req || a.desc) + '</div>' +
           (unlocked ? '<div class="ach-date">' + formatShortDate(achievements.unlocked[a.id]) + '</div>' : '');
         grid.appendChild(card);
       });
