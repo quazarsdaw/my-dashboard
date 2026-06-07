@@ -178,6 +178,23 @@
     }
     if (!data.hiddenCatalogIds) data.hiddenCatalogIds = [];
 
+    // Ensure old purchases have expiresAt (for backward compatibility)
+    if (data.purchases && data.purchases.length > 0) {
+        var modified = false;
+        data.purchases.forEach(function(p) {
+            if (!p.expiresAt) {
+                var pDate = p.date ? new Date(p.date).getTime() : Date.now();
+                p.expiresAt = new Date(pDate + 24 * 3600000).toISOString();
+                modified = true;
+            }
+        });
+        if (modified) {
+            localStorage.setItem('store_v2', JSON.stringify(data));
+            // We use direct localStorage.setItem to avoid triggering global events 
+            // from within a getter, but still ensure data is fixed for next time.
+        }
+    }
+
     // Mix catalog with overrides and filter hidden
     var catalog = DEFAULT_REWARDS.filter(function(r) {
         return data.hiddenCatalogIds.indexOf(r.id) === -1;
