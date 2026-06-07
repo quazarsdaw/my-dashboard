@@ -236,6 +236,7 @@
     expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
 
     data.purchases.unshift({ 
+      id: 'pur_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       rewardId: rewardId, 
       name: reward.name, 
       price: reward.price, 
@@ -277,6 +278,27 @@
     }
     
     storeSet('store_v2', data);
+    return data;
+  }
+
+  function refundReward(purchaseId) {
+    var data = storeGet('store_v2');
+    if (!data || !data.purchases) return null;
+    
+    var idx = -1;
+    for(var i=0; i<data.purchases.length; i++) {
+        if(data.purchases[i].id === purchaseId) { idx = i; break; }
+    }
+    if (idx === -1) return null;
+    
+    var purchase = data.purchases[idx];
+    // Return coins (silent to avoid success sound on refund)
+    earnCoins(purchase.price, 'Возврат: ' + purchase.name, true);
+    
+    // Remove from history
+    data.purchases.splice(idx, 1);
+    storeSet('store_v2', data);
+    
     return data;
   }
 
@@ -473,7 +495,7 @@
     SPHERES: SPHERES, getSphereDefs: getSphereDefs, setSphereDefs: setSphereDefs, renameSphere: renameSphere, addSphere: addSphere, removeSphere: removeSphere,
     MAX_LEVEL: MAX_LEVEL, DIFFICULTY_COIN_MULT: DIFFICULTY_COIN_MULT, DIFFICULTY_LABELS: DIFFICULTY_LABELS, ACHIEVEMENT_DEFS: ACHIEVEMENT_DEFS,
     xpForLevel: xpForLevel, getLevelInfo: getLevelInfo, getOverallLevel: getOverallLevel, getSpheres: getSpheres, addXpToSphere: addXpToSphere,
-    getCoins: getCoins, earnCoins: earnCoins, spendCoins: spendCoins, getStore: getStore, purchaseReward: purchaseReward, addReward: addReward, removeReward: removeReward,
+    getCoins: getCoins, earnCoins: earnCoins, spendCoins: spendCoins, getStore: getStore, purchaseReward: purchaseReward, refundReward: refundReward, addReward: addReward, removeReward: removeReward,
     setCatalogPrice: setCatalogPrice,
     completeTask: completeTask, getTotalStats: getTotalStats, getTimerState: getTimerState, startTimer: startTimer, stopTimer: stopTimer,
     getActivityLog: getActivityLog, getAchievements: getAchievements, checkAchievements: checkAchievements, unlockManualAchievement: unlockManualAchievement,
