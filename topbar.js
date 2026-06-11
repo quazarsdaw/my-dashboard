@@ -118,9 +118,6 @@ body {\
   <a href="index.html" class="bottombar-tab" data-page="main"><span class="bottombar-tab-icon">🏠</span><span>Главная</span></a>\
   <a href="inbox.html" class="bottombar-tab" data-page="inbox"><span class="bottombar-tab-icon">📥</span><span>Входящие</span></a>\
   <a href="tracker.html" class="bottombar-tab" data-page="tracker"><span class="bottombar-tab-icon">✅</span><span>Трекер</span></a>\
-  <a href="health.html" class="bottombar-tab" data-page="health"><span class="bottombar-tab-icon">💧</span><span>Здоровье</span></a>\
-  <a href="gym.html" class="bottombar-tab" data-page="fitness"><span class="bottombar-tab-icon">💪</span><span>Спорт</span></a>\
-  <a href="finance.html" class="bottombar-tab" data-page="finance"><span class="bottombar-tab-icon">💳</span><span>Финансы</span></a>\
   <a href="goals.html" class="bottombar-tab" data-page="goals"><span class="bottombar-tab-icon">🎯</span><span>Цели</span></a>\
   <a href="store.html" class="bottombar-tab" data-page="store"><span class="bottombar-tab-icon">🏪</span><span>Магазин</span></a>\
   <a href="profile.html" class="bottombar-tab" data-page="profile"><span class="bottombar-tab-icon">👤</span><span>Профиль</span></a>\

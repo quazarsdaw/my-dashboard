@@ -338,6 +338,19 @@ body::after {
 }
 .danger-btn:active { transform: scale(0.96); }
 
+/* Additional sections grid */
+.extra-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px;
+}
+.extra-card {
+  background: var(--card-bg); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px; padding: 16px 12px; text-align: center;
+  text-decoration: none; color: #fff; transition: transform 0.1s, background 0.15s;
+}
+.extra-card:active { transform: scale(0.96); background: rgba(255,255,255,0.12); }
+.extra-icon { font-size: 24px; margin-bottom: 6px; display: block; }
+.extra-label { font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+
 @media (max-width: 480px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .stat-card { padding: 12px 10px; }
@@ -385,6 +398,22 @@ body::after {
       <div class="level-info-next" id="levelNextText"></div>
     </div>
   </div>
+</div>
+
+<!-- Extra sections -->
+<div class="extra-grid">
+  <a href="health.html" class="extra-card">
+    <span class="extra-icon">💧</span>
+    <span class="extra-label">Здоровье</span>
+  </a>
+  <a href="gym.html" class="extra-card">
+    <span class="extra-icon">💪</span>
+    <span class="extra-label">Спорт</span>
+  </a>
+  <a href="finance.html" class="extra-card">
+    <span class="extra-icon">💳</span>
+    <span class="extra-label">Финансы</span>
+  </a>
 </div>
 
 <!-- Stats -->
