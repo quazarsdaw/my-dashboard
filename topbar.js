@@ -207,9 +207,11 @@ body {\
     }
 
     if (window.Gamification) {
-      var bal = window.Gamification.getCoins().balance;
-      var count = document.getElementById('topbarCoinsCount');
-      if (count) count.textContent = bal;
+      try {
+        var bal = window.Gamification.getCoins().balance;
+        var count = document.getElementById('topbarCoinsCount');
+        if (count) count.textContent = bal;
+      } catch(e) {}
     }
   }
 
