@@ -77,6 +77,21 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 .goal-bar-fill{height:100%;border-radius:2px;transition:width 0.4s;background:var(--success)}
 .goal-meta{display:flex;align-items:center;justify-content:space-between; font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)}
 
+/* Goal Checkbox UI */
+.goal-check-btn {
+  width: 22px; height: 22px; border-radius: 7px;
+  border: 2px solid rgba(255,255,255,0.12);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(255,255,255,0.03);
+}
+.goal-card.completed .goal-check-btn {
+  background: var(--success); border-color: var(--success);
+  box-shadow: 0 0 12px rgba(107,227,164,0.3);
+}
+.goal-check-icon { color: #1c1e24; font-size: 13px; font-weight: 800; opacity: 0; transform: scale(0.5); transition: all 0.2s; }
+.goal-card.completed .goal-check-icon { opacity: 1; transform: scale(1); }
+
 /* Add card */
 .add-card{background:var(--card-bg); border-radius:var(--card-radius); padding:20px; margin:20px 0 40px; border:1px solid rgba(255,255,255,0.08)}
 .add-input{width:100%; padding:12px 16px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#fff; outline:none; margin-bottom:12px;}
@@ -252,26 +267,52 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
         content.innerHTML = '<div style="text-align:center; padding:20px; font-size:12px; color:var(--text-tertiary);">Нет целей на этот горизонт.</div>';
       } else {
         goals.forEach(function(g){
-            var pct = g.type === 'check' ? (g.done?100:0) : Math.min(100, Math.round((g.current||0)/(g.target||1)*100));
+            var isCheck = g.type === 'check';
+            var pct = isCheck ? (g.done?100:0) : Math.min(100, Math.round((g.current||0)/(g.target||1)*100));
             var card = document.createElement('div');
             card.className = 'goal-card' + (g.done?' completed':'');
-            card.onclick = () => openEdit(g);
-            card.innerHTML = `
-                <div class="goal-top">
-                    <span class="goal-title">${G.esc(g.title)}</span>
-                    <span class="goal-pct">${pct}%</span>
-                </div>
-                <div class="goal-bar-bg"><div class="goal-bar-fill" style="width:${pct}%"></div></div>
-                <div class="goal-meta">
-                    <span>${g.type==='number' ? (g.current||0)+' / '+g.target+' '+(g.unit||'') : (g.done?'Выполнено':'В процессе')}</span>
-                </div>
-            `;
+            
+            if (isCheck) {
+                card.innerHTML = `
+                    <div class="goal-top" style="margin-bottom:0">
+                        <span class="goal-title">${G.esc(g.title)}</span>
+                        <div class="goal-check-btn" onclick="event.stopPropagation(); window.toggleGoalStatus('${g.id}')">
+                            <span class="goal-check-icon">✓</span>
+                        </div>
+                    </div>
+                `;
+                card.onclick = () => openEdit(g);
+            } else {
+                card.innerHTML = `
+                    <div class="goal-top">
+                        <span class="goal-title">${G.esc(g.title)}</span>
+                        <span class="goal-pct">${pct}%</span>
+                    </div>
+                    <div class="goal-bar-bg"><div class="goal-bar-fill" style="width:${pct}%"></div></div>
+                    <div class="goal-meta">
+                        <span>${(g.current||0)+' / '+g.target+' '+(g.unit||'')}</span>
+                    </div>
+                `;
+                card.onclick = () => openEdit(g);
+            }
             content.appendChild(card);
         });
       }
       container.appendChild(sec);
     });
   }
+
+  window.toggleGoalStatus = function(id) {
+    var data = getData();
+    var g = data.goals.find(it => it.id === id);
+    if (g) {
+      g.done = !g.done;
+      g.current = g.done ? 1 : 0;
+      setData(data);
+      render();
+      if (g.done && G.Juice) G.Juice.playSuccess();
+    }
+  };
 
   window.toggleHorizon = function(id){
     var c = getCollapsed();
@@ -284,7 +325,15 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   function openEdit(g){
     editingId = g.id;
     document.getElementById('modalGoalTitle').textContent = g.title;
-    document.getElementById('editCurrent').value = g.current || 0;
+    
+    var editRow = document.getElementById('editCurrent').parentElement;
+    if (g.type === 'check') {
+        editRow.style.display = 'none';
+    } else {
+        editRow.style.display = 'block';
+        document.getElementById('editCurrent').value = g.current || 0;
+    }
+    
     document.getElementById('editModal').classList.add('show');
   }
 
