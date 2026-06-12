@@ -113,22 +113,43 @@ body::after {
   font-size: 12px; color: var(--text-tertiary);
 }
 
-/* Stats grid */
+/* Stats grid (12-column system) */
 .stats-grid {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
-  margin-bottom: 24px;
+  display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px;
+  margin-top: 24px; margin-bottom: 24px;
 }
-@media (min-width: 600px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
 .stat-card {
+  grid-column: span 3;
   background: var(--card-bg); border: 1px solid rgba(255,255,255,0.06);
   border-radius: 14px; padding: 16px 14px; text-align: center;
+  text-decoration: none; color: inherit; transition: transform 0.1s, background 0.15s;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
 }
+.stat-card-wide {
+  grid-column: span 4;
+  border-color: rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.06);
+}
+.stat-card-wide:active { transform: scale(0.97); background: rgba(255,255,255,0.1); }
+.stat-card-wide .stat-value { font-size: 28px; }
+
 .stat-value {
   font-size: 24px; font-weight: 800; font-family: var(--font-mono);
   background: linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
 .stat-label { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+
+@media (max-width: 768px) {
+  .stat-card-wide { grid-column: span 4; }
+  .stat-card { grid-column: span 6; }
+}
+@media (max-width: 480px) {
+  .stats-grid { gap: 8px; }
+  .stat-card-wide { grid-column: span 12; }
+  .stat-card { grid-column: span 6; }
+  .stat-value { font-size: 20px; }
+}
 
 /* Spheres breakdown */
 .section-eyebrow {
@@ -338,19 +359,6 @@ body::after {
 }
 .danger-btn:active { transform: scale(0.96); }
 
-/* Additional sections grid */
-.extra-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px;
-}
-.extra-card {
-  background: var(--card-bg); border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 16px; padding: 16px 12px; text-align: center;
-  text-decoration: none; color: #fff; transition: transform 0.1s, background 0.15s;
-}
-.extra-card:active { transform: scale(0.96); background: rgba(255,255,255,0.12); }
-.extra-icon { font-size: 24px; margin-bottom: 6px; display: block; }
-.extra-label { font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
-
 @media (max-width: 480px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .stat-card { padding: 12px 10px; }
@@ -398,22 +406,6 @@ body::after {
       <div class="level-info-next" id="levelNextText"></div>
     </div>
   </div>
-</div>
-
-<!-- Extra sections -->
-<div class="extra-grid">
-  <a href="health.html" class="extra-card">
-    <span class="extra-icon">💧</span>
-    <span class="extra-label">Здоровье</span>
-  </a>
-  <a href="gym.html" class="extra-card">
-    <span class="extra-icon">💪</span>
-    <span class="extra-label">Спорт</span>
-  </a>
-  <a href="finance.html" class="extra-card">
-    <span class="extra-icon">💳</span>
-    <span class="extra-label">Финансы</span>
-  </a>
 </div>
 
 <!-- Stats -->
@@ -613,6 +605,13 @@ body::after {
     }
   }
 
+  function pluralDays(n) {
+    var m = n % 10, m10 = n % 100;
+    if (m === 1 && m10 !== 11) return n + ' день';
+    if (m >= 2 && m <= 4 && (m10 < 10 || m10 >= 20)) return n + ' дня';
+    return n + ' дней';
+  }
+
   // --- Stats ---
   function renderStats() {
     var stats = G.getTotalStats();
@@ -621,21 +620,30 @@ body::after {
     var unlocked = Object.keys(achievements.unlocked || {}).length;
 
     var items = [
+      { value: '💧', label: 'Здоровье', href: 'health.html', wide: true },
+      { value: '💪', label: 'Спорт', href: 'gym.html', wide: true },
+      { value: '💳', label: 'Финансы', href: 'finance.html', wide: true },
       { value: stats.totalTasks, label: 'Задач' },
       { value: pluralMinutes(stats.totalMinutes), label: 'Времени' },
-      { value: stats.totalDays, label: 'Дней' },
+      { value: pluralDays(stats.totalDays), label: 'Прогресс', noLabel: true },
       { value: formatNum(coins.earned), label: 'Заработано 🪙' },
       { value: formatNum(coins.spent), label: 'Потрачено 🪙' },
       { value: coins.balance, label: 'Баланс 🪙' },
-      { value: unlocked + '/' + G.ACHIEVEMENT_DEFS.length, label: 'Трофеи' },
+      { value: unlocked + '/' + G.ACHIEVEMENT_DEFS.length, label: 'Трофеев' },
       { value: G.getActivityLog().length, label: 'Сессий' },
     ];
     var grid = document.getElementById('statsGrid');
     grid.innerHTML = '';
     items.forEach(function (it) {
-      var card = document.createElement('div');
-      card.className = 'stat-card';
-      card.innerHTML = '<div class="stat-value">' + it.value + '</div><div class="stat-label">' + it.label + '</div>';
+      var card = it.href ? document.createElement('a') : document.createElement('div');
+      if (it.href) card.href = it.href;
+      card.className = 'stat-card' + (it.wide ? ' stat-card-wide' : '');
+      
+      var html = '<div class="stat-value">' + it.value + '</div>';
+      if (!it.noLabel) html += '<div class="stat-label">' + it.label + '</div>';
+      else html = '<div class="stat-value" style="font-size:16px">' + it.value + '</div>'; // For cases like "4 дня" as main value
+      
+      card.innerHTML = html;
       grid.appendChild(card);
     });
   }
