@@ -242,12 +242,8 @@
 
     window.DashboardSync = {
       forceSync: function(key) {
-        console.log('[DEBUG] forceSync вызван для:', key);
-        if (!currentUser) {
-          console.warn('[DEBUG] Пользователь не авторизован в Supabase');
-          return Promise.resolve();
-        }
-        touchLocalKey(key);
+        console.log('[SUPABASE] Принудительная синхронизация:', key);
+        pendingKeys[key] = true;
         return syncPendingChanges();
       }
     };
@@ -261,6 +257,7 @@
     var rows = [];
     keysToPush.forEach(function(k) {
       var val = localStorage.getItem(k);
+      if (val === null) return; // Если ключ удален совсем
       rows.push({
         user_id: currentUser.id,
         key: k,
@@ -272,15 +269,16 @@
     pendingKeys = {};
     lastLocalPushAt = Date.now();
     
-    console.log('[DEBUG] Отправка в Supabase:', rows);
+    console.log('[SUPABASE] Отправка данных...', rows);
 
     return supabase.from('user_data').upsert(rows, { onConflict: 'user_id, key' })
       .then(function(res) {
           if (res.error) {
-            alert('ОШИБКА БАЗЫ: ' + res.error.message);
+            console.error('[SUPABASE] Ошибка:', res.error.message);
+            alert('СИНХРОНИЗАЦИЯ СЛОМАЛАСЬ: ' + res.error.message);
             throw res.error;
           }
-          console.log('[DEBUG] Ответ базы получен успешно');
+          console.log('[SUPABASE] База данных обновлена!');
           return res;
       });
   }
