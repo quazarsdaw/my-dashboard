@@ -507,10 +507,10 @@ body::after {
     <ul class="goal-list" id="goalList"></ul>
     <div class="empty-state" id="emptyState">Задач на сегодня нет — добавь первую.</div>
     <button class="gm-push-btn" id="gmPushBtn" style="display:none">Перенести незавершённые на завтра ▸</button>
-    <div class="gm-input-wrap" style="display: flex; align-items: center; gap: 8px;">
-      <button id="importBtn" type="button" class="add-btn" style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.1); padding: 0 12px; border-radius: 10px; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; height: 42px; white-space: nowrap; flex-shrink: 0; z-index: 10; position: relative;" title="Импорт из скриншота">
-        <span style="font-size: 16px;">📸</span>
-        <span style="font-weight: 700;">Импорт</span>
+    <div class="gm-input-wrap" style="display: flex; align-items: center; gap: 8px; position: relative; z-index: 5;">
+      <button id="importBtn" type="button" class="add-btn" style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.1); padding: 0 12px; border-radius: 10px; font-size: 12px; display: flex !important; align-items: center; justify-content: center; gap: 6px; cursor: pointer; height: 42px; white-space: nowrap; flex-shrink: 0; position: relative; z-index: 50; pointer-events: auto !important; opacity: 1 !important;" title="Импорт из скриншота">
+        <span style="font-size: 16px; pointer-events: none;">📸</span>
+        <span style="font-weight: 700; pointer-events: none;">Импорт</span>
       </button>
       <input class="gm-input" id="goalInput" type="text" placeholder="Новая задача…" autocomplete="off" style="flex: 1;">
       <input class="gm-input gm-input-small" id="goalTimeInput" type="number" placeholder="мин" min="1" title="Планируемое время (мин)" style="width: 60px;">
@@ -1537,22 +1537,42 @@ body::after {
     if (savedSettings.model && orModelInput) orModelInput.value = savedSettings.model;
   } catch(e) {}
 
-  function openScreenshotModal() {
-    console.log('[UI] Opening screenshot modal');
-    if (ssModal) ssModal.classList.add('show');
-    resetScreenshotState();
-  }
+  // --- Support for Deletion with hard confirm from Supabase ---
+  async function removeGoalWithSync(goals, idx, key) {
+    // 1. Создаем копию данных БЕЗ удаляемого элемента
+    var newGoals = JSON.parse(JSON.stringify(goals));
+    var removedItem = newGoals.splice(idx, 1)[0];
+    
+    console.log('[Supabase Sync] Попытка удаления задачи:', removedItem.text);
 
-  if (importBtn) {
-    importBtn.onclick = function(e) {
-      if (e) e.preventDefault();
-      openScreenshotModal();
-    };
+    if (window.DashboardSync) {
+      try {
+        // 2. Сначала пишем в LS, чтобы forceSync подцепил новые данные
+        // Но НЕ вызываем loadToday(), чтобы задача визуально оставалась на экране
+        G.storeSet(key, newGoals); 
+        
+        // 3. Ждем реального ответа от Supabase
+        await window.DashboardSync.forceSync(key);
+        
+        console.log('[Supabase Sync] База подтвердила удаление.');
+        // 4. Только теперь, когда база ответила OK, обновляем UI
+        loadToday();
+      } catch (err) {
+        console.error('[Supabase Sync] Ошибка RLS или сети:', err);
+        // 5. Если ошибка — возвращаем задачу на место в LS и алертим
+        G.storeSet(key, goals); 
+        alert('Критическая ошибка базы (RLS?): ' + (err.message || 'Нет доступа'));
+        loadToday();
+      }
+    } else {
+      // Если синхронизация не настроена
+      G.storeSet(key, newGoals);
+      loadToday();
+    }
   }
-
-  window.addEventListener('open-screenshot-import', openScreenshotModal);
 
   function resetScreenshotState() {
+    console.log('[UI] Сброс состояния модалки импорта');
     if (ssInput) ssInput.value = '';
     if (ssResults) ssResults.innerHTML = '';
     if (ssResultsWrap) ssResultsWrap.style.display = 'none';
@@ -1560,44 +1580,53 @@ body::after {
     if (ssArea) ssArea.style.display = '';
   }
 
+  function openScreenshotModal() {
+    console.log('[UI] Открытие модалки импорта');
+    if (ssModal) {
+      ssModal.classList.add('show');
+      resetScreenshotState();
+    }
+  }
+
+  function closeScreenshotModal() {
+    if (ssModal) ssModal.classList.remove('show');
+  }
+
   if (ssClose) {
     ssClose.onclick = function(e) {
       if (e) { e.stopPropagation(); e.preventDefault(); }
-      if (ssModal) ssModal.classList.remove('show');
+      closeScreenshotModal();
     };
   }
   if (ssModal) {
     ssModal.onclick = function(e) {
       if (e.target === ssModal) {
         if (e) { e.stopPropagation(); e.preventDefault(); }
-        ssModal.classList.remove('show');
+        closeScreenshotModal();
       }
     };
   }
 
-  // --- Support for Deletion with hard confirm from Supabase ---
-  // Note: Since tasks are stored as an array in user_data[key], we update the entire array.
-  async function removeGoalWithSync(goals, idx, key) {
-    var originalGoals = JSON.parse(JSON.stringify(goals));
-    goals.splice(idx, 1);
-    storeSet(key, goals);
-    
-    if (window.DashboardSync) {
-      try {
-        console.log('[Supabase Sync] Ожидание подтверждения удаления для ключа:', key);
-        await window.DashboardSync.forceSync(key);
-        console.log('[Supabase Sync] Удаление подтверждено базой данных.');
-        loadToday();
-      } catch (err) {
-        console.error('[Supabase Sync] Ошибка удаления из базы:', err);
-        alert('Не удалось удалить из облака. Проверьте интернет. Изменения откачены.');
-        storeSet(key, originalGoals); // Rollback
-        loadToday();
-      }
-    } else {
-      loadToday();
+  window.addEventListener('open-screenshot-import', openScreenshotModal);
+
+  // --- Инициализация кнопки импорта ---
+  function initImportButton() {
+    var btn = document.getElementById('importBtn');
+    if (!btn) {
+      console.warn('[UI] Кнопка importBtn не найдена, пробую еще раз...');
+      setTimeout(initImportButton, 500);
+      return;
     }
+    
+    console.log('[UI] Кнопка импорта найдена, вешаю обработчик');
+    btn.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openScreenshotModal();
+    };
   }
+  
+  setTimeout(initImportButton, 200);
 
   // Support for Ctrl+V / Cmd+V
   window.addEventListener('paste', function(e) {
