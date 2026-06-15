@@ -51,8 +51,10 @@ body::after {
   background: linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   margin: 16px 0 14px;
-  border: 5px solid red; /* ТЕСТ ОБНОВЛЕНИЯ: ЕСЛИ ВИДИШЬ ЭТУ РАМКУ, КОД ОБНОВИЛСЯ */
 }
+
+/* ФИКС: Убираем возможные перекрытия */
+.task-details-overlay:not(.show) { display: none !important; pointer-events: none !important; }
 
 /* --- Screenshot Import UI --- */
 #screenshotResults { margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; }
@@ -508,11 +510,11 @@ body::after {
     <ul class="goal-list" id="goalList"></ul>
     <div class="empty-state" id="emptyState">Задач на сегодня нет — добавь первую.</div>
     <button class="gm-push-btn" id="gmPushBtn" style="display:none">Перенести незавершённые на завтра ▸</button>
-    <div class="gm-input-wrap" style="display: flex; align-items: center; gap: 8px; position: relative; z-index: 5;">
+    <div class="gm-input-wrap" style="display: flex; align-items: center; gap: 8px; position: relative; z-index: 10000;">
       <button id="importBtn" type="button" class="add-btn" 
-        onclick="console.log('CLICK!'); var m = document.getElementById('screenshotModal'); if(m) m.classList.add('show');"
-        style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.1); padding: 0 12px; border-radius: 10px; font-size: 12px; display: flex !important; align-items: center; justify-content: center; gap: 6px; cursor: pointer; height: 42px; white-space: nowrap; flex-shrink: 0; position: relative; z-index: 50; pointer-events: auto !important; opacity: 1 !important;" title="Импорт из скриншота">
-        <span style="font-size: 16px; pointer-events: none;">📸</span>
+        onclick="console.log('IMPORT CLICK'); var m = document.getElementById('screenshotModal'); if(m) m.classList.add('show'); else alert('Модалка не найдена');"
+        style="background: #3a3d4a; color: #fff; border: 1px solid #555; padding: 0 15px; border-radius: 10px; font-size: 13px; display: flex !important; align-items: center; justify-content: center; gap: 8px; cursor: pointer; height: 44px; white-space: nowrap; flex-shrink: 0; position: relative; z-index: 100001; pointer-events: auto !important;" title="Импорт из скриншота">
+        <span style="font-size: 18px; pointer-events: none;">📸</span>
         <span style="font-weight: 700; pointer-events: none;">Импорт</span>
       </button>
       <input class="gm-input" id="goalInput" type="text" placeholder="Новая задача…" autocomplete="off" style="flex: 1;">
@@ -1540,38 +1542,21 @@ body::after {
     if (savedSettings.model && orModelInput) orModelInput.value = savedSettings.model;
   } catch(e) {}
 
-  // --- Support for Deletion with hard confirm from Supabase ---
   async function removeGoalWithSync(goals, idx, key) {
-    // 1. Создаем копию данных БЕЗ удаляемого элемента
-    var newGoals = JSON.parse(JSON.stringify(goals));
-    var removedItem = newGoals.splice(idx, 1)[0];
+    var removedText = goals[idx].text;
+    goals.splice(idx, 1);
+    storeSet(key, goals); // Локально удаляем сразу
     
-    console.log('[Supabase Sync] Попытка удаления задачи:', removedItem.text);
-
     if (window.DashboardSync) {
+      console.log('[UI] Синхронизация удаления для:', removedText);
       try {
-        // 2. Сначала пишем в LS, чтобы forceSync подцепил новые данные
-        // Но НЕ вызываем loadToday(), чтобы задача визуально оставалась на экране
-        G.storeSet(key, newGoals); 
-        
-        // 3. Ждем реального ответа от Supabase
         await window.DashboardSync.forceSync(key);
-        
-        console.log('[Supabase Sync] База подтвердила удаление.');
-        // 4. Только теперь, когда база ответила OK, обновляем UI
-        loadToday();
-      } catch (err) {
-        console.error('[Supabase Sync] Ошибка RLS или сети:', err);
-        // 5. Если ошибка — возвращаем задачу на место в LS и алертим
-        G.storeSet(key, goals); 
-        alert('Критическая ошибка базы (RLS?): ' + (err.message || 'Нет доступа'));
-        loadToday();
+        console.log('[UI] База ответила, удаление подтверждено');
+      } catch (e) {
+        console.error('[UI] Ошибка синхронизации удаления:', e);
       }
-    } else {
-      // Если синхронизация не настроена
-      G.storeSet(key, newGoals);
-      loadToday();
     }
+    loadToday(); // В любом случае перерисовываем, чтобы UI был отзывчивым
   }
 
   function resetScreenshotState() {

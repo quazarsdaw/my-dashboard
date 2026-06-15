@@ -240,10 +240,13 @@
     writeLocalMeta(meta);
   }
 
-    // Expose for manual sync
     window.DashboardSync = {
       forceSync: function(key) {
-        if (!currentUser || !supabase) return Promise.resolve();
+        console.log('[DEBUG] forceSync вызван для:', key);
+        if (!currentUser) {
+          console.warn('[DEBUG] Пользователь не авторизован в Supabase');
+          return Promise.resolve();
+        }
         touchLocalKey(key);
         return syncPendingChanges();
       }
@@ -252,50 +255,33 @@
 
   function syncPendingChanges() {
     if (!currentUser || !supabase) return Promise.resolve();
-
     var keysToPush = Object.keys(pendingKeys);
     if (keysToPush.length === 0) return Promise.resolve();
 
     var rows = [];
     keysToPush.forEach(function(k) {
       var val = localStorage.getItem(k);
-      var jsonVal = null;
-      try { jsonVal = JSON.parse(val); } catch(e) { jsonVal = val; }
-
       rows.push({
         user_id: currentUser.id,
         key: k,
-        value: jsonVal,
+        value: JSON.parse(val),
         updated_at: new Date().toISOString()
       });
     });
 
-    var processingKeys = pendingKeys;
     pendingKeys = {};
-
     lastLocalPushAt = Date.now();
-    showSyncIndicator('syncing');
+    
+    console.log('[DEBUG] Отправка в Supabase:', rows);
 
     return supabase.from('user_data').upsert(rows, { onConflict: 'user_id, key' })
       .then(function(res) {
           if (res.error) {
-            console.error('[Supabase Sync] Ошибка сохранения:', res.error.message);
-            console.error('Детали:', res.error.details, res.error.hint);
-            Object.assign(pendingKeys, processingKeys);
-            showSyncIndicator('error');
+            alert('ОШИБКА БАЗЫ: ' + res.error.message);
             throw res.error;
-          } else {
-            console.log('[Supabase Sync] Данные успешно отправлены в облако для ключей:', keysToPush);
-            lastLocalPushAt = Date.now();
-            showSyncIndicator('pushed');
-            return res.data;
           }
-      })
-      .catch(function(err) {
-        console.error('[Supabase Sync] Critical error:', err);
-        Object.assign(pendingKeys, processingKeys);
-        showSyncIndicator('error');
-        throw err;
+          console.log('[DEBUG] Ответ базы получен успешно');
+          return res;
       });
   }
 
