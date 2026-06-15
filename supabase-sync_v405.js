@@ -21,31 +21,9 @@
             return syncNow();
           }
         };
-        pullFromCloud();
+        // pullFromCloud(); // ОТКЛЮЧЕНО: Чтобы не воскрешать удаленные задачи
       }
     });
-  }
-
-  function pullFromCloud() {
-    if (!currentUser || !supabase) return;
-    isSyncing = true;
-    supabase.from('user_data').select('key, value, updated_at').eq('user_id', currentUser.id)
-      .then(function(res) {
-        if (res.data) {
-          res.data.forEach(function(row) {
-            var localVal = localStorage.getItem(row.key);
-            if (!localVal) {
-                rawSetItem(row.key, JSON.stringify(row.value));
-            } else {
-                // ВАЖНО: Если локальные данные есть, мы их НЕ трогаем при загрузке, 
-                // чтобы не воскрешать удаленные задачи, которые еще не синхронизировались.
-                // Синхронизация в сторону облака произойдет позже через syncNow.
-            }
-          });
-          window.dispatchEvent(new CustomEvent('dashboard-sync-applied', { detail: { changedKeys: res.data.map(function(r){return r.key;}) } }));
-        }
-        isSyncing = false;
-      });
   }
 
   function syncNow() {

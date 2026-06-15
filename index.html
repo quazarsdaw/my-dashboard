@@ -1545,34 +1545,34 @@ body::after {
   async function removeGoalWithSync(goals, idx, key) {
     if (!confirm('Удалить задачу навсегда?')) return;
     
-    // Создаем новый массив без задачи
     var newGoals = JSON.parse(JSON.stringify(goals));
     newGoals.splice(idx, 1);
-    
-    console.log('[SUPABASE] Попытка удаления прямо в базу...');
     
     if (window.DashboardSync && window.DashboardSync.client) {
         var db = window.DashboardSync.client;
         var user = window.DashboardSync.user;
         
-        // Прямой запрос на обновление всей строки
-        var { data, error } = await db.from('user_data').upsert({
+        console.log('[SUPABASE] Прямой запрос на удаление для:', key);
+        
+        // Отправляем ВЕСЬ новый массив в базу
+        var { error } = await db.from('user_data').upsert({
             user_id: user.id,
             key: key,
             value: newGoals,
             updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id, key' });
+        });
         
         if (error) {
-            console.error('[SUPABASE] Ошибка удаления:', error);
-            alert('ОШИБКА БАЗЫ (возможно, RLS): ' + error.message);
+            console.error('[SUPABASE] Ошибка:', error);
+            alert('БАЗА НЕ СОХРАНИЛА: ' + error.message + '\n\nПроверь политики RLS или интернет.');
         } else {
-            console.log('[SUPABASE] База подтвердила удаление.');
+            console.log('[SUPABASE] Успешно удалено из облака.');
+            // Только при успехе пишем в LS и обновляем экран
             G.storeSet(key, newGoals);
             loadToday();
         }
     } else {
-        // Если синхра не подключена - удаляем локально
+        // Если база не подключена - просто удаляем локально
         G.storeSet(key, newGoals);
         loadToday();
     }
