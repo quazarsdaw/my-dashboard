@@ -1543,17 +1543,28 @@ body::after {
   } catch(e) {}
 
   async function removeGoalWithSync(goals, idx, key) {
-    goals.splice(idx, 1);
-    G.storeSet(key, goals);
-    loadToday(); // Сразу убираем с экрана
+    if (!confirm('Удалить задачу навсегда?')) return;
+    
+    var newGoals = JSON.parse(JSON.stringify(goals));
+    newGoals.splice(idx, 1);
+    
+    console.log('[SUPABASE] Попытка удаления...');
     
     if (window.DashboardSync) {
-      console.log('[UI] Синхронизация удаления...');
-      try {
-        await window.DashboardSync.forceSync(key);
-      } catch (err) {
-        console.error('[UI] Сбой базы:', err);
-      }
+        try {
+            // Сначала пишем в LS
+            G.storeSet(key, newGoals);
+            // Ждем реального ответа от базы
+            await window.DashboardSync.forceSync(key);
+            console.log('[SUPABASE] Удаление подтверждено базой.');
+            loadToday();
+        } catch (err) {
+            alert('Не удалось удалить из облака. Задача возвращена.');
+            loadToday();
+        }
+    } else {
+        G.storeSet(key, newGoals);
+        loadToday();
     }
   }
 
