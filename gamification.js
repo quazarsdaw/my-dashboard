@@ -6,8 +6,10 @@
     ctx: null,
     isLock: false,
     init: function() { 
-      if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (!this.ctx && (window.AudioContext || window.webkitAudioContext)) {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
     },
     vibrate: function(ms) { if (navigator.vibrate) navigator.vibrate(ms || 10); },
     
@@ -120,7 +122,11 @@
 
   function storeGet(key) { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } }
   function notifyDataChanged(key) { try { window.dispatchEvent(new CustomEvent('dashboard-data-changed', { detail: { key: key } })); } catch (e) {} }
-  function storeSet(key, value) { localStorage.setItem(key, JSON.stringify(value)); notifyDataChanged(key); }
+  function storeSet(key, value) { 
+    localStorage.setItem(key, JSON.stringify(value)); 
+    notifyDataChanged(key); 
+    window.dispatchEvent(new CustomEvent('gamification-update', { detail: { key: key } }));
+  }
   function getSpheres() { return storeGet('spheres_v1') || {}; }
   function addXpToSphere(sphereId, amount) { var data = getSpheres(); if (!data[sphereId]) data[sphereId] = { xp: 0 }; data[sphereId].xp = Math.max(0, data[sphereId].xp + amount); storeSet('spheres_v1', data); return data; }
   function getCoins() { return storeGet('coins_v1') || { balance: 0, earned: 0, spent: 0, history: [] }; }

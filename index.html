@@ -53,6 +53,27 @@ body::after {
   margin: 16px 0 14px;
 }
 
+/* --- Screenshot Import UI --- */
+#screenshotResults { margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; }
+.proposal-row {
+  display: flex; align-items: center; gap: 8px; padding: 10px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px; margin-bottom: 8px; flex-wrap: wrap;
+}
+.proposal-row:hover { background: rgba(255,255,255,0.05); }
+.proposal-cb { width: 18px; height: 18px; cursor: pointer; }
+.proposal-text { flex: 1; min-width: 150px; background: none; border: none; color: #fff; font-size: 14px; outline: none; border-bottom: 1px dashed rgba(255,255,255,0.2); }
+.proposal-text:focus { border-bottom-color: var(--success); }
+.proposal-meta { display: flex; gap: 4px; align-items: center; }
+.proposal-input-min { width: 45px; text-align: center; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 11px; padding: 4px; }
+.proposal-select { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 11px; padding: 3px; outline: none; }
+
+.spinner {
+  width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--success);
+  border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* --- Ticker --- */
 .ticker-row { margin-bottom: 18px; }
 .goal-ticker {
@@ -549,6 +570,45 @@ body::after {
         <input type="text" class="subtask-add-input" id="modalSubtaskInput" placeholder="Добавить подзадачу..." autocomplete="off">
         <button class="subtask-add-btn" id="modalSubtaskAdd">＋</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Screenshot Import Modal -->
+<div class="task-details-overlay" id="screenshotModal">
+  <div class="task-details-box" style="max-width: 600px;">
+    <div class="task-details-header">
+      <div class="task-details-title">Импорт задач из скриншота</div>
+      <button class="task-details-close" id="screenshotClose">&times;</button>
+    </div>
+    
+    <div id="screenshotUploadArea" class="upload-zone" style="margin-top: 0; border-color: rgba(255,255,255,0.15);">
+      <input type="file" id="screenshotInput" accept="image/*" style="position: absolute; inset: 0; opacity: 0; cursor: pointer;">
+      <div class="upload-zone-icon">📸</div>
+      <div class="upload-zone-text">Нажми или перетащи скриншот</div>
+      <div class="upload-zone-hint">PNG, JPG или WEBP</div>
+    </div>
+
+    <div id="screenshotLoading" style="display: none; text-align: center; padding: 30px;">
+      <div class="spinner"></div>
+      <div style="margin-top: 12px; font-size: 14px; color: var(--text-secondary);">ИИ распознаёт задачи...</div>
+    </div>
+
+    <div id="screenshotResultsWrap" style="display: none;">
+      <div id="screenshotResults"></div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+        <button class="add-btn" id="screenshotAddBtn" style="background: var(--success); color: #1C1E24; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 700; cursor: pointer;">Добавить выбранные</button>
+      </div>
+    </div>
+    
+    <div id="screenshotSettings" style="margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;">
+        <details>
+            <summary style="font-size: 11px; color: var(--text-tertiary); cursor: pointer; user-select: none;">Настройки API (OpenRouter)</summary>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                <input type="password" id="openRouterKey" class="add-input" placeholder="OpenRouter API Key" style="width: 100%;">
+                <input type="text" id="openRouterModel" class="add-input" placeholder="Model (e.g. google/gemini-flash-1.5)" value="google/gemini-flash-1.5" style="width: 100%;">
+            </div>
+        </details>
     </div>
   </div>
 </div>
@@ -1184,6 +1244,19 @@ body::after {
               '<button class="goal-confirm-btn">✓ Готово</button>' +
               '<span class="goal-reward-text">' + rewardPrefix + '+' + previewCoins + ' 🪙</span>';
             li.appendChild(actualRow);
+            
+            // Add a cancel button or handle uncheck to remove row
+            var cancelBtn = document.createElement('button');
+            cancelBtn.className = 'goal-confirm-btn'; 
+            cancelBtn.style.background = 'rgba(255,255,255,0.05)';
+            cancelBtn.style.color = 'var(--text-tertiary)';
+            cancelBtn.textContent = 'Отмена';
+            cancelBtn.onclick = function() {
+              actualRow.remove();
+              cb.checked = false;
+            };
+            actualRow.insertBefore(cancelBtn, actualRow.querySelector('.goal-reward-text'));
+
             var inp = actualRow.querySelector('.goal-actual-input');
             var rewardText = actualRow.querySelector('.goal-reward-text');
             inp.addEventListener('input', function () {
@@ -1202,7 +1275,6 @@ body::after {
             });
             inp.focus();
           }
-          cb.checked = false; // don't check yet, wait for confirm
         } else if (!cb.checked && goals[idx].done) {
           // Positive reinforcement: unchecking just unchecks, no penalty
           goals[idx].done = false;
@@ -1240,7 +1312,9 @@ body::after {
       goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, false)); });
     }
     renderTodayHeader(); renderStreak();
-    document.getElementById('todayLabel').textContent = 'Сегодня — ' + formatDate(getActiveDateString());
+    var dateStr = getActiveDateString();
+    document.getElementById('todayLabel').textContent = 'Сегодня — ' + formatDate(dateStr);
+    document.getElementById('todayLabel').setAttribute('data-date', dateStr);
   }
 
   function loadTomorrow() {
@@ -1253,7 +1327,9 @@ body::after {
       goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, true)); });
     }
     document.getElementById('gmTomorrowCount').textContent = goals.length + ' запланировано';
-    document.getElementById('tomorrowLabel').textContent = 'Завтра — ' + formatDate(getTomorrowDateString());
+    var tDateStr = getTomorrowDateString();
+    document.getElementById('tomorrowLabel').textContent = 'Завтра — ' + formatDate(tDateStr);
+    document.getElementById('tomorrowLabel').setAttribute('data-date', tDateStr);
   }
 
   // --- Add ---
@@ -1303,8 +1379,25 @@ body::after {
     renderRadar();
     cycleIdx = 0;
     tick();
-  });
-  window.addEventListener('gamification-update', function () { renderRadar(); populateSphereSelect(document.getElementById('goalSphere')); populateSphereSelect(document.getElementById('tomorrowSphere')); });
+    });
+
+    window.addEventListener('gamification-update', function (e) {
+    var key = e && e.detail && e.detail.key;
+    var todayKey = 'goals:' + getActiveDateString();
+    var tomorrowKey = 'goals:' + getTomorrowDateString();
+
+    // Reload tasks if any goal-related key changed, or if key is not specified
+    if (!key || key === todayKey || key === tomorrowKey || key.indexOf('goals:') === 0) {
+      loadToday();
+      loadTomorrow();
+      cycleIdx = 0;
+      tick();
+    }
+
+    renderRadar();
+    populateSphereSelect(document.getElementById('goalSphere'));
+    populateSphereSelect(document.getElementById('tomorrowSphere'));
+    });
 
   // --- Task Details Modal Logic ---
   var currentModalGoal = null;
@@ -1399,6 +1492,182 @@ body::after {
   document.getElementById('modalSubtaskInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') addSubtask();
   });
+
+  // --- Screenshot Import Logic ---
+  var ssModal = document.getElementById('screenshotModal');
+  var ssInput = document.getElementById('screenshotInput');
+  var ssResults = document.getElementById('screenshotResults');
+  var ssResultsWrap = document.getElementById('screenshotResultsWrap');
+  var ssLoading = document.getElementById('screenshotLoading');
+  var ssArea = document.getElementById('screenshotUploadArea');
+  var ssAddBtn = document.getElementById('screenshotAddBtn');
+  var ssClose = document.getElementById('screenshotClose');
+  var orKeyInput = document.getElementById('openRouterKey');
+  var orModelInput = document.getElementById('openRouterModel');
+
+  // Load saved API settings
+  try {
+    var savedSettings = JSON.parse(localStorage.getItem('openrouter_settings_v1')) || {};
+    if (savedSettings.key) orKeyInput.value = savedSettings.key;
+    if (savedSettings.model) orModelInput.value = savedSettings.model;
+  } catch(e) {}
+
+  window.addEventListener('open-screenshot-import', function() {
+    ssModal.classList.add('show');
+    resetScreenshotState();
+  });
+
+  ssClose.onclick = function() { ssModal.classList.remove('show'); };
+  ssModal.onclick = function(e) { if (e.target === ssModal) ssClose.onclick(); };
+
+  function resetScreenshotState() {
+    ssInput.value = '';
+    ssResults.innerHTML = '';
+    ssResultsWrap.style.display = 'none';
+    ssLoading.style.display = 'none';
+    ssArea.style.display = '';
+  }
+
+  ssInput.onchange = function(e) {
+    var file = e.target.files[0];
+    if (file) processScreenshot(file);
+  };
+
+  ssArea.ondragover = function(e) { e.preventDefault(); ssArea.style.borderColor = 'var(--success)'; };
+  ssArea.ondragleave = function() { ssArea.style.borderColor = 'rgba(255,255,255,0.15)'; };
+  ssArea.ondrop = function(e) {
+    e.preventDefault();
+    ssArea.style.borderColor = 'rgba(255,255,255,0.15)';
+    var file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) processScreenshot(file);
+  };
+
+  function processScreenshot(file) {
+    var key = orKeyInput.value.trim();
+    var model = orModelInput.value.trim() || 'google/gemini-flash-1.5';
+    if (!key) { alert('Пожалуйста, введите API-ключ OpenRouter в настройках ниже.'); return; }
+    
+    // Save settings
+    localStorage.setItem('openrouter_settings_v1', JSON.stringify({ key: key, model: model }));
+
+    ssArea.style.display = 'none';
+    ssLoading.style.display = 'block';
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var base64 = e.target.result.split(',')[1];
+      callOpenRouter(base64, key, model);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function callOpenRouter(base64, key, model) {
+    try {
+      var response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + key,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Analyze this screenshot of a task list. Extract all tasks. For each task, provide its name and estimated time in minutes if visible. Return ONLY a JSON array: [{"text": "task name", "minutes": 30}]. If no time is found, default to 30.' },
+              { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + base64 } }
+            ]
+          }],
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      var data = await response.json();
+      if (data.error) throw new Error(data.error.message || 'API Error');
+      
+      var content = data.choices[0].message.content;
+      var parsed = JSON.parse(content);
+      var tasks = Array.isArray(parsed) ? parsed : (parsed.tasks || []);
+      
+      renderProposals(tasks);
+    } catch(err) {
+      alert('Ошибка при распознавании: ' + err.message);
+      resetScreenshotState();
+    }
+  }
+
+  function renderProposals(tasks) {
+    ssLoading.style.display = 'none';
+    ssResultsWrap.style.display = 'block';
+    ssResults.innerHTML = '';
+
+    if (tasks.length === 0) {
+      ssResults.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-tertiary);">Задачи не найдены. Попробуйте другой скриншот.</div>';
+      return;
+    }
+
+    tasks.forEach(function(t, i) {
+      var row = document.createElement('div');
+      row.className = 'proposal-row';
+      
+      var spheresHtml = G.SPHERES.map(function(s) { return '<option value="'+s.id+'">'+s.icon+' '+s.name+'</option>'; }).join('');
+      
+      row.innerHTML = `
+        <input type="checkbox" class="proposal-cb" checked>
+        <input type="text" class="proposal-text" value="${G.esc(t.text)}">
+        <div class="proposal-meta">
+          <input type="number" class="proposal-input-min" value="${t.minutes || 30}" title="Минуты">
+          <select class="proposal-select proposal-sphere">
+            <option value="">Без сферы</option>
+            ${spheresHtml}
+          </select>
+          <select class="proposal-select proposal-diff">
+            <option value="easy">Лёгкая</option>
+            <option value="medium" selected>Средняя</option>
+            <option value="hard">Сложная</option>
+          </select>
+        </div>
+      `;
+      ssResults.appendChild(row);
+    });
+  }
+
+  ssAddBtn.onclick = function() {
+    var rows = ssResults.querySelectorAll('.proposal-row');
+    var todayKey = 'goals:' + getActiveDateString();
+    var currentGoals = storeGet(todayKey) || [];
+    var addedCount = 0;
+
+    rows.forEach(function(row) {
+      var cb = row.querySelector('.proposal-cb');
+      if (!cb.checked) return;
+
+      var text = row.querySelector('.proposal-text').value.trim();
+      var mins = parseInt(row.querySelector('.proposal-input-min').value, 10) || 30;
+      var sphere = row.querySelector('.proposal-sphere').value || null;
+      var diff = row.querySelector('.proposal-diff').value;
+
+      if (text) {
+        currentGoals.push({
+          text: text,
+          estimatedMin: mins,
+          sphere: sphere,
+          difficulty: diff,
+          done: false,
+          createdAt: new Date().toISOString()
+        });
+        addedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      storeSet(todayKey, currentGoals);
+      ssClose.onclick();
+      alert('Добавлено задач: ' + addedCount);
+    } else {
+      alert('Выберите хотя бы одну задачу.');
+    }
+  };
 })();
 </script>
 </body>

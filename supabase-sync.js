@@ -177,9 +177,11 @@
         window.Storage.prototype.setItem = function (key, value) {
           nativeSetItem.call(this, key, value);
           // Only sync if it's localStorage and not an internal/Supabase key
-          if (this === localStorage && !isSyncing && !shouldSkipStorageKey(key)) {
-            touchLocalKey(key);
-            schedulePush(key);
+          if (this === localStorage && !shouldSkipStorageKey(key)) {
+            touchLocalKey(key); // Always touch meta on local write
+            if (!isSyncing) {
+              schedulePush(key);
+            }
           }
         };
         window.Storage.prototype.removeItem = function (key) {
