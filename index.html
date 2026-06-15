@@ -652,6 +652,7 @@ body::after {
     sel.appendChild(opt);
   }
   function populateSphereSelect(sel) {
+    if (!sel) return;
     var hadValue = sel.options.length > 0;
     var previous = sel.value;
     sel.innerHTML = '';
@@ -683,20 +684,26 @@ body::after {
     });
     pickerList.appendChild(item);
   }
-  pickerList.innerHTML = '';
-  appendNoSpherePickerItem();
-  G.SPHERES.forEach(function (s) {
-    var item = document.createElement('div');
-    item.className = 'sphere-picker-item';
-    item.innerHTML = '<span>' + s.icon + '</span><span>' + G.esc(s.name) + '</span>';
-    item.addEventListener('click', function () {
-      pickerOverlay.classList.remove('show');
-      if (pickerCallback) pickerCallback(s.id);
-      pickerCallback = null;
+  function rebuildSpherePicker() {
+    if (!pickerList) return;
+    pickerList.innerHTML = '';
+    appendNoSpherePickerItem();
+    G.SPHERES.forEach(function (s) {
+      var item = document.createElement('div');
+      item.className = 'sphere-picker-item';
+      item.innerHTML = '<span>' + s.icon + '</span><span>' + G.esc(s.name) + '</span>';
+      item.addEventListener('click', function () {
+        pickerOverlay.classList.remove('show');
+        if (pickerCallback) pickerCallback(s.id);
+        pickerCallback = null;
+      });
+      pickerList.appendChild(item);
     });
-    pickerList.appendChild(item);
-  });
-  pickerOverlay.addEventListener('click', function (e) { if (e.target === pickerOverlay) { pickerOverlay.classList.remove('show'); pickerCallback = null; } });
+  }
+  rebuildSpherePicker();
+  if (pickerOverlay) {
+    pickerOverlay.addEventListener('click', function (e) { if (e.target === pickerOverlay) { pickerOverlay.classList.remove('show'); pickerCallback = null; } });
+  }
   function openSpherePicker(cb) { pickerCallback = cb; pickerOverlay.classList.add('show'); }
 
   // --- Pomodoro counter ---
@@ -729,38 +736,40 @@ body::after {
   function renderPomo() {
     var sessions = getPomoSessions();
     var totalXp = sessions.reduce(function(sum, s) { return sum + s.mins; }, 0);
-    document.getElementById('pomoNum').textContent = sessions.length;
-    document.getElementById('pomoReward').textContent = totalXp > 0 ? ('(всего +' + totalXp + ' XP)') : '';
+    var numEl = document.getElementById('pomoNum');
+    var rewardEl = document.getElementById('pomoReward');
+    if (numEl) numEl.textContent = sessions.length;
+    if (rewardEl) rewardEl.textContent = totalXp > 0 ? ('(всего +' + totalXp + ' XP)') : '';
   }
 
-  document.getElementById('pomoPlus').addEventListener('click', function () {
-    var sessions = getPomoSessions();
-    var mins = selectedPomoMin;
-    var coins = Math.round(mins * 0.2);
-    sessions.push({ mins: mins, coins: coins });
-    setPomoSessions(sessions);
-    
-    G.earnCoins(coins, '🍅 Помодорка (' + mins + 'м)');
-    G.addXpToSphere('growth', mins);
-    
-    renderPomo();
-    window.dispatchEvent(new CustomEvent('gamification-update'));
-  });
+  var pomoPlus = document.getElementById('pomoPlus');
+  if (pomoPlus) {
+    pomoPlus.addEventListener('click', function () {
+      var sessions = getPomoSessions();
+      var mins = selectedPomoMin;
+      var coins = Math.round(mins * 0.2);
+      sessions.push({ mins: mins, coins: coins });
+      setPomoSessions(sessions);
+      G.earnCoins(coins, '🍅 Помодорка (' + mins + 'м)');
+      G.addXpToSphere('growth', mins);
+      renderPomo();
+      window.dispatchEvent(new CustomEvent('gamification-update'));
+    });
+  }
 
-  document.getElementById('pomoMinus').addEventListener('click', function () {
-    var sessions = getPomoSessions();
-    if (sessions.length === 0) return;
-    
-    var last = sessions.pop();
-    setPomoSessions(sessions);
-    
-    G.spendCoins(last.coins, '🍅 Отмена помодорки', true);
-    G.addXpToSphere('growth', -last.mins);
-    
-    renderPomo();
-    window.dispatchEvent(new CustomEvent('gamification-update'));
-  });
-
+  var pomoMinus = document.getElementById('pomoMinus');
+  if (pomoMinus) {
+    pomoMinus.addEventListener('click', function () {
+      var sessions = getPomoSessions();
+      if (sessions.length === 0) return;
+      var last = sessions.pop();
+      setPomoSessions(sessions);
+      G.spendCoins(last.coins, '🍅 Отмена помодорки', true);
+      G.addXpToSphere('growth', -last.mins);
+      renderPomo();
+      window.dispatchEvent(new CustomEvent('gamification-update'));
+    });
+  }
   renderPomo();
 
   // --- Manual penalty ---
@@ -772,6 +781,7 @@ body::after {
     var today = getActiveDateString();
     var todayItems = log.filter(function(item) { return item.date && item.date.startsWith(today); });
     var el = document.getElementById('penaltyLog');
+    if (!el) return;
     if (todayItems.length === 0) { el.innerHTML = ''; return; }
     el.innerHTML = todayItems.slice(0, 5).map(function(item) {
       var t = new Date(item.date);
@@ -783,24 +793,32 @@ body::after {
     }).join('');
   }
 
-  document.getElementById('penaltyBtn').addEventListener('click', function() {
-    var reason = document.getElementById('penaltyReason').value.trim();
-    var amount = parseInt(document.getElementById('penaltyAmount').value, 10);
-    if (!amount || amount < 1) amount = 10;
-    if (!reason) reason = 'Ручной штраф';
-    G.spendCoins(amount, '💀 ' + reason, true);
-    var log = getPenaltyLog();
-    log.unshift({ reason: reason, amount: amount, date: new Date().toISOString() });
-    if (log.length > 100) log.length = 100;
-    setPenaltyLog(log);
-    document.getElementById('penaltyReason').value = '';
-    document.getElementById('penaltyAmount').value = '';
-    renderPenaltyLog();
-    window.dispatchEvent(new CustomEvent('gamification-update'));
-  });
-  document.getElementById('penaltyReason').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') document.getElementById('penaltyBtn').click();
-  });
+  var penaltyBtn = document.getElementById('penaltyBtn');
+  if (penaltyBtn) {
+    penaltyBtn.addEventListener('click', function() {
+      var reasonInput = document.getElementById('penaltyReason');
+      var amountInput = document.getElementById('penaltyAmount');
+      var reason = reasonInput.value.trim();
+      var amount = parseInt(amountInput.value, 10);
+      if (!amount || amount < 1) amount = 10;
+      if (!reason) reason = 'Ручной штраф';
+      G.spendCoins(amount, '💀 ' + reason, true);
+      var log = getPenaltyLog();
+      log.unshift({ reason: reason, amount: amount, date: new Date().toISOString() });
+      if (log.length > 100) log.length = 100;
+      setPenaltyLog(log);
+      reasonInput.value = '';
+      amountInput.value = '';
+      renderPenaltyLog();
+      window.dispatchEvent(new CustomEvent('gamification-update'));
+    });
+  }
+  var penaltyReason = document.getElementById('penaltyReason');
+  if (penaltyReason) {
+    penaltyReason.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') document.getElementById('penaltyBtn').click();
+    });
+  }
   renderPenaltyLog();
 
   // --- Day-skip penalty ---
@@ -808,9 +826,8 @@ body::after {
     var DAYSKIP_PENALTY = 15;
     var lastCheck = storeGet('dayskip_last_check_v1');
     var todayStr = getActiveDateString();
-    if (lastCheck === todayStr) return; // already checked today
+    if (lastCheck === todayStr) return; 
 
-    // Check yesterday
     var yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     var yKey = yesterday.getFullYear() + '-' +
@@ -823,7 +840,6 @@ body::after {
       return;
     }
 
-    // Count how many good habits were done yesterday
     var doneCount = 0;
     trackerData.good.forEach(function(h) {
       var mk = h.id + ':' + yKey;
@@ -833,20 +849,20 @@ body::after {
     storeSet('dayskip_last_check_v1', todayStr);
 
     if (doneCount === 0) {
-      // Apply penalty
       G.spendCoins(DAYSKIP_PENALTY, '⏭️ Пропуск дня (' + yKey + ')', true);
       window.dispatchEvent(new CustomEvent('gamification-update'));
 
-      // Show notice
       var notice = document.getElementById('dayskipNotice');
-      notice.style.display = '';
-      notice.innerHTML = '<div class="dayskip-notice">' +
-        '<span class="dayskip-notice-icon">⚠️</span>' +
-        'Вчера 0 хороших привычек — штраф −' + DAYSKIP_PENALTY + '🪙' +
-        '<button class="dayskip-notice-close" id="dayskipClose">×</button></div>';
-      document.getElementById('dayskipClose').addEventListener('click', function() {
-        notice.style.display = 'none';
-      });
+      if (notice) {
+        notice.style.display = '';
+        notice.innerHTML = '<div class="dayskip-notice">' +
+          '<span class="dayskip-notice-icon">⚠️</span>' +
+          'Вчера 0 хороших привычек — штраф −' + DAYSKIP_PENALTY + '🪙' +
+          '<button class="dayskip-notice-close" id="dayskipClose">×</button></div>';
+        document.getElementById('dayskipClose').addEventListener('click', function() {
+          notice.style.display = 'none';
+        });
+      }
     }
   })();
 
@@ -861,34 +877,37 @@ body::after {
   }
   var C = 2 * Math.PI * 52;
   var ringFill = document.getElementById('ringFill');
-  ringFill.setAttribute('stroke-dasharray', C);
+  if (ringFill) ringFill.setAttribute('stroke-dasharray', C);
   function updateDayRing() {
+    if (!ringFill) return;
     var now = new Date();
     var hours = now.getHours() + now.getMinutes()/60 + now.getSeconds()/3600;
     var pctEl = document.getElementById('ringPct'), phaseEl = document.getElementById('ringPhase');
     var clockEl = document.getElementById('ringClock'), statusEl = document.getElementById('ringStatus');
     var remainEl = document.getElementById('ringRemaining');
     var h12 = now.getHours() % 12 || 12;
-    clockEl.textContent = h12 + ':' + String(now.getMinutes()).padStart(2,'0') + ' ' + (now.getHours()<12?'AM':'PM');
+    if (clockEl) clockEl.textContent = h12 + ':' + String(now.getMinutes()).padStart(2,'0') + ' ' + (now.getHours()<12?'AM':'PM');
     if (hours < WAKE_HOUR) {
       ringFill.setAttribute('stroke-dashoffset', C); ringFill.setAttribute('stroke', '#4D4B47');
-      pctEl.textContent = '—'; phaseEl.textContent = 'SLEEPING'; statusEl.textContent = '😴 Ещё спишь';
+      if (pctEl) pctEl.textContent = '—'; if (phaseEl) phaseEl.textContent = 'SLEEPING'; if (statusEl) statusEl.textContent = '😴 Ещё спишь';
       var mins = Math.round((WAKE_HOUR - hours) * 60);
-      remainEl.textContent = Math.floor(mins/60) + 'ч ' + (mins%60) + 'м до подъёма';
+      if (remainEl) remainEl.textContent = Math.floor(mins/60) + 'ч ' + (mins%60) + 'м до подъёма';
     } else if (hours >= SLEEP_HOUR) {
       ringFill.setAttribute('stroke-dashoffset', 0); ringFill.setAttribute('stroke', '#E25D7A');
-      pctEl.textContent = '100%'; phaseEl.textContent = 'PAST BEDTIME'; statusEl.textContent = '⚠️ Пора спать'; remainEl.textContent = 'Спать!';
+      if (pctEl) pctEl.textContent = '100%'; if (phaseEl) phaseEl.textContent = 'PAST BEDTIME'; if (statusEl) statusEl.textContent = '⚠️ Пора спать'; if (remainEl) remainEl.textContent = 'Спать!';
     } else {
       var pct = (hours - WAKE_HOUR) / (SLEEP_HOUR - WAKE_HOUR) * 100;
       ringFill.setAttribute('stroke-dashoffset', C * (1 - pct/100)); ringFill.setAttribute('stroke', lerpColor(pct));
-      pctEl.textContent = Math.round(pct) + '%';
+      if (pctEl) pctEl.textContent = Math.round(pct) + '%';
       var left = Math.round((SLEEP_HOUR - hours) * 60);
-      remainEl.textContent = Math.floor(left/60) + 'ч ' + (left%60) + 'м бодрствования';
-      if (pct < 25) { phaseEl.textContent = 'MORNING'; statusEl.textContent = '☀️ Утро — свежий старт'; }
-      else if (pct < 50) { phaseEl.textContent = 'MIDDAY'; statusEl.textContent = '⚡ День — не сбавляй'; }
-      else if (pct < 75) { phaseEl.textContent = 'AFTERNOON'; statusEl.textContent = '🔥 Вторая половина — жми'; }
-      else if (pct < 90) { phaseEl.textContent = 'EVENING'; statusEl.textContent = '⏳ Вечер — закругляйся'; }
-      else { phaseEl.textContent = 'BEDTIME'; statusEl.textContent = '🌙 Скоро спать'; }
+      if (remainEl) remainEl.textContent = Math.floor(left/60) + 'ч ' + (left%60) + 'м бодрствования';
+      if (phaseEl && statusEl) {
+        if (pct < 25) { phaseEl.textContent = 'MORNING'; statusEl.textContent = '☀️ Утро — свежий старт'; }
+        else if (pct < 50) { phaseEl.textContent = 'MIDDAY'; statusEl.textContent = '⚡ День — не сбавляй'; }
+        else if (pct < 75) { phaseEl.textContent = 'AFTERNOON'; statusEl.textContent = '🔥 Вторая половина — жми'; }
+        else if (pct < 90) { phaseEl.textContent = 'EVENING'; statusEl.textContent = '⏳ Вечер — закругляйся'; }
+        else { phaseEl.textContent = 'BEDTIME'; statusEl.textContent = '🌙 Скоро спать'; }
+      }
     }
   }
   updateDayRing(); setInterval(updateDayRing, 60000);
@@ -900,6 +919,7 @@ body::after {
   function renderRadar() {
     var svg = document.getElementById('radarChart');
     var list = document.getElementById('radarList');
+    if (!svg || !list) return;
     var spheres = G.SPHERES;
     var data = G.getSpheres();
     var n = spheres.length;
@@ -934,7 +954,7 @@ body::after {
       values.push(info);
       if (info.level > maxLevel) maxLevel = info.level;
     });
-    var scale = Math.max(10, maxLevel + 2); // auto-scale
+    var scale = Math.max(10, maxLevel + 2);
 
     var dataPts = [], dotParts = [];
     for (var i = 0; i < n; i++) {
@@ -958,7 +978,6 @@ body::after {
       parts.push('<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" fill="' + spheres[i].color + '" font-size="7.5" font-weight="700" font-family="var(--font-sans)" text-anchor="' + anchor + '" dy="' + dy + '">' + G.esc(label.toUpperCase()) + '</text>');
       parts.push('<text x="' + lx.toFixed(1) + '" y="' + (ly + 9).toFixed(1) + '" fill="rgba(255,255,255,0.35)" font-size="7" font-family="var(--font-mono)" text-anchor="' + anchor + '" dy="' + dy + '">' + values[i].level + '</text>');
     }
-
     svg.innerHTML = parts.join('');
 
     // List
@@ -989,75 +1008,77 @@ body::after {
     for (var i = 0; i < G.SPHERES.length; i++) { if (G.SPHERES[i].id === id) { sphere = G.SPHERES[i]; break; } }
     if (!sphere && id !== '__new__') return;
     var isNew = id === '__new__';
-    document.getElementById('sphereEditTitle').textContent = isNew ? 'Новая сфера' : 'Редактировать сферу';
-    document.getElementById('sphereEditName').value = isNew ? '' : sphere.name;
-    document.getElementById('sphereEditDel').style.display = isNew ? 'none' : '';
+    var titleEl = document.getElementById('sphereEditTitle');
+    var nameInput = document.getElementById('sphereEditName');
+    var delBtn = document.getElementById('sphereEditDel');
+    if (titleEl) titleEl.textContent = isNew ? 'Новая сфера' : 'Редактировать сферу';
+    if (nameInput) nameInput.value = isNew ? '' : sphere.name;
+    if (delBtn) delBtn.style.display = isNew ? 'none' : '';
     var iconsDiv = document.getElementById('sphereEditIcons');
-    iconsDiv.innerHTML = '';
-    var currentIcon = isNew ? '🔵' : sphere.icon;
-    SPHERE_EMOJIS.forEach(function (e) {
-      var btn = document.createElement('button');
-      btn.className = 'sphere-edit-icon-btn' + (e === currentIcon ? ' selected' : '');
-      btn.textContent = e;
-      btn.addEventListener('click', function () {
-        iconsDiv.querySelectorAll('.sphere-edit-icon-btn').forEach(function (b) { b.classList.remove('selected'); });
-        btn.classList.add('selected');
+    if (iconsDiv) {
+      iconsDiv.innerHTML = '';
+      var currentIcon = isNew ? '🔵' : sphere.icon;
+      SPHERE_EMOJIS.forEach(function (e) {
+        var btn = document.createElement('button');
+        btn.className = 'sphere-edit-icon-btn' + (e === currentIcon ? ' selected' : '');
+        btn.textContent = e;
+        btn.addEventListener('click', function () {
+          iconsDiv.querySelectorAll('.sphere-edit-icon-btn').forEach(function (b) { b.classList.remove('selected'); });
+          btn.classList.add('selected');
+        });
+        iconsDiv.appendChild(btn);
       });
-      iconsDiv.appendChild(btn);
-    });
-    document.getElementById('sphereEditOverlay').classList.add('show');
-    document.getElementById('sphereEditName').focus();
+    }
+    var overlay = document.getElementById('sphereEditOverlay');
+    if (overlay) overlay.classList.add('show');
+    if (nameInput) nameInput.focus();
   }
 
-  document.getElementById('sphereAddBtn').addEventListener('click', function () { openSphereEdit('__new__'); });
+  var sphereAddBtn = document.getElementById('sphereAddBtn');
+  if (sphereAddBtn) {
+    sphereAddBtn.addEventListener('click', function () { openSphereEdit('__new__'); });
+  }
 
-  document.getElementById('sphereEditOverlay').addEventListener('click', function (e) {
-    if (e.target === this) this.classList.remove('show');
-  });
+  var sphereEditOverlay = document.getElementById('sphereEditOverlay');
+  if (sphereEditOverlay) {
+    sphereEditOverlay.addEventListener('click', function (e) { if (e.target === this) this.classList.remove('show'); });
+  }
 
-  document.getElementById('sphereEditSave').addEventListener('click', function () {
-    var name = document.getElementById('sphereEditName').value.trim();
-    if (!name) return;
-    var sel = document.querySelector('.sphere-edit-icon-btn.selected');
-    var icon = sel ? sel.textContent : '🔵';
-    if (editingSphereId === '__new__') {
-      G.addSphere(name, icon);
-    } else {
-      G.renameSphere(editingSphereId, name, icon);
-    }
-    document.getElementById('sphereEditOverlay').classList.remove('show');
-    renderRadar();
-    populateSphereSelect(document.getElementById('goalSphere'));
-    populateSphereSelect(document.getElementById('tomorrowSphere'));
-    rebuildSpherePicker();
-  });
+  var sphereEditSave = document.getElementById('sphereEditSave');
+  if (sphereEditSave) {
+    sphereEditSave.addEventListener('click', function () {
+      var name = document.getElementById('sphereEditName').value.trim();
+      if (!name) return;
+      var sel = document.querySelector('.sphere-edit-icon-btn.selected');
+      var icon = sel ? sel.textContent : '🔵';
+      if (editingSphereId === '__new__') {
+        G.addSphere(name, icon);
+      } else {
+        G.renameSphere(editingSphereId, name, icon);
+      }
+      var overlay = document.getElementById('sphereEditOverlay');
+      if (overlay) overlay.classList.remove('show');
+      renderRadar();
+      populateSphereSelect(document.getElementById('goalSphere'));
+      populateSphereSelect(document.getElementById('tomorrowSphere'));
+      rebuildSpherePicker();
+    });
+  }
 
-  document.getElementById('sphereEditDel').addEventListener('click', function () {
-    if (!editingSphereId || editingSphereId === '__new__') return;
-    var sphere = null;
-    for (var i = 0; i < G.SPHERES.length; i++) { if (G.SPHERES[i].id === editingSphereId) { sphere = G.SPHERES[i]; break; } }
-    if (!confirm('Удалить сферу «' + (sphere ? sphere.name : '') + '»? XP в ней сохранится.')) return;
-    G.removeSphere(editingSphereId);
-    document.getElementById('sphereEditOverlay').classList.remove('show');
-    renderRadar();
-    populateSphereSelect(document.getElementById('goalSphere'));
-    populateSphereSelect(document.getElementById('tomorrowSphere'));
-    rebuildSpherePicker();
-  });
-
-  function rebuildSpherePicker() {
-    pickerList.innerHTML = '';
-    appendNoSpherePickerItem();
-    G.SPHERES.forEach(function (s) {
-      var item = document.createElement('div');
-      item.className = 'sphere-picker-item';
-      item.innerHTML = '<span>' + s.icon + '</span><span>' + G.esc(s.name) + '</span>';
-      item.addEventListener('click', function () {
-        pickerOverlay.classList.remove('show');
-        if (pickerCallback) pickerCallback(s.id);
-        pickerCallback = null;
-      });
-      pickerList.appendChild(item);
+  var sphereEditDel = document.getElementById('sphereEditDel');
+  if (sphereEditDel) {
+    sphereEditDel.addEventListener('click', function () {
+      if (!editingSphereId || editingSphereId === '__new__') return;
+      var sphere = null;
+      for (var i = 0; i < G.SPHERES.length; i++) { if (G.SPHERES[i].id === editingSphereId) { sphere = G.SPHERES[i]; break; } }
+      if (!confirm('Удалить сферу «' + (sphere ? sphere.name : '') + '»? XP в ней сохранится.')) return;
+      G.removeSphere(editingSphereId);
+      var overlay = document.getElementById('sphereEditOverlay');
+      if (overlay) overlay.classList.remove('show');
+      renderRadar();
+      populateSphereSelect(document.getElementById('goalSphere'));
+      populateSphereSelect(document.getElementById('tomorrowSphere'));
+      rebuildSpherePicker();
     });
   }
 
@@ -1078,10 +1099,11 @@ body::after {
     return { items: items, done: done, total: total };
   }
   function tick() {
+    if (!tickerStage) return;
     var r = buildTickerItems();
     if (cycleIdx >= r.items.length) cycleIdx = 0;
     var item = r.items[cycleIdx]; cycleIdx = (cycleIdx + 1) % r.items.length;
-    tickerMeta.textContent = r.done + '/' + r.total;
+    if (tickerMeta) tickerMeta.textContent = r.done + '/' + r.total;
     var row = tickerStage.querySelector('.goal-ticker-row');
     if (!row) { row = document.createElement('div'); row.className = 'goal-ticker-row'; row.innerHTML = '<span class="goal-ticker-status"></span><span class="goal-ticker-text"></span>'; tickerStage.appendChild(row); }
     var sEl = row.querySelector('.goal-ticker-status'), tEl = row.querySelector('.goal-ticker-text');
@@ -1137,8 +1159,10 @@ body::after {
   checkStreak();
   function renderStreak() {
     var s = storeGet('goal_streak_v1') || { count: 0 };
-    document.getElementById('gmStreakNum').textContent = s.count;
-    document.getElementById('gmStreak').classList.toggle('gm-streak-active', s.count > 0);
+    var numEl = document.getElementById('gmStreakNum');
+    var streakEl = document.getElementById('gmStreak');
+    if (numEl) numEl.textContent = s.count;
+    if (streakEl) streakEl.classList.toggle('gm-streak-active', s.count > 0);
   }
   renderStreak();
 
@@ -1148,16 +1172,26 @@ body::after {
   function renderTodayHeader() {
     var goals = storeGet('goals:' + getActiveDateString()) || [];
     var total = goals.length, done = goals.filter(function (g) { return g.done; }).length;
-    document.getElementById('gmProgressNum').textContent = done;
-    document.getElementById('gmProgressTotal').textContent = '/ ' + total;
+    var progressNum = document.getElementById('gmProgressNum');
+    var progressTotal = document.getElementById('gmProgressTotal');
     var label = document.getElementById('gmProgressLabel');
-    if (total === 0) label.textContent = 'задач пока нет';
-    else if (done === total) label.textContent = 'всё сделано!';
-    else label.textContent = 'выполнено';
-    document.getElementById('todayCard').classList.toggle('gm-all-done', total > 0 && done === total);
-    var bar = document.getElementById('gmBar'); bar.innerHTML = '';
-    goals.forEach(function (g) { var seg = document.createElement('div'); seg.className = 'gm-bar-seg' + (g.done ? ' gm-bar-seg-done' : ''); bar.appendChild(seg); });
-    document.getElementById('gmPushBtn').style.display = goals.some(function (g) { return !g.done; }) ? '' : 'none';
+    var todayCard = document.getElementById('todayCard');
+    var bar = document.getElementById('gmBar');
+    var pushBtn = document.getElementById('gmPushBtn');
+
+    if (progressNum) progressNum.textContent = done;
+    if (progressTotal) progressTotal.textContent = '/ ' + total;
+    if (label) {
+      if (total === 0) label.textContent = 'задач пока нет';
+      else if (done === total) label.textContent = 'всё сделано!';
+      else label.textContent = 'выполнено';
+    }
+    if (todayCard) todayCard.classList.toggle('gm-all-done', total > 0 && done === total);
+    if (bar) {
+      bar.innerHTML = '';
+      goals.forEach(function (g) { var seg = document.createElement('div'); seg.className = 'gm-bar-seg' + (g.done ? ' gm-bar-seg-done' : ''); bar.appendChild(seg); });
+    }
+    if (pushBtn) pushBtn.style.display = goals.some(function (g) { return !g.done; }) ? '' : 'none';
   }
 
   function buildGoalRow(goal, idx, key, readOnly) {
@@ -1173,7 +1207,7 @@ body::after {
     var cbVis = document.createElement('div'); cbVis.className = 'goal-cb-visual';
     cbWrap.appendChild(cb); cbWrap.appendChild(cbVis); li.appendChild(cbWrap);
 
-    var text = document.createElement('span'); text.className = 'goal-text'; text.textContent = G.esc(goal.text);
+    var text = document.createElement('span'); text.className = 'goal-text'; text.textContent = goal.text;
     if (!readOnly) {
       text.addEventListener('click', function () {
         text.contentEditable = 'true'; text.focus();
@@ -1184,13 +1218,12 @@ body::after {
         text.contentEditable = 'false';
         var nt = text.textContent.trim();
         if (nt && nt !== goal.text) { var goals = storeGet(key) || []; if (goals[idx]) { goals[idx].text = nt; storeSet(key, goals); } }
-        else text.textContent = G.esc(goal.text);
+        else text.textContent = goal.text;
       });
-      text.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } if (e.key === 'Escape') { text.textContent = G.esc(goal.text); text.blur(); } });
+      text.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } if (e.key === 'Escape') { text.textContent = goal.text; text.blur(); } });
     }
     li.appendChild(text);
 
-    // Subtask counter
     if (goal.subtasks && goal.subtasks.length > 0) {
       var doneCount = goal.subtasks.filter(function(st) { return st.done; }).length;
       var counter = document.createElement('span');
@@ -1199,15 +1232,11 @@ body::after {
       li.appendChild(counter);
     }
 
-    // Details button
     if (!readOnly) {
       var detailsBtn = document.createElement('span');
       detailsBtn.className = 'goal-details-btn';
       detailsBtn.textContent = '📝';
-      detailsBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        openTaskModal(goal, idx, key);
-      });
+      detailsBtn.addEventListener('click', function(e) { e.stopPropagation(); openTaskModal(goal, idx, key); });
       li.appendChild(detailsBtn);
     }
 
@@ -1223,13 +1252,11 @@ body::after {
 
     if (!readOnly) { var del = document.createElement('button'); del.className = 'goal-delete'; del.textContent = '×'; del.addEventListener('click', function () { var goals = storeGet(key) || []; goals.splice(idx, 1); storeSet(key, goals); loadToday(); }); li.appendChild(del); }
 
-    // Checkbox: on check → show actual time input, on confirm → reward
     if (!readOnly) {
       cb.addEventListener('change', function () {
         var goals = storeGet(key) || [];
         if (!goals[idx]) return;
         if (cb.checked && !goals[idx].done) {
-          // Show actual time input
           var actualRow = li.querySelector('.goal-actual-row');
           if (!actualRow) {
             actualRow = document.createElement('div'); actualRow.className = 'goal-actual-row';
@@ -1245,16 +1272,12 @@ body::after {
               '<span class="goal-reward-text">' + rewardPrefix + '+' + previewCoins + ' 🪙</span>';
             li.appendChild(actualRow);
             
-            // Add a cancel button or handle uncheck to remove row
             var cancelBtn = document.createElement('button');
             cancelBtn.className = 'goal-confirm-btn'; 
             cancelBtn.style.background = 'rgba(255,255,255,0.05)';
             cancelBtn.style.color = 'var(--text-tertiary)';
             cancelBtn.textContent = 'Отмена';
-            cancelBtn.onclick = function() {
-              actualRow.remove();
-              cb.checked = false;
-            };
+            cancelBtn.onclick = function() { actualRow.remove(); cb.checked = false; };
             actualRow.insertBefore(cancelBtn, actualRow.querySelector('.goal-reward-text'));
 
             var inp = actualRow.querySelector('.goal-actual-input');
@@ -1266,9 +1289,7 @@ body::after {
             });
             actualRow.querySelector('.goal-confirm-btn').addEventListener('click', function () {
               var actualMin = parseInt(inp.value, 10) || est;
-              goals[idx].done = true;
-              goals[idx].doneAt = Date.now();
-              goals[idx].actualMin = actualMin;
+              goals[idx].done = true; goals[idx].doneAt = Date.now(); goals[idx].actualMin = actualMin;
               storeSet(key, goals);
               G.completeTask(goals[idx].sphere, goals[idx].difficulty, actualMin);
               loadToday(); renderRadar();
@@ -1276,17 +1297,12 @@ body::after {
             inp.focus();
           }
         } else if (!cb.checked && goals[idx].done) {
-          // Positive reinforcement: unchecking just unchecks, no penalty
-          goals[idx].done = false;
-          delete goals[idx].doneAt;
-          delete goals[idx].actualMin;
-          storeSet(key, goals);
-          loadToday();
+          goals[idx].done = false; delete goals[idx].doneAt; delete goals[idx].actualMin;
+          storeSet(key, goals); loadToday();
         }
       });
     }
 
-    // Drag
     if (!readOnly) {
       li.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', idx); li.style.opacity = '0.5'; });
       li.addEventListener('dragend', function () { li.style.opacity = '1'; });
@@ -1306,30 +1322,41 @@ body::after {
     var key = 'goals:' + getActiveDateString();
     var goals = storeGet(key) || [];
     var list = document.getElementById('goalList'), empty = document.getElementById('emptyState');
-    list.innerHTML = '';
-    if (goals.length === 0) { empty.style.display = ''; } else {
-      empty.style.display = 'none';
-      goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, false)); });
+    if (list) {
+      list.innerHTML = '';
+      if (goals.length === 0) { if (empty) empty.style.display = ''; } else {
+        if (empty) empty.style.display = 'none';
+        goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, false)); });
+      }
     }
     renderTodayHeader(); renderStreak();
     var dateStr = getActiveDateString();
-    document.getElementById('todayLabel').textContent = 'Сегодня — ' + formatDate(dateStr);
-    document.getElementById('todayLabel').setAttribute('data-date', dateStr);
+    var todayLabel = document.getElementById('todayLabel');
+    if (todayLabel) {
+      todayLabel.textContent = 'Сегодня — ' + formatDate(dateStr);
+      todayLabel.setAttribute('data-date', dateStr);
+    }
   }
 
   function loadTomorrow() {
     var key = 'goals:' + getTomorrowDateString();
     var goals = storeGet(key) || [];
     var list = document.getElementById('tomorrowList'), empty = document.getElementById('tomorrowEmpty');
-    list.innerHTML = '';
-    if (goals.length === 0) { empty.style.display = ''; } else {
-      empty.style.display = 'none';
-      goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, true)); });
+    if (list) {
+      list.innerHTML = '';
+      if (goals.length === 0) { if (empty) empty.style.display = ''; } else {
+        if (empty) empty.style.display = 'none';
+        goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, true)); });
+      }
     }
-    document.getElementById('gmTomorrowCount').textContent = goals.length + ' запланировано';
+    var countEl = document.getElementById('gmTomorrowCount');
+    if (countEl) countEl.textContent = goals.length + ' запланировано';
     var tDateStr = getTomorrowDateString();
-    document.getElementById('tomorrowLabel').textContent = 'Завтра — ' + formatDate(tDateStr);
-    document.getElementById('tomorrowLabel').setAttribute('data-date', tDateStr);
+    var tomorrowLabel = document.getElementById('tomorrowLabel');
+    if (tomorrowLabel) {
+      tomorrowLabel.textContent = 'Завтра — ' + formatDate(tDateStr);
+      tomorrowLabel.setAttribute('data-date', tDateStr);
+    }
   }
 
   // --- Add ---
@@ -1339,6 +1366,7 @@ body::after {
     var sphere = document.getElementById(sphereId);
     var diff = document.getElementById(diffId);
     var btn = document.getElementById(btnId);
+    if (!btn) return;
     function add() {
       var text = input.value.trim(); if (!text) return;
       var mins = parseInt(timeInput.value, 10) || 15;
@@ -1355,16 +1383,19 @@ body::after {
   wireAdd('tomorrowInput', 'tomorrowTimeInput', 'tomorrowSphere', 'tomorrowDiff', 'tomorrowAddBtn', 'goals:' + getTomorrowDateString(), loadTomorrow);
 
   // --- Push ---
-  document.getElementById('gmPushBtn').addEventListener('click', function () {
-    if (!confirm('Перенести все незавершённые задачи на завтра?')) return;
-    var todayKey = 'goals:' + getActiveDateString(), tomorrowKey = 'goals:' + getTomorrowDateString();
-    var today = storeGet(todayKey) || [], tomorrow = storeGet(tomorrowKey) || [];
-    var exist = {}; tomorrow.forEach(function (g) { exist[g.text] = true; });
-    var kept = [];
-    today.forEach(function (g) { if (g.done) kept.push(g); else if (!exist[g.text]) tomorrow.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin }); });
-    storeSet(todayKey, kept); storeSet(tomorrowKey, tomorrow);
-    loadToday(); loadTomorrow();
-  });
+  var pushBtn = document.getElementById('gmPushBtn');
+  if (pushBtn) {
+    pushBtn.addEventListener('click', function () {
+      if (!confirm('Перенести все незавершённые задачи на завтра?')) return;
+      var todayKey = 'goals:' + getActiveDateString(), tomorrowKey = 'goals:' + getTomorrowDateString();
+      var today = storeGet(todayKey) || [], tomorrow = storeGet(tomorrowKey) || [];
+      var exist = {}; tomorrow.forEach(function (g) { exist[g.text] = true; });
+      var kept = [];
+      today.forEach(function (g) { if (g.done) kept.push(g); else if (!exist[g.text]) tomorrow.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin }); });
+      storeSet(todayKey, kept); storeSet(tomorrowKey, tomorrow);
+      loadToday(); loadTomorrow();
+    });
+  }
 
   loadToday(); loadTomorrow();
   window.addEventListener('dashboard-sync-applied', function (e) {
@@ -1374,88 +1405,43 @@ body::after {
     var affectsGoals = keys.length === 0 || keys.indexOf(todayKey) !== -1 || keys.indexOf(tomorrowKey) !== -1 ||
       keys.indexOf('goal_streak_v1') !== -1 || keys.indexOf('spheres_v1') !== -1 || keys.indexOf('sphere_defs_v1') !== -1;
     if (!affectsGoals) return;
-    loadToday();
-    loadTomorrow();
-    renderRadar();
-    cycleIdx = 0;
-    tick();
-    });
+    loadToday(); loadTomorrow(); renderRadar(); cycleIdx = 0; tick();
+  });
 
-    window.addEventListener('gamification-update', function (e) {
+  window.addEventListener('gamification-update', function (e) {
     var key = e && e.detail && e.detail.key;
     var todayKey = 'goals:' + getActiveDateString();
     var tomorrowKey = 'goals:' + getTomorrowDateString();
-
-    // Reload tasks if any goal-related key changed, or if key is not specified
-    if (!key || key === todayKey || key === tomorrowKey || key.indexOf('goals:') === 0) {
-      loadToday();
-      loadTomorrow();
-      cycleIdx = 0;
-      tick();
-    }
-
+    if (!key || key === todayKey || key === tomorrowKey || key.indexOf('goals:') === 0) { loadToday(); loadTomorrow(); cycleIdx = 0; tick(); }
     renderRadar();
     populateSphereSelect(document.getElementById('goalSphere'));
     populateSphereSelect(document.getElementById('tomorrowSphere'));
-    });
+  });
 
   // --- Task Details Modal Logic ---
-  var currentModalGoal = null;
-  var currentModalIdx = null;
-  var currentModalKey = null;
-
-  window.openTaskModal = function(goal, idx, key) {
-    currentModalGoal = goal;
-    currentModalIdx = idx;
-    currentModalKey = key;
-
-    document.getElementById('modalTaskTitle').textContent = G.esc(goal.text);
-    document.getElementById('modalTaskDesc').value = goal.description || '';
-    renderModalSubtasks();
-
-    document.getElementById('taskDetailsModal').classList.add('show');
-  };
+  var currentModalGoal = null, currentModalIdx = null, currentModalKey = null;
 
   function renderModalSubtasks() {
     var list = document.getElementById('modalSubtaskList');
+    if (!list) return;
     list.innerHTML = '';
     var subtasks = currentModalGoal.subtasks || [];
     subtasks.forEach(function(st, sIdx) {
-      var li = document.createElement('li');
-      li.className = 'subtask-item';
-      
-      var cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.className = 'subtask-cb';
-      cb.checked = st.done;
-      cb.addEventListener('change', function() {
-        st.done = cb.checked;
-        saveModalChanges();
-      });
-      
-      var text = document.createElement('span');
-      text.className = 'subtask-text' + (st.done ? ' done' : '');
-      text.textContent = G.esc(st.text);
-      
-      var del = document.createElement('button');
-      del.className = 'subtask-del';
-      del.textContent = '×';
-      del.addEventListener('click', function() {
-        subtasks.splice(sIdx, 1);
-        saveModalChanges();
-      });
-      
-      li.appendChild(cb);
-      li.appendChild(text);
-      li.appendChild(del);
-      list.appendChild(li);
+      var li = document.createElement('li'); li.className = 'subtask-item';
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.className = 'subtask-cb'; cb.checked = st.done;
+      cb.addEventListener('change', function() { st.done = cb.checked; saveModalChanges(); });
+      var text = document.createElement('span'); text.className = 'subtask-text' + (st.done ? ' done' : ''); text.textContent = st.text;
+      var del = document.createElement('button'); del.className = 'subtask-del'; del.textContent = '×';
+      del.addEventListener('click', function() { subtasks.splice(sIdx, 1); saveModalChanges(); });
+      li.appendChild(cb); li.appendChild(text); li.appendChild(del); list.appendChild(li);
     });
   }
 
   function saveModalChanges() {
     var goals = storeGet(currentModalKey) || [];
     if (goals[currentModalIdx]) {
-      goals[currentModalIdx].description = document.getElementById('modalTaskDesc').value;
+      var descEl = document.getElementById('modalTaskDesc');
+      if (descEl) goals[currentModalIdx].description = descEl.value;
       goals[currentModalIdx].subtasks = currentModalGoal.subtasks;
       storeSet(currentModalKey, goals);
       renderModalSubtasks();
@@ -1466,32 +1452,42 @@ body::after {
     }
   }
 
-  document.getElementById('modalClose').addEventListener('click', function() {
-    document.getElementById('taskDetailsModal').classList.remove('show');
-  });
-  
-  document.getElementById('taskDetailsModal').addEventListener('click', function(e) {
-    if (e.target === document.getElementById('taskDetailsModal')) {
-      document.getElementById('taskDetailsModal').classList.remove('show');
-    }
-  });
+  window.openTaskModal = function(goal, idx, key) {
+    currentModalGoal = goal; currentModalIdx = idx; currentModalKey = key;
+    var titleEl = document.getElementById('modalTaskTitle');
+    var descEl = document.getElementById('modalTaskDesc');
+    var modal = document.getElementById('taskDetailsModal');
+    if (titleEl) titleEl.textContent = goal.text;
+    if (descEl) descEl.value = goal.description || '';
+    renderModalSubtasks();
+    if (modal) modal.classList.add('show');
+  };
 
-  document.getElementById('modalTaskDesc').addEventListener('blur', saveModalChanges);
+  var modalClose = document.getElementById('modalClose');
+  if (modalClose) {
+    modalClose.addEventListener('click', function() { var modal = document.getElementById('taskDetailsModal'); if (modal) modal.classList.remove('show'); });
+  }
+  var taskDetailsModal = document.getElementById('taskDetailsModal');
+  if (taskDetailsModal) {
+    taskDetailsModal.addEventListener('click', function(e) { if (e.target === this) this.classList.remove('show'); });
+  }
+  var modalTaskDesc = document.getElementById('modalTaskDesc');
+  if (modalTaskDesc) modalTaskDesc.addEventListener('blur', saveModalChanges);
 
   function addSubtask() {
     var input = document.getElementById('modalSubtaskInput');
-    var val = input.value.trim();
-    if (!val) return;
+    var val = input.value.trim(); if (!val) return;
     if (!currentModalGoal.subtasks) currentModalGoal.subtasks = [];
     currentModalGoal.subtasks.push({ text: val, done: false });
-    input.value = '';
-    saveModalChanges();
+    input.value = ''; saveModalChanges();
   }
 
-  document.getElementById('modalSubtaskAdd').addEventListener('click', addSubtask);
-  document.getElementById('modalSubtaskInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') addSubtask();
-  });
+  var modalSubtaskAdd = document.getElementById('modalSubtaskAdd');
+  if (modalSubtaskAdd) modalSubtaskAdd.addEventListener('click', addSubtask);
+  var modalSubtaskInput = document.getElementById('modalSubtaskInput');
+  if (modalSubtaskInput) {
+    modalSubtaskInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') addSubtask(); });
+  }
 
   // --- Screenshot Import Logic ---
   var ssModal = document.getElementById('screenshotModal');
@@ -1505,54 +1501,52 @@ body::after {
   var orKeyInput = document.getElementById('openRouterKey');
   var orModelInput = document.getElementById('openRouterModel');
 
-  // Load saved API settings
   try {
     var savedSettings = JSON.parse(localStorage.getItem('openrouter_settings_v1')) || {};
-    if (savedSettings.key) orKeyInput.value = savedSettings.key;
-    if (savedSettings.model) orModelInput.value = savedSettings.model;
+    if (savedSettings.key && orKeyInput) orKeyInput.value = savedSettings.key;
+    if (savedSettings.model && orModelInput) orModelInput.value = savedSettings.model;
   } catch(e) {}
 
   window.addEventListener('open-screenshot-import', function() {
-    ssModal.classList.add('show');
+    if (ssModal) ssModal.classList.add('show');
     resetScreenshotState();
   });
 
-  ssClose.onclick = function() { ssModal.classList.remove('show'); };
-  ssModal.onclick = function(e) { if (e.target === ssModal) ssClose.onclick(); };
-
   function resetScreenshotState() {
-    ssInput.value = '';
-    ssResults.innerHTML = '';
-    ssResultsWrap.style.display = 'none';
-    ssLoading.style.display = 'none';
-    ssArea.style.display = '';
+    if (ssInput) ssInput.value = '';
+    if (ssResults) ssResults.innerHTML = '';
+    if (ssResultsWrap) ssResultsWrap.style.display = 'none';
+    if (ssLoading) ssLoading.style.display = 'none';
+    if (ssArea) ssArea.style.display = '';
   }
 
-  ssInput.onchange = function(e) {
-    var file = e.target.files[0];
-    if (file) processScreenshot(file);
-  };
+  if (ssClose) ssClose.onclick = function() { if (ssModal) ssModal.classList.remove('show'); };
+  if (ssModal) ssModal.onclick = function(e) { if (e.target === ssModal) ssClose.onclick(); };
 
-  ssArea.ondragover = function(e) { e.preventDefault(); ssArea.style.borderColor = 'var(--success)'; };
-  ssArea.ondragleave = function() { ssArea.style.borderColor = 'rgba(255,255,255,0.15)'; };
-  ssArea.ondrop = function(e) {
-    e.preventDefault();
-    ssArea.style.borderColor = 'rgba(255,255,255,0.15)';
-    var file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) processScreenshot(file);
-  };
+  if (ssInput) {
+    ssInput.onchange = function(e) {
+      var file = e.target.files[0];
+      if (file) processScreenshot(file);
+    };
+  }
+
+  if (ssArea) {
+    ssArea.ondragover = function(e) { e.preventDefault(); ssArea.style.borderColor = 'var(--success)'; };
+    ssArea.ondragleave = function() { ssArea.style.borderColor = 'rgba(255,255,255,0.15)'; };
+    ssArea.ondrop = function(e) {
+      e.preventDefault(); ssArea.style.borderColor = 'rgba(255,255,255,0.15)';
+      var file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) processScreenshot(file);
+    };
+  }
 
   function processScreenshot(file) {
-    var key = orKeyInput.value.trim();
-    var model = orModelInput.value.trim() || 'google/gemini-flash-1.5';
+    var key = orKeyInput ? orKeyInput.value.trim() : '';
+    var model = orModelInput ? orModelInput.value.trim() : 'google/gemini-flash-1.5';
     if (!key) { alert('Пожалуйста, введите API-ключ OpenRouter в настройках ниже.'); return; }
-    
-    // Save settings
     localStorage.setItem('openrouter_settings_v1', JSON.stringify({ key: key, model: model }));
-
-    ssArea.style.display = 'none';
-    ssLoading.style.display = 'block';
-
+    if (ssArea) ssArea.style.display = 'none';
+    if (ssLoading) ssLoading.style.display = 'block';
     var reader = new FileReader();
     reader.onload = function(e) {
       var base64 = e.target.result.split(',')[1];
@@ -1561,14 +1555,42 @@ body::after {
     reader.readAsDataURL(file);
   }
 
+  function renderProposals(tasks) {
+    if (ssLoading) ssLoading.style.display = 'none';
+    if (ssResultsWrap) ssResultsWrap.style.display = 'block';
+    if (!ssResults) return;
+    ssResults.innerHTML = '';
+    if (tasks.length === 0) {
+      ssResults.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-tertiary);">Задачи не найдены. Попробуйте другой скриншот.</div>';
+      return;
+    }
+    tasks.forEach(function(t) {
+      var row = document.createElement('div'); row.className = 'proposal-row';
+      var spheresHtml = G.SPHERES.map(function(s) { return '<option value="'+s.id+'">'+s.icon+' '+s.name+'</option>'; }).join('');
+      row.innerHTML = 
+        '<input type="checkbox" class="proposal-cb" checked>' +
+        '<input type="text" class="proposal-text" value="' + G.esc(t.text) + '">' +
+        '<div class="proposal-meta">' +
+          '<input type="number" class="proposal-input-min" value="' + (t.minutes || 30) + '" title="Минуты">' +
+          '<select class="proposal-select proposal-sphere">' +
+            '<option value="">Без сферы</option>' +
+            spheresHtml +
+          '</select>' +
+          '<select class="proposal-select proposal-diff">' +
+            '<option value="easy">Лёгкая</option>' +
+            '<option value="medium" selected>Средняя</option>' +
+            '<option value="hard">Сложная</option>' +
+          '</select>' +
+        '</div>';
+      ssResults.appendChild(row);
+    });
+  }
+
   async function callOpenRouter(base64, key, model) {
     try {
       var response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + key,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: model,
           messages: [{
@@ -1581,14 +1603,11 @@ body::after {
           response_format: { type: 'json_object' }
         })
       });
-
       var data = await response.json();
       if (data.error) throw new Error(data.error.message || 'API Error');
-      
       var content = data.choices[0].message.content;
       var parsed = JSON.parse(content);
       var tasks = Array.isArray(parsed) ? parsed : (parsed.tasks || []);
-      
       renderProposals(tasks);
     } catch(err) {
       alert('Ошибка при распознавании: ' + err.message);
@@ -1596,79 +1615,36 @@ body::after {
     }
   }
 
-  function renderProposals(tasks) {
-    ssLoading.style.display = 'none';
-    ssResultsWrap.style.display = 'block';
-    ssResults.innerHTML = '';
-
-    if (tasks.length === 0) {
-      ssResults.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-tertiary);">Задачи не найдены. Попробуйте другой скриншот.</div>';
-      return;
-    }
-
-    tasks.forEach(function(t, i) {
-      var row = document.createElement('div');
-      row.className = 'proposal-row';
-      
-      var spheresHtml = G.SPHERES.map(function(s) { return '<option value="'+s.id+'">'+s.icon+' '+s.name+'</option>'; }).join('');
-      
-      row.innerHTML = `
-        <input type="checkbox" class="proposal-cb" checked>
-        <input type="text" class="proposal-text" value="${G.esc(t.text)}">
-        <div class="proposal-meta">
-          <input type="number" class="proposal-input-min" value="${t.minutes || 30}" title="Минуты">
-          <select class="proposal-select proposal-sphere">
-            <option value="">Без сферы</option>
-            ${spheresHtml}
-          </select>
-          <select class="proposal-select proposal-diff">
-            <option value="easy">Лёгкая</option>
-            <option value="medium" selected>Средняя</option>
-            <option value="hard">Сложная</option>
-          </select>
-        </div>
-      `;
-      ssResults.appendChild(row);
-    });
-  }
-
-  ssAddBtn.onclick = function() {
-    var rows = ssResults.querySelectorAll('.proposal-row');
-    var todayKey = 'goals:' + getActiveDateString();
-    var currentGoals = storeGet(todayKey) || [];
-    var addedCount = 0;
-
-    rows.forEach(function(row) {
-      var cb = row.querySelector('.proposal-cb');
-      if (!cb.checked) return;
-
-      var text = row.querySelector('.proposal-text').value.trim();
-      var mins = parseInt(row.querySelector('.proposal-input-min').value, 10) || 30;
-      var sphere = row.querySelector('.proposal-sphere').value || null;
-      var diff = row.querySelector('.proposal-diff').value;
-
-      if (text) {
-        currentGoals.push({
-          text: text,
-          estimatedMin: mins,
-          sphere: sphere,
-          difficulty: diff,
-          done: false,
-          createdAt: new Date().toISOString()
-        });
-        addedCount++;
+  if (ssAddBtn) {
+    ssAddBtn.onclick = function() {
+      var rows = ssResults.querySelectorAll('.proposal-row');
+      var todayKey = 'goals:' + getActiveDateString();
+      var currentGoals = storeGet(todayKey) || [];
+      var addedCount = 0;
+      rows.forEach(function(row) {
+        var cb = row.querySelector('.proposal-cb');
+        if (!cb.checked) return;
+        var text = row.querySelector('.proposal-text').value.trim();
+        var mins = parseInt(row.querySelector('.proposal-input-min').value, 10) || 30;
+        var sphere = row.querySelector('.proposal-sphere').value || null;
+        var diff = row.querySelector('.proposal-diff').value;
+        if (text) {
+          currentGoals.push({ text: text, estimatedMin: mins, sphere: sphere, difficulty: diff, done: false, createdAt: new Date().toISOString() });
+          addedCount++;
+        }
+      });
+      if (addedCount > 0) {
+        storeSet(todayKey, currentGoals);
+        if (ssClose) ssClose.onclick();
+        alert('Добавлено задач: ' + addedCount);
+        loadToday();
+      } else {
+        alert('Выберите хотя бы одну задачу.');
       }
-    });
-
-    if (addedCount > 0) {
-      storeSet(todayKey, currentGoals);
-      ssClose.onclick();
-      alert('Добавлено задач: ' + addedCount);
-    } else {
-      alert('Выберите хотя бы одну задачу.');
-    }
-  };
+    };
+  }
 })();
 </script>
+
 </body>
 </html>
