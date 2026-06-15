@@ -1543,20 +1543,32 @@ body::after {
   } catch(e) {}
 
   async function removeGoalWithSync(goals, idx, key) {
-    var removedText = goals[idx].text;
-    goals.splice(idx, 1);
-    storeSet(key, goals); // Локально удаляем сразу
+    if (!confirm('Удалить задачу навсегда?')) return;
+    
+    var originalGoals = JSON.parse(JSON.stringify(goals));
+    var newGoals = JSON.parse(JSON.stringify(goals));
+    newGoals.splice(idx, 1);
+    
+    console.log('[SUPABASE] Попытка удаления...');
     
     if (window.DashboardSync) {
-      console.log('[UI] Синхронизация удаления для:', removedText);
-      try {
-        await window.DashboardSync.forceSync(key);
-        console.log('[UI] База ответила, удаление подтверждено');
-      } catch (e) {
-        console.error('[UI] Ошибка синхронизации удаления:', e);
-      }
+        // Записываем в LS
+        G.storeSet(key, newGoals);
+        try {
+            // Ждем принудительной синхронизации
+            await window.DashboardSync.forceSync(key);
+            console.log('[SUPABASE] Удаление подтверждено базой.');
+            loadToday(); // Только после этого перерисовываем
+        } catch (err) {
+            console.error('[SUPABASE] Ошибка при удалении:', err);
+            alert('Ошибка синхронизации. Задача возвращена на место.');
+            G.storeSet(key, originalGoals);
+            loadToday();
+        }
+    } else {
+        G.storeSet(key, newGoals);
+        loadToday();
     }
-    loadToday(); // В любом случае перерисовываем, чтобы UI был отзывчивым
   }
 
   function resetScreenshotState() {
@@ -1595,26 +1607,10 @@ body::after {
     };
   }
 
-  window.addEventListener('open-screenshot-import', openScreenshotModal);
-
-  // --- Инициализация кнопки импорта ---
-  function initImportButton() {
-    var btn = document.getElementById('importBtn');
-    if (!btn) {
-      console.warn('[UI] Кнопка importBtn не найдена, пробую еще раз...');
-      setTimeout(initImportButton, 500);
-      return;
-    }
-    
-    console.log('[UI] Кнопка импорта найдена, вешаю обработчик');
-    btn.onclick = function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      openScreenshotModal();
-    };
-  }
-  
-  setTimeout(initImportButton, 200);
+  window.addEventListener('open-screenshot-import', function() {
+    var m = document.getElementById('screenshotModal');
+    if (m) { m.style.display = 'flex'; m.classList.add('show'); resetScreenshotState(); }
+  });
 
   // Support for Ctrl+V / Cmd+V
   window.addEventListener('paste', function(e) {
