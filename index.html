@@ -1543,31 +1543,17 @@ body::after {
   } catch(e) {}
 
   async function removeGoalWithSync(goals, idx, key) {
-    if (!confirm('Удалить задачу навсегда?')) return;
-    
-    var originalGoals = JSON.parse(JSON.stringify(goals));
-    var newGoals = JSON.parse(JSON.stringify(goals));
-    newGoals.splice(idx, 1);
-    
-    console.log('[SUPABASE] Попытка удаления...');
+    goals.splice(idx, 1);
+    G.storeSet(key, goals);
+    loadToday(); // Сразу убираем с экрана
     
     if (window.DashboardSync) {
-        // Записываем в LS
-        G.storeSet(key, newGoals);
-        try {
-            // Ждем принудительной синхронизации
-            await window.DashboardSync.forceSync(key);
-            console.log('[SUPABASE] Удаление подтверждено базой.');
-            loadToday(); // Только после этого перерисовываем
-        } catch (err) {
-            console.error('[SUPABASE] Ошибка при удалении:', err);
-            alert('Ошибка синхронизации. Задача возвращена на место.');
-            G.storeSet(key, originalGoals);
-            loadToday();
-        }
-    } else {
-        G.storeSet(key, newGoals);
-        loadToday();
+      console.log('[UI] Синхронизация удаления...');
+      try {
+        await window.DashboardSync.forceSync(key);
+      } catch (err) {
+        console.error('[UI] Сбой базы:', err);
+      }
     }
   }
 
