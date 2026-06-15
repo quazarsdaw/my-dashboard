@@ -104,8 +104,6 @@ body {\
     </a>\
     <button class="topbar-water-add" id="topbarWaterAdd" type="button">+</button>\
   </div>\
-  <button id="topbarScreenshot" style="background:none; border:1px solid rgba(255,255,255,0.1); color:#fff; font-size:20px; cursor:pointer; width:44px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-left:8px; transition:background 0.2s;" title="Импорт задач из скриншота">📸</button>\
-  <button onclick="window.dispatchEvent(new CustomEvent(\'open-screenshot-import\'))" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; margin-left:8px;" title="📸">📸</button>\
 </header>\
 <div id="achToast">\
   <div class="ach-toast-icon" id="achToastIcon">🏅</div>\
@@ -239,8 +237,6 @@ body {\
     inject();
     var btn = document.getElementById('topbarWaterAdd');
     if (btn) btn.onclick = function(e) { e.preventDefault(); addWater(); };
-    var ssBtn = document.getElementById('topbarScreenshot');
-    if (ssBtn) ssBtn.onclick = function() { window.dispatchEvent(new CustomEvent('open-screenshot-import')); };
     render();
     window.addEventListener('gamification-update', render);
     window.addEventListener('storage', render);
@@ -248,5 +244,4 @@ body {\
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-  console.log('Topbar v303 loaded');
 })();
