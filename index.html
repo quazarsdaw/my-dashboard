@@ -489,19 +489,13 @@ body::after {
   <div class="section-title">Задачи</div>
   <div class="gm-card" id="todayCard">
     <div class="gm-header">
-      <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-        <div>
-          <div class="gm-eyebrow" id="todayLabel">Сегодня</div>
-          <div class="gm-progress-row">
-            <span class="gm-progress-num" id="gmProgressNum">0</span>
-            <span class="gm-progress-total" id="gmProgressTotal">/ 0</span>
-            <span class="gm-progress-label" id="gmProgressLabel">задач пока нет</span>
-          </div>
+      <div>
+        <div class="gm-eyebrow" id="todayLabel">Сегодня</div>
+        <div class="gm-progress-row">
+          <span class="gm-progress-num" id="gmProgressNum">0</span>
+          <span class="gm-progress-total" id="gmProgressTotal">/ 0</span>
+          <span class="gm-progress-label" id="gmProgressLabel">задач пока нет</span>
         </div>
-        <button id="importBtn" class="add-btn" style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.1); padding: 8px 14px; border-radius: 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; height: fit-content; margin-bottom: 2px;" title="Импорт из скриншота">
-          <span style="font-size: 16px;">📸</span>
-          <span style="font-weight: 700; letter-spacing: 0.02em;">Импорт по скрину</span>
-        </button>
       </div>
       <div class="gm-streak" id="gmStreak">
         <span class="gm-streak-icon">⚡</span>
@@ -513,9 +507,13 @@ body::after {
     <ul class="goal-list" id="goalList"></ul>
     <div class="empty-state" id="emptyState">Задач на сегодня нет — добавь первую.</div>
     <button class="gm-push-btn" id="gmPushBtn" style="display:none">Перенести незавершённые на завтра ▸</button>
-    <div class="gm-input-wrap">
-      <input class="gm-input" id="goalInput" type="text" placeholder="Новая задача…" autocomplete="off">
-      <input class="gm-input gm-input-small" id="goalTimeInput" type="number" placeholder="мин" min="1" title="Планируемое время (мин)">
+    <div class="gm-input-wrap" style="display: flex; align-items: center; gap: 8px;">
+      <button id="importBtn" class="add-btn" style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.1); padding: 0 12px; border-radius: 10px; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; height: 42px; white-space: nowrap; flex-shrink: 0;" title="Импорт из скриншота">
+        <span style="font-size: 16px;">📸</span>
+        <span style="font-weight: 700;">Импорт</span>
+      </button>
+      <input class="gm-input" id="goalInput" type="text" placeholder="Новая задача…" autocomplete="off" style="flex: 1;">
+      <input class="gm-input gm-input-small" id="goalTimeInput" type="number" placeholder="мин" min="1" title="Планируемое время (мин)" style="width: 60px;">
       <select class="gm-sphere-select" id="goalSphere" title="Сфера"></select>
       <select class="gm-diff-select" id="goalDiff" title="Сложность">
         <option value="easy">Лёгкая</option>
@@ -581,18 +579,20 @@ body::after {
 </div>
 
 <!-- Screenshot Import Modal -->
-<div class="task-details-overlay" id="screenshotModal">
-  <div class="task-details-box" style="max-width: 600px;">
+<div class="task-details-overlay" id="screenshotModal" style="display: none; align-items: center; justify-content: center;">
+  <div class="task-details-box" id="screenshotBox" style="max-width: 600px; position: relative;" onclick="event.stopPropagation()">
     <div class="task-details-header">
       <div class="task-details-title">Импорт задач из скриншота</div>
-      <button class="task-details-close" id="screenshotClose">&times;</button>
+      <button class="task-details-close" id="screenshotClose" style="position: absolute; top: 16px; right: 16px; z-index: 10;">&times;</button>
     </div>
     
-    <div id="screenshotUploadArea" class="upload-zone" style="margin-top: 0; border-color: rgba(255,255,255,0.15);">
-      <input type="file" id="screenshotInput" accept="image/*" style="position: absolute; inset: 0; opacity: 0; cursor: pointer;">
-      <div class="upload-zone-icon">📸</div>
-      <div class="upload-zone-text">Нажми или перетащи скриншот</div>
-      <div class="upload-zone-hint">PNG, JPG или WEBP</div>
+    <div style="position: relative; margin-top: 10px;">
+      <label for="screenshotInput" id="screenshotUploadArea" class="upload-zone" style="margin-top: 0; border-color: rgba(255,255,255,0.15); cursor: pointer; display: block;">
+        <input type="file" id="screenshotInput" accept="image/*" style="display: none;">
+        <div class="upload-zone-icon">📸</div>
+        <div class="upload-zone-text">Нажми или перетащи скриншот</div>
+        <div class="upload-zone-hint">PNG, JPG или WEBP</div>
+      </label>
     </div>
 
     <div id="screenshotLoading" style="display: none; text-align: center; padding: 30px;">
@@ -608,7 +608,7 @@ body::after {
     </div>
     
     <div id="screenshotSettings" style="margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;">
-        <details>
+        <details onclick="event.stopPropagation()">
             <summary style="font-size: 11px; color: var(--text-tertiary); cursor: pointer; user-select: none;">Настройки API (OpenRouter)</summary>
             <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
                 <input type="password" id="openRouterKey" class="add-input" placeholder="OpenRouter API Key" style="width: 100%;">
@@ -1256,7 +1256,25 @@ body::after {
     if (goal.difficulty) { var db = document.createElement('span'); db.className = 'goal-diff-badge ' + goal.difficulty; db.textContent = G.DIFFICULTY_LABELS[goal.difficulty] || goal.difficulty; badges.appendChild(db); }
     li.appendChild(badges);
 
-    if (!readOnly) { var del = document.createElement('button'); del.className = 'goal-delete'; del.textContent = '×'; del.addEventListener('click', function () { var goals = storeGet(key) || []; goals.splice(idx, 1); storeSet(key, goals); loadToday(); }); li.appendChild(del); }
+    if (!readOnly) { 
+      var del = document.createElement('button'); 
+      del.className = 'goal-delete'; 
+      del.textContent = '×'; 
+      del.addEventListener('click', async function (e) { 
+        e.stopPropagation();
+        if (!confirm('Удалить задачу?')) return;
+        var goals = storeGet(key) || []; 
+        goals.splice(idx, 1); 
+        storeSet(key, goals); 
+        try {
+          if (window.DashboardSync) await window.DashboardSync.forceSync(key);
+          loadToday(); 
+        } catch(err) {
+          console.error('Delete failed:', err);
+        }
+      }); 
+      li.appendChild(del); 
+    }
 
     if (!readOnly) {
       cb.addEventListener('change', function () {
@@ -1293,12 +1311,24 @@ body::after {
               var c = Math.max(1, Math.floor(m * mult));
               rewardText.textContent = (goalHasSphere ? ('+' + m + ' XP • ') : '') + '+' + c + ' 🪙';
             });
-            actualRow.querySelector('.goal-confirm-btn').addEventListener('click', function () {
+            actualRow.querySelector('.goal-confirm-btn').addEventListener('click', async function (e) {
+              e.stopPropagation();
               var actualMin = parseInt(inp.value, 10) || est;
-              goals[idx].done = true; goals[idx].doneAt = Date.now(); goals[idx].actualMin = actualMin;
-              storeSet(key, goals);
-              G.completeTask(goals[idx].sphere, goals[idx].difficulty, actualMin);
-              loadToday(); renderRadar();
+              var goalsUpdate = storeGet(key) || [];
+              if (goalsUpdate[idx]) {
+                goalsUpdate[idx].done = true;
+                goalsUpdate[idx].doneAt = Date.now();
+                goalsUpdate[idx].actualMin = actualMin;
+                storeSet(key, goalsUpdate);
+                try {
+                  if (window.DashboardSync) await window.DashboardSync.forceSync(key);
+                  G.completeTask(goalsUpdate[idx].sphere, goalsUpdate[idx].difficulty, actualMin);
+                  loadToday(); renderRadar();
+                } catch(err) {
+                  console.error('Complete failed:', err);
+                  alert('Ошибка сохранения. Проверьте интернет.');
+                }
+              }
             });
             inp.focus();
           }

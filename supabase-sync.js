@@ -209,7 +209,7 @@
 
   /* ── Sync Logic ── */
   var syncDebounceTimer = null;
-  var SYNC_DEBOUNCE_MS = 2000; // Increased to prevent spam
+  var SYNC_DEBOUNCE_MS = 1000; // Increased to prevent spam
 
   function schedulePush(key) {
     if (isSyncing || !syncEnabled || !currentUser) return;
@@ -240,11 +240,21 @@
     writeLocalMeta(meta);
   }
 
+    // Expose for manual sync
+    window.DashboardSync = {
+      forceSync: function(key) {
+        if (!currentUser || !supabase) return Promise.resolve();
+        touchLocalKey(key);
+        return syncPendingChanges();
+      }
+    };
+  }
+
   function syncPendingChanges() {
-    if (!currentUser || !supabase) return;
+    if (!currentUser || !supabase) return Promise.resolve();
 
     var keysToPush = Object.keys(pendingKeys);
-    if (keysToPush.length === 0) return;
+    if (keysToPush.length === 0) return Promise.resolve();
 
     var rows = [];
     keysToPush.forEach(function(k) {
@@ -255,7 +265,7 @@
       rows.push({
         user_id: currentUser.id,
         key: k,
-        value: jsonVal, // Отправляем как объект для JSONB
+        value: jsonVal,
         updated_at: new Date().toISOString()
       });
     });
@@ -264,15 +274,26 @@
     pendingKeys = {};
 
     lastLocalPushAt = Date.now();
-    supabase.from('user_data').upsert(rows, { onConflict: 'user_id, key' })
+    showSyncIndicator('syncing');
+
+    return supabase.from('user_data').upsert(rows, { onConflict: 'user_id, key' })
       .then(function(res) {
           if (res.error) {
-            console.error('Push error:', res.error);
+            console.error('[Supabase Sync] Push error:', res.error.message, res.error.details);
             Object.assign(pendingKeys, processingKeys);
+            showSyncIndicator('error');
+            throw res.error;
           } else {
             lastLocalPushAt = Date.now();
             showSyncIndicator('pushed');
+            return res.data;
           }
+      })
+      .catch(function(err) {
+        console.error('[Supabase Sync] Critical error:', err);
+        Object.assign(pendingKeys, processingKeys);
+        showSyncIndicator('error');
+        throw err;
       });
   }
 
