@@ -279,11 +279,13 @@
     return supabase.from('user_data').upsert(rows, { onConflict: 'user_id, key' })
       .then(function(res) {
           if (res.error) {
-            console.error('[Supabase Sync] Push error:', res.error.message, res.error.details);
+            console.error('[Supabase Sync] Ошибка сохранения:', res.error.message);
+            console.error('Детали:', res.error.details, res.error.hint);
             Object.assign(pendingKeys, processingKeys);
             showSyncIndicator('error');
             throw res.error;
           } else {
+            console.log('[Supabase Sync] Данные успешно отправлены в облако для ключей:', keysToPush);
             lastLocalPushAt = Date.now();
             showSyncIndicator('pushed');
             return res.data;
