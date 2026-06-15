@@ -97,15 +97,15 @@ body {\
     <span class="topbar-coins-icon">🪙</span>\
     <span id="topbarCoinsCount">0</span>\
   </div>\
-  <div class="topbar-water-wrap">
-    <a href="health.html#water" class="topbar-water-pill" id="topbarWater">
-      <span class="topbar-pill-dot"></span>
-      <span class="topbar-pill-count" id="topbarWaterCount">0/0</span>
-    </a>
-    <button class="topbar-water-add" id="topbarWaterAdd" type="button">+</button>
-  </div>
-  <button id="topbarScreenshot" style="background:none; border:1px solid rgba(255,255,255,0.1); color:#fff; font-size:20px; cursor:pointer; width:44px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-left:8px; transition:background 0.2s;" title="Импорт задач из скриншота">📸</button>
-  </header>
+  <div class="topbar-water-wrap">\
+    <a href="health.html#water" class="topbar-water-pill" id="topbarWater">\
+      <span class="topbar-pill-dot"></span>\
+      <span class="topbar-pill-count" id="topbarWaterCount">0/0</span>\
+    </a>\
+    <button class="topbar-water-add" id="topbarWaterAdd" type="button">+</button>\
+  </div>\
+  <button id="topbarScreenshot" style="background:none; border:1px solid rgba(255,255,255,0.1); color:#fff; font-size:20px; cursor:pointer; width:44px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-left:8px; transition:background 0.2s;" title="Импорт задач из скриншота">📸</button>\
+</header>\
 <div id="achToast">\
   <div class="ach-toast-icon" id="achToastIcon">🏅</div>\
   <div class="ach-toast-info">\
