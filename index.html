@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Dashboard</title>
 <script src="gamification_v405.js"></script>
-<script src="supabase-sync_v405.js" defer></script>
+<script src="supabase-sync.js?v=406" defer></script>
 <script src="topbar_v405.js" defer></script><style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -1125,29 +1125,36 @@ body::after {
   tick(); setInterval(tick, 5000);
   window.addEventListener('goals-changed', function () { cycleIdx = 0; tick(); });
 
-  // --- Rollover ---
+  // --- Rollover (idempotent: a past day is carried into "today" at most once,
+  //     so deleting/completing a carried task can't be resurrected on reload) ---
   (function () {
     var today = getActiveDateString();
+    var ROLLED_KEY = '_rollover_done_v1';
+    var rolled; try { rolled = JSON.parse(localStorage.getItem(ROLLED_KEY)) || {}; } catch (e) { rolled = {}; }
+    var changed = false;
     for (var i = localStorage.length - 1; i >= 0; i--) {
       var k = localStorage.key(i);
       if (!k || k.indexOf('goals:') !== 0) continue;
       var dateStr = k.slice(6); if (dateStr >= today) continue;
+      if (rolled[dateStr]) continue;                       // already handled this source day
       var old = storeGet(k) || [];
       var undone = old.filter(function (g) { return !g.done; });
       if (undone.length > 0) {
         var current = storeGet('goals:' + today) || [];
         var exist = {}; current.forEach(function (g) { exist[g.text] = true; });
         var added = false;
-        undone.forEach(function (g) { 
+        undone.forEach(function (g) {
           if (!exist[g.text]) {
-            current.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin }); 
+            current.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin });
             exist[g.text] = true;
             added = true;
           }
         });
         if (added) storeSet('goals:' + today, current);
       }
+      rolled[dateStr] = true; changed = true;              // mark regardless of whether anything was added
     }
+    if (changed) localStorage.setItem(ROLLED_KEY, JSON.stringify(rolled));
   })();
 
   // --- Streak ---

@@ -51,7 +51,7 @@
 
   var SYNC_META_KEY = '_sync_meta_v1';
   var DELETE_META_KEY = '_sync_deleted_v1';
-  var SKIP_KEYS = ['_sync_reload_at', '_sync_debug_v1', 'supabase.auth.token']; 
+  var SKIP_KEYS = ['_sync_reload_at', '_sync_debug_v1', 'supabase.auth.token', '_rollover_done_v1', '_sync_init_v1'];
 
   function shouldSkipStorageKey(key) {
     if (!key) return true;
@@ -240,15 +240,14 @@
     writeLocalMeta(meta);
   }
 
-    // Expose for manual sync
-    window.DashboardSync = {
-      forceSync: function(key) {
-        if (!currentUser || !supabase) return Promise.resolve();
-        touchLocalKey(key);
-        return syncPendingChanges();
-      }
-    };
-  }
+  // Expose for manual sync
+  window.DashboardSync = {
+    forceSync: function(key) {
+      if (!currentUser || !supabase) return Promise.resolve();
+      touchLocalKey(key);
+      return syncPendingChanges();
+    }
+  };
 
   function syncPendingChanges() {
     if (!currentUser || !supabase) return Promise.resolve();
@@ -303,8 +302,24 @@
     schedulePush(null);
   }
 
+  function seedLocalPriorityIfFirstRun() {
+    // On a device's FIRST sync, treat the data already on this device as
+    // authoritative: stamp every existing local key with "now" so the gated
+    // initial pull can't overwrite current tasks with stale cloud data.
+    // Cloud-only keys (never seen locally) still get pulled — they aren't seeded.
+    if (localStorage.getItem('_sync_init_v1')) return;
+    var meta = readLocalMeta();
+    var now = Date.now();
+    getAllSyncKeys().forEach(function (k) { if (!meta[k]) meta[k] = now; });
+    writeLocalMeta(meta);
+    rawSetItem('_sync_init_v1', '1');
+  }
+
   function startRealtimeSync() {
     if (!currentUser || !supabase) return;
+
+    // 0. First-run: make this device's current data win over stale cloud
+    seedLocalPriorityIfFirstRun();
 
     // 1. Initial Pull
     pullFromCloud();
