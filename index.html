@@ -1272,12 +1272,11 @@ body::after {
       var del = document.createElement('button'); 
       del.className = 'goal-delete'; 
       del.textContent = '×'; 
-      del.addEventListener('click', function (e) { 
+      del.addEventListener('click', function (e) {
         e.stopPropagation();
-        if (!confirm('Удалить задачу?')) return;
-        var goals = storeGet(key) || []; 
+        var goals = storeGet(key) || [];
         removeGoalWithSync(goals, idx, key);
-      }); 
+      });
       li.appendChild(del); 
     }
 
