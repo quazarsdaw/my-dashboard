@@ -214,6 +214,28 @@ body::after {
 .sphere-add-btn { width: 100%; padding: 8px; margin-top: 6px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.1); border-radius: 10px; color: var(--text-tertiary); font-size: 11px; font-weight: 600; cursor: pointer; transition: border-color 0.15s; }
 .sphere-add-btn:hover { border-color: rgba(255,255,255,0.2); color: var(--text-secondary); }
 
+/* Sphere focus modal */
+.sphere-focus-overlay { display: none; position: fixed; inset: 0; z-index: 120; background: rgba(5,6,9,0.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); align-items: center; justify-content: center; padding: 18px; }
+.sphere-focus-overlay.show { display: flex; }
+.sphere-focus-box { position: relative; width: min(520px, 100%); overflow: hidden; border-radius: 22px; border: 1px solid rgba(255,255,255,0.12); background: linear-gradient(160deg, rgba(28,30,36,0.96), rgba(16,18,24,0.98)); box-shadow: 0 30px 90px rgba(0,0,0,0.55); }
+.sphere-focus-art { position: relative; min-height: 190px; display: flex; align-items: center; justify-content: center; isolation: isolate; }
+.sphere-focus-art::before { content: ''; position: absolute; width: 240px; height: 240px; border-radius: 50%; background: var(--sphere-color, #7DD3FC); opacity: 0.22; filter: blur(22px); z-index: -2; }
+.sphere-focus-art::after { content: ''; position: absolute; inset: 18px; border-radius: 28px; border: 1px solid rgba(255,255,255,0.08); background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.16), transparent 35%), linear-gradient(135deg, rgba(255,255,255,0.08), transparent); z-index: -1; }
+.sphere-focus-orb { width: 116px; height: 116px; border-radius: 34px; display: flex; align-items: center; justify-content: center; font-size: 58px; background: color-mix(in srgb, var(--sphere-color, #7DD3FC) 26%, rgba(255,255,255,0.08)); border: 1px solid color-mix(in srgb, var(--sphere-color, #7DD3FC) 58%, rgba(255,255,255,0.16)); box-shadow: 0 22px 70px color-mix(in srgb, var(--sphere-color, #7DD3FC) 30%, transparent); }
+.sphere-focus-body { padding: 0 22px 22px; }
+.sphere-focus-kicker { font-size: 10px; font-weight: 900; letter-spacing: 0.18em; text-transform: uppercase; color: var(--sphere-color, #7DD3FC); margin-bottom: 7px; }
+.sphere-focus-title { font-size: 28px; font-weight: 900; line-height: 1.05; margin-bottom: 12px; color: var(--text-primary); }
+.sphere-focus-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.sphere-focus-stat { padding: 10px; border-radius: 12px; background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.07); }
+.sphere-focus-stat strong { display: block; font-size: 16px; font-family: var(--font-mono); color: var(--text-primary); }
+.sphere-focus-stat span { display: block; margin-top: 2px; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.sphere-focus-progress { height: 8px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,0.08); margin-bottom: 14px; }
+.sphere-focus-progress-fill { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--sphere-color, #7DD3FC), rgba(255,255,255,0.82)); }
+.sphere-focus-actions { display: flex; gap: 10px; }
+.sphere-focus-actions button { flex: 1; padding: 11px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; font-size: 13px; font-weight: 800; }
+.sphere-focus-close { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+.sphere-focus-edit { background: var(--sphere-color, #7DD3FC); color: #111318; }
+
 /* Sphere edit modal */
 .sphere-edit-overlay { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
 .sphere-edit-overlay.show { display: flex; }
@@ -469,6 +491,29 @@ body::after {
       <div class="radar-list" id="radarList"></div>
     </div>
     <button class="sphere-add-btn" id="sphereAddBtn">+ Добавить сферу</button>
+  </div>
+</div>
+
+<!-- Sphere focus modal -->
+<div class="sphere-focus-overlay" id="sphereFocusOverlay">
+  <div class="sphere-focus-box" id="sphereFocusBox">
+    <div class="sphere-focus-art">
+      <div class="sphere-focus-orb" id="sphereFocusIcon">✨</div>
+    </div>
+    <div class="sphere-focus-body">
+      <div class="sphere-focus-kicker">сфера развития</div>
+      <div class="sphere-focus-title" id="sphereFocusTitle">Сфера</div>
+      <div class="sphere-focus-stats">
+        <div class="sphere-focus-stat"><strong id="sphereFocusLevel">1</strong><span>уровень</span></div>
+        <div class="sphere-focus-stat"><strong id="sphereFocusXp">0</strong><span>xp</span></div>
+        <div class="sphere-focus-stat"><strong id="sphereFocusNext">0</strong><span>до уровня</span></div>
+      </div>
+      <div class="sphere-focus-progress"><div class="sphere-focus-progress-fill" id="sphereFocusProgress"></div></div>
+      <div class="sphere-focus-actions">
+        <button class="sphere-focus-close" id="sphereFocusClose" type="button">Закрыть</button>
+        <button class="sphere-focus-edit" id="sphereFocusEdit" type="button">Редактировать</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -926,6 +971,7 @@ body::after {
   // --- Spheres: Radar Chart + List ---
   var SPHERE_EMOJIS = ['🏃','💼','💰','💛','📚','🎮','🧠','⚡','🎯','🔥','🌱','💎','🎨','🏋️','📊','🌍','💻','🎵','🧘','❤️','🚀','📖','🛡️','⭐'];
   var editingSphereId = null;
+  var focusedSphereId = null;
 
   function renderRadar() {
     var svg = document.getElementById('radarChart');
@@ -1008,9 +1054,36 @@ body::after {
           '</div>' +
           '<div class="radar-item-bar"><div class="radar-item-bar-fill" style="width:' + pct + '%;background:' + s.color + '"></div></div>' +
         '</div>';
-      item.addEventListener('click', function () { openSphereEdit(s.id); });
+      item.addEventListener('click', function () { openSphereFocus(s.id); });
       list.appendChild(item);
     });
+  }
+
+  function openSphereFocus(id) {
+    focusedSphereId = id;
+    var sphere = null;
+    for (var i = 0; i < G.SPHERES.length; i++) { if (G.SPHERES[i].id === id) { sphere = G.SPHERES[i]; break; } }
+    if (!sphere) return;
+    var data = G.getSpheres();
+    var xp = (data[id] && data[id].xp) || 0;
+    var info = G.getLevelInfo(xp);
+    var pct = info.xpNeeded > 0 ? Math.min(100, Math.round(info.xpInLevel / info.xpNeeded * 100)) : 100;
+    var box = document.getElementById('sphereFocusBox');
+    var icon = document.getElementById('sphereFocusIcon');
+    var title = document.getElementById('sphereFocusTitle');
+    var level = document.getElementById('sphereFocusLevel');
+    var xpEl = document.getElementById('sphereFocusXp');
+    var next = document.getElementById('sphereFocusNext');
+    var progress = document.getElementById('sphereFocusProgress');
+    if (box) box.style.setProperty('--sphere-color', sphere.color || '#7DD3FC');
+    if (icon) icon.textContent = sphere.icon || '✨';
+    if (title) title.textContent = sphere.name;
+    if (level) level.textContent = info.level;
+    if (xpEl) xpEl.textContent = info.totalXp;
+    if (next) next.textContent = info.xpNeeded > 0 ? Math.max(0, info.xpNeeded - info.xpInLevel) : 'max';
+    if (progress) progress.style.width = pct + '%';
+    var overlay = document.getElementById('sphereFocusOverlay');
+    if (overlay) overlay.classList.add('show');
   }
 
   function openSphereEdit(id) {
@@ -1048,6 +1121,26 @@ body::after {
   var sphereAddBtn = document.getElementById('sphereAddBtn');
   if (sphereAddBtn) {
     sphereAddBtn.addEventListener('click', function () { openSphereEdit('__new__'); });
+  }
+
+  var sphereFocusOverlay = document.getElementById('sphereFocusOverlay');
+  if (sphereFocusOverlay) {
+    sphereFocusOverlay.addEventListener('click', function (e) { if (e.target === this) this.classList.remove('show'); });
+  }
+  var sphereFocusClose = document.getElementById('sphereFocusClose');
+  if (sphereFocusClose) {
+    sphereFocusClose.addEventListener('click', function () {
+      var overlay = document.getElementById('sphereFocusOverlay');
+      if (overlay) overlay.classList.remove('show');
+    });
+  }
+  var sphereFocusEdit = document.getElementById('sphereFocusEdit');
+  if (sphereFocusEdit) {
+    sphereFocusEdit.addEventListener('click', function () {
+      var overlay = document.getElementById('sphereFocusOverlay');
+      if (overlay) overlay.classList.remove('show');
+      if (focusedSphereId) openSphereEdit(focusedSphereId);
+    });
   }
 
   var sphereEditOverlay = document.getElementById('sphereEditOverlay');

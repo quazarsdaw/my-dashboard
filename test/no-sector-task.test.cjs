@@ -7,6 +7,7 @@ const vm = require('node:vm');
 function loadGamification() {
   const storage = new Map();
   const events = [];
+  const listeners = {};
   const context = {
     CustomEvent: function CustomEvent(type, init) {
       this.type = type;
@@ -26,8 +27,13 @@ function loadGamification() {
     },
     clearTimeout() {},
     window: {
+      addEventListener(type, cb) {
+        if (!listeners[type]) listeners[type] = [];
+        listeners[type].push(cb);
+      },
       dispatchEvent(event) {
         events.push(event);
+        (listeners[event.type] || []).forEach(function (cb) { cb(event); });
       },
     },
   };
@@ -38,7 +44,7 @@ function loadGamification() {
   vm.createContext(context);
   const source = fs.readFileSync(path.join(__dirname, '..', 'gamification.js'), 'utf8');
   vm.runInContext(source, context);
-  return { G: context.window.Gamification, storage, events };
+  return { G: context.window.Gamification, storage, events, window: context.window };
 }
 
 test('completing a task without a sector gives coins but no sphere XP', () => {
@@ -82,4 +88,29 @@ test('task completion awards locally before awaiting cloud sync', () => {
   assert.ok(rewardIndex !== -1);
   assert.ok(syncIndex !== -1);
   assert.ok(rewardIndex < syncIndex);
+});
+
+test('achievement bonus is not paid twice when achievement checks re-enter during coin update', () => {
+  const { G, storage, window } = loadGamification();
+  let reentered = false;
+
+  G.storeSet('total_stats_v1', { totalMinutes: 0, totalTasks: 1, totalDays: 1, firstDay: new Date().toISOString() });
+  G.storeSet('coins_v1', { balance: 0, earned: 0, spent: 0, history: [] });
+
+  window.addEventListener('gamification-update', function (event) {
+    if (event.detail && event.detail.key === 'coins_v1' && !reentered) {
+      reentered = true;
+      G.checkAchievements();
+    }
+  });
+
+  G.checkAchievements();
+
+  const coins = JSON.parse(storage.get('coins_v1'));
+  const firstTaskBonuses = coins.history.filter(function (h) {
+    return h.reason === 'Награда: База';
+  });
+
+  assert.equal(firstTaskBonuses.length, 1);
+  assert.equal(coins.earned, 2);
 });
