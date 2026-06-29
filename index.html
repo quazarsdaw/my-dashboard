@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Dashboard</title>
 <script src="gamification_v405.js"></script>
-<script src="supabase-sync.js?v=406" defer></script>
+<script src="supabase-sync.js?v=406-sb" defer></script>
 <script src="topbar_v405.js" defer></script><style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -1652,35 +1652,19 @@ body::after {
     
     var newGoals = JSON.parse(JSON.stringify(goals));
     newGoals.splice(idx, 1);
-    
-    if (window.DashboardSync && window.DashboardSync.client) {
-        var db = window.DashboardSync.client;
-        var user = window.DashboardSync.user;
-        
-        console.log('[SUPABASE] Прямой запрос на удаление для:', key);
-        
-        // Отправляем ВЕСЬ новый массив в базу
-        var { error } = await db.from('user_data').upsert({
-            user_id: user.id,
-            key: key,
-            value: newGoals,
-            updated_at: new Date().toISOString()
-        });
-        
-        if (error) {
-            console.error('[SUPABASE] Ошибка:', error);
-            alert('БАЗА НЕ СОХРАНИЛА: ' + error.message + '\n\nПроверь политики RLS или интернет.');
-        } else {
-            console.log('[SUPABASE] Успешно удалено из облака.');
-            // Только при успехе пишем в LS и обновляем экран
-            G.storeSet(key, newGoals);
-            loadToday();
-        }
+    G.storeSet(key, newGoals);
+
+    if (window.DashboardSync && window.DashboardSync.forceSync) {
+      try {
+        await window.DashboardSync.forceSync(key);
+      } catch (err) {
+        console.error('[SUPABASE] Ошибка синка при удалении задачи:', err);
+        alert('Задача удалена локально, но синхронизация недоступна. Изменения отправятся позже.');
+      }
     } else {
-        // Если база не подключена - просто удаляем локально
-        G.storeSet(key, newGoals);
-        loadToday();
+      // Если синк не подключён - изменения уже сохранены локально
     }
+    loadToday();
   }
 
   function resetScreenshotState() {
