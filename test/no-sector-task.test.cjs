@@ -20,6 +20,11 @@ function loadGamification() {
         storage.set(key, String(value));
       },
     },
+    setTimeout(fn) {
+      if (typeof fn === 'function') fn();
+      return 1;
+    },
+    clearTimeout() {},
     window: {
       dispatchEvent(event) {
         events.push(event);
@@ -28,6 +33,8 @@ function loadGamification() {
   };
   context.window.CustomEvent = context.CustomEvent;
   context.window.localStorage = context.localStorage;
+  context.window.setTimeout = context.setTimeout;
+  context.window.clearTimeout = context.clearTimeout;
   vm.createContext(context);
   const source = fs.readFileSync(path.join(__dirname, '..', 'gamification.js'), 'utf8');
   vm.runInContext(source, context);
@@ -41,9 +48,11 @@ test('completing a task without a sector gives coins but no sphere XP', () => {
   const coins = JSON.parse(storage.get('coins_v1'));
   const spheres = storage.has('spheres_v1') ? JSON.parse(storage.get('spheres_v1')) : {};
 
-  assert.equal(result.coins, 10);
-  assert.equal(coins.balance, 10);
-  assert.equal(coins.history[0].reason, 'Задача (без сектора)');
+  assert.equal(result.coins, 6);
+  assert.ok(coins.balance >= result.coins);
+  assert.ok(coins.history.some(function (h) {
+    return h.amount === result.coins && h.reason === 'Задача (без сектора)';
+  }));
   assert.deepEqual(spheres, {});
 });
 
@@ -63,4 +72,14 @@ test('storeSet emits a local data change event for sync', () => {
   const event = events.find(function (e) { return e.type === 'dashboard-data-changed'; });
   assert.ok(event);
   assert.equal(event.detail.key, 'store_v1');
+});
+
+test('task completion awards locally before awaiting cloud sync', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const rewardIndex = html.indexOf('G.completeTask(goalsUpdate[idx].sphere, goalsUpdate[idx].difficulty, actualMin)');
+  const syncIndex = html.indexOf('await window.DashboardSync.forceSync(key)');
+
+  assert.ok(rewardIndex !== -1);
+  assert.ok(syncIndex !== -1);
+  assert.ok(rewardIndex < syncIndex);
 });

@@ -779,10 +779,11 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
       wish.forEach(function(w, i){
         var el = document.createElement('div');
         el.className = 'wish-item';
+        var link = safeUrl(w.link);
         el.innerHTML =
           '<span class="wish-name">'+G.esc(w.name)+'</span>' +
           (w.price ? '<span class="wish-price">'+formatNum(w.price)+' ₽</span>' : '') +
-          (w.link ? '<a class="wish-link" href="'+G.esc(w.link)+'" target="_blank" rel="noopener">🔗</a>' : '') +
+          (link ? '<a class="wish-link" href="'+G.esc(link)+'" target="_blank" rel="noopener noreferrer">🔗</a>' : '') +
           '<button class="wish-del" data-idx="'+i+'">×</button>';
         container.appendChild(el);
       });
@@ -819,6 +820,14 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
     var d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+  }
+  function safeUrl(value){
+    if(!value) return '';
+    try {
+      var url = new URL(String(value), window.location.href);
+      if(url.protocol === 'http:' || url.protocol === 'https:') return url.href;
+    } catch(e) {}
+    return '';
   }
 
   renderNW();

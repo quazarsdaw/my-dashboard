@@ -662,7 +662,7 @@ body::after {
       row.innerHTML =
         '<div class="sphere-icon">' + s.icon + '</div>' +
         '<div class="sphere-details">' +
-          '<div class="sphere-name-row"><span class="sphere-name">' + s.name + '</span><span class="sphere-lvl">LVL ' + info.level + '</span></div>' +
+          '<div class="sphere-name-row"><span class="sphere-name">' + G.esc(s.name) + '</span><span class="sphere-lvl">LVL ' + info.level + '</span></div>' +
           '<div class="sphere-bar-bg"><div class="sphere-bar-fill" style="width:' + pct + '%;background:' + s.color + '"></div></div>' +
           '<div class="sphere-xp-text">' + formatNum(info.xpInLevel) + ' / ' + formatNum(info.xpNeeded) + ' XP</div>' +
         '</div>';
@@ -733,7 +733,7 @@ body::after {
       item.className = 'log-item';
       item.innerHTML =
         '<div class="log-dot" style="background:' + (sphere ? sphere.color : '#666') + '"></div>' +
-        '<div class="log-text">' + (entry.label || (sphere ? sphere.name : 'Активность')) + '</div>' +
+        '<div class="log-text">' + G.esc(entry.label || (sphere ? sphere.name : 'Активность')) + '</div>' +
         '<div class="log-time">' + entry.minutes + ' мин &middot; ' + formatShortDate(entry.startTime) + ' ' + formatTime(entry.startTime) + '</div>';
       container.appendChild(item);
     }
@@ -749,7 +749,7 @@ body::after {
           item.className = 'log-item';
           item.innerHTML =
             '<div class="log-dot" style="background:' + (sphere ? sphere.color : '#666') + '"></div>' +
-            '<div class="log-text">' + (entry.label || (sphere ? sphere.name : 'Активность')) + '</div>' +
+            '<div class="log-text">' + G.esc(entry.label || (sphere ? sphere.name : 'Активность')) + '</div>' +
             '<div class="log-time">' + entry.minutes + ' мин &middot; ' + formatShortDate(entry.startTime) + ' ' + formatTime(entry.startTime) + '</div>';
           container.appendChild(item);
         });
@@ -774,8 +774,8 @@ body::after {
       row.className = 'coin-row';
       var sign = h.type === 'earn' ? '+' : '-';
       row.innerHTML =
-        '<div class="coin-reason">' + (h.reason || '') + '</div>' +
-        '<div class="coin-amount ' + h.type + '">' + sign + h.amount + ' 🪙</div>' +
+        '<div class="coin-reason">' + G.esc(h.reason || '') + '</div>' +
+        '<div class="coin-amount ' + (h.type === 'earn' ? 'earn' : 'spend') + '">' + sign + h.amount + ' 🪙</div>' +
         '<div class="coin-date">' + formatShortDate(h.date) + '</div>';
       container.appendChild(row);
     }
@@ -790,8 +790,8 @@ body::after {
           row.className = 'coin-row';
           var sign = h.type === 'earn' ? '+' : '-';
           row.innerHTML =
-            '<div class="coin-reason">' + (h.reason || '') + '</div>' +
-            '<div class="coin-amount ' + h.type + '">' + sign + h.amount + ' 🪙</div>' +
+            '<div class="coin-reason">' + G.esc(h.reason || '') + '</div>' +
+            '<div class="coin-amount ' + (h.type === 'earn' ? 'earn' : 'spend') + '">' + sign + h.amount + ' 🪙</div>' +
             '<div class="coin-date">' + formatShortDate(h.date) + '</div>';
           container.appendChild(row);
         });
@@ -888,11 +888,64 @@ body::after {
     if (!isError) setTimeout(function () { el.classList.remove('visible'); }, 4000);
   }
 
+  var APP_STORAGE_KEYS = [
+    '_last_task_date',
+    'achievements_v1',
+    'activity_log_v1',
+    'calories_v1',
+    'coins_v1',
+    'dayskip_last_check_v1',
+    'fin_accounts_v1',
+    'fin_reports_v1',
+    'fin_subs_v1',
+    'fin_wishlist_v1',
+    'finance_v1',
+    'goal_streak_v1',
+    'goals_collapsed_v1',
+    'habits_v1',
+    'horizons_goals_v2',
+    'inbox_v1',
+    'penalty_log_v1',
+    'po_water_v1',
+    'profile_v1',
+    'sphere_defs_v1',
+    'spheres_v1',
+    'store_sections_collapsed',
+    'store_v1',
+    'store_v2',
+    'task_history_v1',
+    'timer_v1',
+    'total_stats_v1',
+    'tracker_v1',
+    'weight_v1',
+    'yearly_goals_v1'
+  ];
+  var APP_STORAGE_PREFIXES = [
+    'fin_',
+    'goals:',
+    'gym_',
+    'stack:',
+    'stack:taken:'
+  ];
+
+  function isAppStorageKey(key) {
+    if (!key) return false;
+    if (key.indexOf('openrouter_') === 0) return false;
+    if (key.indexOf('sb-') === 0) return false;
+    if (key.indexOf('firebase:') === 0) return false;
+    if (key.indexOf('_sync_') === 0) return false;
+    if (APP_STORAGE_KEYS.indexOf(key) !== -1) return true;
+    for (var i = 0; i < APP_STORAGE_PREFIXES.length; i++) {
+      if (key.indexOf(APP_STORAGE_PREFIXES[i]) === 0) return true;
+    }
+    return false;
+  }
+
   document.getElementById('exportBtn').addEventListener('click', function () {
     var data = {};
     for (var i = 0; i < localStorage.length; i++) {
       var key = localStorage.key(i);
-      data[key] = localStorage.getItem(key);
+      if (isAppStorageKey(key)) data[key] = localStorage.getItem(key);
     }
     var json = JSON.stringify(data, null, 2);
     var blob = new Blob([json], { type: 'application/json' });
@@ -929,8 +982,12 @@ body::after {
         if (keys.length === 0) {
           throw new Error('Файл пустой');
         }
-        if (!confirm('Импортировать ' + keys.length + ' записей?\n\nТекущие данные будут перезаписаны.')) return;
-        keys.forEach(function (key) {
+        var importKeys = keys.filter(isAppStorageKey);
+        if (importKeys.length === 0) {
+          throw new Error('Нет поддерживаемых данных для импорта');
+        }
+        if (!confirm('Импортировать ' + importKeys.length + ' записей?\n\nНеподдерживаемые и служебные ключи будут пропущены.')) return;
+        importKeys.forEach(function (key) {
           localStorage.setItem(key, data[key]);
         });
         showTransferStatus('Импорт завершён! Обновляю страницу...');

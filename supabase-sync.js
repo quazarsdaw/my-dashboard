@@ -51,13 +51,23 @@
 
   var SYNC_META_KEY = '_sync_meta_v1';
   var DELETE_META_KEY = '_sync_deleted_v1';
-  var SKIP_KEYS = ['_sync_reload_at', '_sync_debug_v1', 'supabase.auth.token', '_rollover_done_v1', '_sync_init_v1'];
+  var SKIP_KEYS = [
+    SYNC_META_KEY,
+    DELETE_META_KEY,
+    '_sync_reload_at',
+    '_sync_debug_v1',
+    'supabase.auth.token',
+    '_rollover_done_v1',
+    '_sync_init_v1',
+    'openrouter_settings_v1'
+  ];
 
   function shouldSkipStorageKey(key) {
     if (!key) return true;
     if (SKIP_KEYS.indexOf(key) !== -1) return true;
     if (key.indexOf('sb-') === 0) return true; // Supabase internal keys
     if (key.indexOf('firebase:') === 0) return true;
+    if (key.indexOf('openrouter_') === 0) return true;
     return false;
   }
 
@@ -187,6 +197,7 @@
         window.Storage.prototype.removeItem = function (key) {
           nativeRemoveItem.call(this, key);
           if (this === localStorage && !isSyncing && !shouldSkipStorageKey(key)) {
+            touchLocalKey(key);
             schedulePush(key);
           }
         };
@@ -244,7 +255,16 @@
   window.DashboardSync = {
     forceSync: function(key) {
       if (!currentUser || !supabase) return Promise.resolve();
-      touchLocalKey(key);
+      if (key && shouldSkipStorageKey(key)) return Promise.resolve();
+      if (key) {
+        touchLocalKey(key);
+        pendingKeys[key] = true;
+      } else {
+        getAllSyncKeys().forEach(function(k) {
+          touchLocalKey(k);
+          pendingKeys[k] = true;
+        });
+      }
       return syncPendingChanges();
     }
   };
@@ -256,8 +276,13 @@
     if (keysToPush.length === 0) return Promise.resolve();
 
     var rows = [];
+    var deletedKeys = [];
     keysToPush.forEach(function(k) {
       var val = localStorage.getItem(k);
+      if (val === null) {
+        deletedKeys.push(k);
+        return;
+      }
       var jsonVal = null;
       try { jsonVal = JSON.parse(val); } catch(e) { jsonVal = val; }
 
@@ -275,20 +300,29 @@
     lastLocalPushAt = Date.now();
     showSyncIndicator('syncing');
 
-    return supabase.from('user_data').upsert(rows, { onConflict: 'user_id, key' })
-      .then(function(res) {
-          if (res.error) {
-            console.error('[Supabase Sync] Ошибка сохранения:', res.error.message);
-            console.error('Детали:', res.error.details, res.error.hint);
+    var operations = [];
+    if (rows.length > 0) {
+      operations.push(supabase.from('user_data').upsert(rows, { onConflict: 'user_id, key' }));
+    }
+    deletedKeys.forEach(function(k) {
+      operations.push(supabase.from('user_data').delete().eq('user_id', currentUser.id).eq('key', k));
+    });
+
+    return Promise.all(operations)
+      .then(function(results) {
+        for (var i = 0; i < results.length; i++) {
+          if (results[i] && results[i].error) {
+            console.error('[Supabase Sync] Ошибка сохранения:', results[i].error.message);
+            console.error('Детали:', results[i].error.details, results[i].error.hint);
             Object.assign(pendingKeys, processingKeys);
             showSyncIndicator('error');
-            throw res.error;
-          } else {
-            console.log('[Supabase Sync] Данные успешно отправлены в облако для ключей:', keysToPush);
-            lastLocalPushAt = Date.now();
-            showSyncIndicator('pushed');
-            return res.data;
+            throw results[i].error;
           }
+        }
+        console.log('[Supabase Sync] Данные успешно отправлены в облако для ключей:', keysToPush);
+        lastLocalPushAt = Date.now();
+        showSyncIndicator('pushed');
+        return results;
       })
       .catch(function(err) {
         console.error('[Supabase Sync] Critical error:', err);
@@ -370,11 +404,19 @@
             
             // Sync ONLY if cloud data is newer than local change
             if (cloudTime > localTime) {
-              var stringVal = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
-              if (localStorage.getItem(row.key) !== stringVal) {
-                rawSetItem(row.key, stringVal);
+              if (row.value === null) {
+                if (localStorage.getItem(row.key) !== null) {
+                  rawRemoveItem(row.key);
+                  changedKeys.push(row.key);
+                }
                 localMeta[row.key] = cloudTime;
-                changedKeys.push(row.key);
+              } else {
+                var stringVal = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
+                if (localStorage.getItem(row.key) !== stringVal) {
+                  rawSetItem(row.key, stringVal);
+                  changedKeys.push(row.key);
+                }
+                localMeta[row.key] = cloudTime;
               }
             }
           });
@@ -393,13 +435,47 @@
   }
 
   function handleCloudChange(payload) {
+    if (payload.eventType === 'DELETE') {
+      var oldRow = payload.old || {};
+      if (!oldRow.key || shouldSkipStorageKey(oldRow.key)) return;
+      var deleteMeta = readLocalMeta();
+      var deletedAt = oldRow.updated_at ? new Date(oldRow.updated_at).getTime() : Date.now();
+      var localDeletedTime = deleteMeta[oldRow.key] || 0;
+      if (deletedAt >= localDeletedTime) {
+        isSyncing = true;
+        if (localStorage.getItem(oldRow.key) !== null) {
+          rawRemoveItem(oldRow.key);
+          notifySyncedDataApplied([oldRow.key]);
+        }
+        deleteMeta[oldRow.key] = deletedAt;
+        writeLocalMeta(deleteMeta);
+        isSyncing = false;
+        showSyncIndicator('synced');
+      }
+      return;
+    }
+
     if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
       var row = payload.new;
+      if (!row || shouldSkipStorageKey(row.key)) return;
       var localMeta = readLocalMeta();
       var cloudTime = new Date(row.updated_at).getTime();
       var localTime = localMeta[row.key] || 0;
 
       if (cloudTime > localTime) {
+        if (row.value === null) {
+          isSyncing = true;
+          if (localStorage.getItem(row.key) !== null) {
+            rawRemoveItem(row.key);
+            notifySyncedDataApplied([row.key]);
+          }
+          localMeta[row.key] = cloudTime;
+          writeLocalMeta(localMeta);
+          isSyncing = false;
+          showSyncIndicator('synced');
+          return;
+        }
+
         var stringVal = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
         if (localStorage.getItem(row.key) !== stringVal) {
           isSyncing = true;
