@@ -113,18 +113,12 @@
 
   function handleAuthStateChange(user) {
     var userChanged = (!currentUser && user) || (currentUser && !user) || (currentUser && user && currentUser.id !== user.id);
-    var firstLogin = !currentUser && user;
     currentUser = user;
     syncEnabled = !!user;
 
     if (userChanged) {
       if (user) {
         startRealtimeSync();
-        if (firstLogin) {
-            // При первом входе за сессию — пушим локальные данные, 
-            // чтобы облако узнало о текущем состоянии устройства
-            setTimeout(pushAllToCloud, 1000);
-        }
       } else {
         stopRealtimeSync();
       }
@@ -336,24 +330,27 @@
     schedulePush(null);
   }
 
-  function seedLocalPriorityIfFirstRun() {
-    // On a device's FIRST sync, treat the data already on this device as
-    // authoritative: stamp every existing local key with "now" so the gated
-    // initial pull can't overwrite current tasks with stale cloud data.
-    // Cloud-only keys (never seen locally) still get pulled — they aren't seeded.
+  function markMissingLocalKeysAfterSync(remoteRows) {
     if (localStorage.getItem('_sync_init_v1')) return;
-    var meta = readLocalMeta();
-    var now = Date.now();
-    getAllSyncKeys().forEach(function (k) { if (!meta[k]) meta[k] = now; });
-    writeLocalMeta(meta);
+    var remoteSet = {};
+    var hasLocalOnly = false;
+    for (var i = 0; i < remoteRows.length; i++) {
+      remoteSet[remoteRows[i].key] = true;
+    }
+    getAllSyncKeys().forEach(function (k) {
+      if (remoteSet[k]) return;
+      pendingKeys[k] = true;
+      touchLocalKey(k);
+      hasLocalOnly = true;
+    });
     rawSetItem('_sync_init_v1', '1');
+    if (hasLocalOnly) {
+      setTimeout(syncPendingChanges, 0);
+    }
   }
 
   function startRealtimeSync() {
     if (!currentUser || !supabase) return;
-
-    // 0. First-run: make this device's current data win over stale cloud
-    seedLocalPriorityIfFirstRun();
 
     // 1. Initial Pull
     pullFromCloud();
@@ -390,7 +387,7 @@
 
   function pullFromCloud() {
     if (!currentUser || !supabase) return;
-    
+
     isSyncing = true;
     supabase.from('user_data').select('key, value, updated_at')
       .eq('user_id', currentUser.id)
@@ -398,7 +395,9 @@
         if (res.data) {
           var changedKeys = [];
           var localMeta = readLocalMeta();
+          var hasMetaUpdates = false;
           res.data.forEach(function(row) {
+            if (shouldSkipStorageKey(row.key)) return;
             var cloudTime = new Date(row.updated_at).getTime();
             var localTime = localMeta[row.key] || 0;
             
@@ -410,6 +409,7 @@
                   changedKeys.push(row.key);
                 }
                 localMeta[row.key] = cloudTime;
+                hasMetaUpdates = true;
               } else {
                 var stringVal = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
                 if (localStorage.getItem(row.key) !== stringVal) {
@@ -417,10 +417,12 @@
                   changedKeys.push(row.key);
                 }
                 localMeta[row.key] = cloudTime;
+                hasMetaUpdates = true;
               }
             }
           });
-          if (changedKeys.length > 0) {
+          markMissingLocalKeysAfterSync(res.data);
+          if (changedKeys.length > 0 || hasMetaUpdates) {
             writeLocalMeta(localMeta);
             notifySyncedDataApplied(changedKeys);
           }
