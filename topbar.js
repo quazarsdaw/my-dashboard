@@ -6,11 +6,11 @@ html { scrollbar-gutter: stable; }\
 .topbar {\
   position: fixed; top: 12px; left: 12px; right: 12px; z-index: 10000;\
   display: flex; justify-content: flex-end; align-items: center;\
-  gap: 10px; height: 58px; padding: 0 16px; box-sizing: border-box;\
-  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.04) 100%);\
-  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);\
-  border: 1px solid rgba(255,255,255,0.12); border-radius: 16px;\
-  box-shadow: 0 4px 20px rgba(0,0,0,0.2);\
+  gap: 10px; height: 56px; padding: 0 14px; box-sizing: border-box;\
+  background: linear-gradient(135deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.025) 100%);\
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);\
+  border: 1px solid rgba(255,255,255,0.09); border-radius: 15px;\
+  box-shadow: 0 10px 28px rgba(0,0,0,0.16);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
 .bottombar {\
@@ -36,13 +36,17 @@ html { scrollbar-gutter: stable; }\
 .bottombar-tab.active .bottombar-tab-icon { opacity: 1; transform: translateY(-2px); }\
 .topbar-coins {\
   display: inline-flex; align-items: center; gap: 6px;\
-  padding: 8px 14px; background: rgba(242,192,99,0.1); border: 1px solid rgba(242,192,99,0.15); border-radius: 12px;\
+  min-height: 38px; padding: 0 13px; background: rgba(242,192,99,0.105); border: 1px solid rgba(242,192,99,0.18); border-radius: 13px;\
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; font-weight: 700; color: #F2C063; text-decoration: none;\
+}\
+.topbar-water-wrap {\
+  display: inline-flex; align-items: center; height: 40px; border-radius: 14px;\
+  background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.08); overflow: hidden;\
 }\
 .topbar-water-pill {\
   display: inline-flex; align-items: center; gap: 8px;\
-  padding: 9px 14px; background: rgba(125,211,252,0.08); border: 1px solid rgba(125,211,252,0.15);\
-  border-right: none; border-radius: 12px 0 0 12px; text-decoration: none; color: #FAFAFA;\
+  min-height: 38px; padding: 0 13px; background: rgba(125,211,252,0.055); border: 0;\
+  border-right: 1px solid rgba(255,255,255,0.08); border-radius: 0; text-decoration: none; color: #FAFAFA;\
 }\
 .topbar-pill-dot {\
   width: 8px; height: 8px; border-radius: 50%; background: #7DD3FC; flex-shrink: 0;\
@@ -60,8 +64,10 @@ html { scrollbar-gutter: stable; }\
   font-size: 13px; font-weight: 700; color: #FAFAFA; font-variant-numeric: tabular-nums; white-space: nowrap;\
 }\
 .topbar-water-add {\
-  width: 44px; height: 40px; border: 1px solid rgba(125,211,252,0.15); background: rgba(125,211,252,0.2); color: #FFF; font-size: 20px; font-weight: 700; cursor: pointer; border-radius: 0 12px 12px 0; transition: background 0.15s;\
+  width: 38px; height: 38px; border: 0; background: rgba(125,211,252,0.12); color: #FFF; font-size: 18px; font-weight: 800; cursor: pointer; border-radius: 0; transition: background 0.15s, transform 0.15s;\
 }\
+.topbar-water-add:hover { background: rgba(125,211,252,0.2); }\
+.topbar-water-add:active { transform: scale(0.96); }\
 .topbar-water-add.flash { background: rgba(125,211,252,0.6); }\
 \
 /* Achievement Toast */\
@@ -85,7 +91,8 @@ body {\
   padding-top: 82px !important; padding-bottom: 96px !important; padding-left: 16px !important; padding-right: 16px !important;\
 }\
 @media (max-width: 480px) {\
-  .topbar { top: 8px; left: 8px; right: 8px; height: 52px; }\
+  .topbar { top: 8px; left: 8px; right: 8px; height: 52px; padding: 0 10px; gap: 8px; }\
+  .topbar-coins { padding: 0 10px; }\
   .bottombar { bottom: 8px; left: 8px; right: 8px; height: 58px; }\
   .bottombar-tab span:not(.bottombar-tab-icon) { display: none; }\
 }\
@@ -102,7 +109,7 @@ body {\
       <span class="topbar-pill-dot"></span>\
       <span class="topbar-pill-count" id="topbarWaterCount">0/0</span>\
     </a>\
-    <button class="topbar-water-add" id="topbarWaterAdd" type="button">+</button>\
+    <button class="topbar-water-add" id="topbarWaterAdd" type="button" aria-label="Добавить воду">+</button>\
   </div>\
 </header>\
 <div id="achToast">\
