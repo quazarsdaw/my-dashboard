@@ -230,7 +230,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
         '<div class="wdh-left">' +
           '<span class="wdh-icon">'+(DAY_ICONS[dayIdx % DAY_ICONS.length])+'</span>' +
           '<div><div class="wdh-name">'+G.esc(day.name)+'</div>' +
-          (day.muscles ? '<div class="wdh-muscles">'+day.muscles+'</div>' : '') + '</div>' +
+          (day.muscles ? '<div class="wdh-muscles">'+G.esc(day.muscles)+'</div>' : '') + '</div>' +
         '</div>' +
         '<span class="wdh-status '+(isDone?'done':'pending')+'">'+(isDone?'Done':'—')+'</span>';
 

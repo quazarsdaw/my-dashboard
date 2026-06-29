@@ -1002,7 +1002,7 @@ body::after {
         '<span class="radar-item-icon">' + s.icon + '</span>' +
         '<div style="flex:1;min-width:0">' +
           '<div style="display:flex;align-items:center;gap:6px">' +
-            '<span class="radar-item-name">' + s.name + '</span>' +
+            '<span class="radar-item-name">' + G.esc(s.name) + '</span>' +
             '<span class="radar-item-lvl" style="color:' + s.color + ';background:' + s.color + '18">Lv.' + info.level + '</span>' +
             '<span class="radar-item-xp">' + info.xpInLevel + '/' + info.xpNeeded + '</span>' +
           '</div>' +
@@ -1325,12 +1325,18 @@ body::after {
                 goalsUpdate[idx].actualMin = actualMin;
                 storeSet(key, goalsUpdate);
                 try {
-                  if (window.DashboardSync) await window.DashboardSync.forceSync(key);
                   G.completeTask(goalsUpdate[idx].sphere, goalsUpdate[idx].difficulty, actualMin);
                   loadToday(); renderRadar();
                 } catch(err) {
                   console.error('Complete failed:', err);
-                  alert('Ошибка сохранения. Проверьте интернет.');
+                  alert('Ошибка завершения задачи. Проверь данные и попробуй ещё раз.');
+                  return;
+                }
+                try {
+                  if (window.DashboardSync) await window.DashboardSync.forceSync(key);
+                } catch(err) {
+                  console.error('Sync after complete failed:', err);
+                  alert('Задача сохранена локально, но синхронизация пока не прошла. Приложение попробует отправить изменения позже.');
                 }
               }
             });
@@ -1686,7 +1692,7 @@ body::after {
     }
     tasks.forEach(function(t) {
       var row = document.createElement('div'); row.className = 'proposal-row';
-      var spheresHtml = G.SPHERES.map(function(s) { return '<option value="'+s.id+'">'+s.icon+' '+s.name+'</option>'; }).join('');
+      var spheresHtml = G.SPHERES.map(function(s) { return '<option value="'+G.esc(s.id)+'">'+G.esc(s.icon)+' '+G.esc(s.name)+'</option>'; }).join('');
       row.innerHTML = 
         '<input type="checkbox" class="proposal-cb" checked>' +
         '<input type="text" class="proposal-text" value="' + G.esc(t.text) + '">' +

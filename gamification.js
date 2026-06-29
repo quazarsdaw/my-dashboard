@@ -21,6 +21,7 @@
     playSuccess: function(force) {
       if (this.isLock && !force) return;
       this.init(); this.lock(300);
+      if (!this.ctx) return;
       var osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
       osc.type = 'sine'; osc.frequency.setValueAtTime(900, this.ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(1200, this.ctx.currentTime + 0.05);
@@ -33,6 +34,7 @@
 
     playAchievement: function() {
       this.init(); this.lock(1000); 
+      if (!this.ctx) return;
       [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
         var osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
         osc.type = 'sine'; osc.frequency.value = f;
@@ -48,6 +50,7 @@
     playWater: function() {
         if (this.isLock) return;
         this.init(); this.lock(200);
+        if (!this.ctx) return;
         var osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
         osc.type = 'sine'; osc.frequency.setValueAtTime(400, this.ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.05);
