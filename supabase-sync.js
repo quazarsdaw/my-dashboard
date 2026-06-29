@@ -48,19 +48,25 @@
   var lastLocalPushAt = 0; // timestamp of last push to cloud
   var pendingKeys = {}; // Queue of keys that need to be pushed: { key: true }
   var subscription = null;
+  var syncPollTimer = null;
+  var pageSyncListenersInstalled = false;
 
   var SYNC_META_KEY = '_sync_meta_v1';
   var DELETE_META_KEY = '_sync_deleted_v1';
+  var SYNC_INIT_KEY = '_sync_init_v1';
+  var SYNC_USER_KEY = '_sync_user_v1';
   var SKIP_KEYS = [
     SYNC_META_KEY,
     DELETE_META_KEY,
+    SYNC_INIT_KEY,
+    SYNC_USER_KEY,
     '_sync_reload_at',
     '_sync_debug_v1',
     'supabase.auth.token',
     '_rollover_done_v1',
-    '_sync_init_v1',
     'openrouter_settings_v1'
   ];
+  var SYNC_POLL_MS = 45000;
 
   function shouldSkipStorageKey(key) {
     if (!key) return true;
@@ -113,14 +119,30 @@
 
   function handleAuthStateChange(user) {
     var userChanged = (!currentUser && user) || (currentUser && !user) || (currentUser && user && currentUser.id !== user.id);
+    var previousSyncUser = readSyncUserId();
+
+    if (currentUser && user && currentUser.id !== user.id) {
+      resetSyncState();
+      pendingKeys = {};
+    }
+    if (!user && currentUser) {
+      resetSyncState();
+      pendingKeys = {};
+    } else if (user && previousSyncUser && previousSyncUser !== user.id) {
+      resetSyncState();
+      pendingKeys = {};
+    }
+
     currentUser = user;
     syncEnabled = !!user;
 
     if (userChanged) {
       if (user) {
         startRealtimeSync();
+        writeSyncUserId(currentUser.id);
       } else {
         stopRealtimeSync();
+        writeSyncUserId(null);
       }
     }
     updateAuthUI();
@@ -160,8 +182,8 @@
     if (!supabase) return;
     supabase.auth.signOut().then(function() {
         // Clear sync metadata on logout to start fresh next time
-        localStorage.removeItem(SYNC_META_KEY);
-        localStorage.removeItem(DELETE_META_KEY);
+        resetSyncState();
+        localStorage.removeItem(SYNC_INIT_KEY);
         window.location.reload();
     });
   }
@@ -171,6 +193,13 @@
   var rawRemoveItem = null;
 
   function installStorageHook() {
+    rawSetItem = function (key, value) {
+      localStorage.setItem(key, value);
+    };
+    rawRemoveItem = function (key) {
+      localStorage.removeItem(key);
+    };
+
     try {
       if (window.Storage && window.Storage.prototype && window.Storage.prototype.setItem) {
         var nativeSetItem = window.Storage.prototype.setItem;
@@ -210,6 +239,25 @@
       var key = e && e.detail && e.detail.key;
       if (!isSyncing) schedulePush(key);
     });
+
+    if (!pageSyncListenersInstalled) {
+      pageSyncListenersInstalled = true;
+      window.addEventListener('focus', function () {
+        if (currentUser) {
+          pullFromCloud();
+        }
+      });
+      window.addEventListener('online', function () {
+        if (currentUser) {
+          pullFromCloud();
+        }
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && currentUser) {
+          pullFromCloud();
+        }
+      });
+    }
   }
 
   /* ── Sync Logic ── */
@@ -237,6 +285,35 @@
 
   function writeLocalMeta(meta) {
     rawSetItem(SYNC_META_KEY, JSON.stringify(meta));
+  }
+
+  function readSyncUserId() {
+    return localStorage.getItem(SYNC_USER_KEY);
+  }
+
+  function writeSyncUserId(userId) {
+    if (userId) {
+      if (rawSetItem) rawSetItem(SYNC_USER_KEY, String(userId));
+      else localStorage.setItem(SYNC_USER_KEY, String(userId));
+    } else {
+      if (rawRemoveItem) rawRemoveItem(SYNC_USER_KEY);
+      else localStorage.removeItem(SYNC_USER_KEY);
+    }
+  }
+
+  function resetSyncState() {
+    try {
+      rawSetItem(SYNC_META_KEY, '{}');
+      rawSetItem(DELETE_META_KEY, '{}');
+      rawRemoveItem(SYNC_INIT_KEY);
+      rawRemoveItem(SYNC_USER_KEY);
+    } catch (e) {
+      console.warn('Sync state reset failed:', e);
+      try { localStorage.removeItem(SYNC_META_KEY); } catch (_e) {}
+      try { localStorage.removeItem(DELETE_META_KEY); } catch (_e) {}
+      try { localStorage.removeItem(SYNC_INIT_KEY); } catch (_e) {}
+      try { localStorage.removeItem(SYNC_USER_KEY); } catch (_e) {}
+    }
   }
 
   function touchLocalKey(key) {
@@ -331,7 +408,7 @@
   }
 
   function markMissingLocalKeysAfterSync(remoteRows) {
-    if (localStorage.getItem('_sync_init_v1')) return;
+    if (localStorage.getItem(SYNC_INIT_KEY)) return;
     var remoteSet = {};
     var hasLocalOnly = false;
     for (var i = 0; i < remoteRows.length; i++) {
@@ -343,9 +420,34 @@
       touchLocalKey(k);
       hasLocalOnly = true;
     });
-    rawSetItem('_sync_init_v1', '1');
+    rawSetItem(SYNC_INIT_KEY, '1');
     if (hasLocalOnly) {
       setTimeout(syncPendingChanges, 0);
+    }
+  }
+
+  function startSyncPolling() {
+    if (syncPollTimer) return;
+    function poll() {
+      if (!currentUser || !supabase) {
+        syncPollTimer = null;
+        return;
+      }
+      pullFromCloud().finally(function () {
+        if (currentUser && supabase) {
+          syncPollTimer = setTimeout(poll, SYNC_POLL_MS);
+        } else {
+          syncPollTimer = null;
+        }
+      });
+    }
+    syncPollTimer = setTimeout(poll, SYNC_POLL_MS);
+  }
+
+  function stopSyncPolling() {
+    if (syncPollTimer) {
+      clearTimeout(syncPollTimer);
+      syncPollTimer = null;
     }
   }
 
@@ -354,6 +456,7 @@
 
     // 1. Initial Pull
     pullFromCloud();
+    startSyncPolling();
 
     // 2. Subscribe to changes
     if (subscription) {
@@ -383,13 +486,14 @@
       supabase.removeChannel(subscription);
       subscription = null;
     }
+    stopSyncPolling();
   }
 
   function pullFromCloud() {
-    if (!currentUser || !supabase) return;
+    if (!currentUser || !supabase) return Promise.resolve();
 
     isSyncing = true;
-    supabase.from('user_data').select('key, value, updated_at')
+    return supabase.from('user_data').select('key, value, updated_at')
       .eq('user_id', currentUser.id)
       .then(function(res) {
         if (res.data) {
@@ -433,6 +537,7 @@
       .catch(function(err) {
         console.error('Pull error:', err);
         isSyncing = false;
+        return Promise.reject(err);
       });
   }
 

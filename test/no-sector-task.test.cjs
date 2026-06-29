@@ -90,6 +90,12 @@ test('task completion awards locally before awaiting cloud sync', () => {
   assert.ok(rewardIndex < syncIndex);
 });
 
+test('goal deletion now uses shared sync path (no direct client upsert)', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(html, /forceSync\(key\)/);
+  assert.ok(!/window\\.DashboardSync\\.client/.test(html));
+});
+
 test('achievement bonus is not paid twice when achievement checks re-enter during coin update', () => {
   const { G, storage, window } = loadGamification();
   let reentered = false;

@@ -179,34 +179,216 @@
     { id: 'nice_dinner',   name: 'Ужин в ресторане',       price: 250, icon: '🍽️', expiresIn: 12 },
   ];
 
-  function getStore() { 
-    var data = storeGet('store_v2'); 
-    if (!data) {
-        var old = storeGet('store_v1') || { rewards: [], purchases: [] };
-        data = { customRewards: old.rewards || [], catalogOverrides: {}, hiddenCatalogIds: [], purchases: old.purchases || [] };
+  var legacyRewardSeq = 0;
+  var legacyPurchaseSeq = 0;
+
+  function isArrayLike(value) {
+    return value && Object.prototype.toString.call(value) === '[object Array]';
+  }
+
+  function cloneObject(value) {
+    var out = {};
+    if (!value || typeof value !== 'object') return out;
+    for (var k in value) {
+      if (Object.prototype.hasOwnProperty.call(value, k)) out[k] = value[k];
     }
-    if (!data.hiddenCatalogIds) data.hiddenCatalogIds = [];
+    return out;
+  }
+
+  function parsePositiveInt(value, fallback, minValue) {
+    var normalized = Number(value);
+    if (!isFinite(normalized) || normalized < (minValue || 1)) return fallback;
+    return Math.round(normalized);
+  }
+
+  function makeLegacyRewardId(prefix, usedIds) {
+    var id = null;
+    while (!id || usedIds[id]) {
+      legacyRewardSeq += 1;
+      id = prefix + '_' + Date.now() + '_' + legacyRewardSeq;
+    }
+    usedIds[id] = true;
+    return id;
+  }
+
+  function makeLegacyPurchaseId(usedIds) {
+    var id = null;
+    while (!id || usedIds[id]) {
+      legacyPurchaseSeq += 1;
+      id = 'legacy_purchase_' + Date.now() + '_' + legacyPurchaseSeq;
+    }
+    usedIds[id] = true;
+    return id;
+  }
+
+  function buildDefaultRewardSet() {
+    var map = {};
+    for (var i = 0; i < DEFAULT_REWARDS.length; i++) map[DEFAULT_REWARDS[i].id] = true;
+    return map;
+  }
+
+  function normalizeStoreData(raw) {
+    var changed = false;
+    var source = raw || {};
+    var normalized = {
+      customRewards: [],
+      catalogOverrides: {},
+      hiddenCatalogIds: [],
+      purchases: []
+    };
+
+    var defaultIds = buildDefaultRewardSet();
+    var rawOverrides = source.catalogOverrides;
+    if (!rawOverrides || typeof rawOverrides !== 'object' || Object.prototype.toString.call(rawOverrides) !== '[object Object]') {
+      rawOverrides = {};
+      if (source.catalogOverrides) changed = true;
+    }
+
+    for (var k in rawOverrides) {
+      if (!Object.prototype.hasOwnProperty.call(rawOverrides, k)) continue;
+      if (!defaultIds[k]) continue;
+      var nextOverride = parsePositiveInt(rawOverrides[k], null, 1);
+      if (!nextOverride) {
+        changed = true;
+        continue;
+      }
+      normalized.catalogOverrides[k] = nextOverride;
+      if (Number(rawOverrides[k]) !== nextOverride) changed = true;
+    }
+
+    var rawHidden = isArrayLike(source.hiddenCatalogIds) ? source.hiddenCatalogIds : [];
+    if (!isArrayLike(source.hiddenCatalogIds)) changed = true;
+    var seenHidden = {};
+    for (var h = 0; h < rawHidden.length; h++) {
+      var hiddenId = rawHidden[h];
+      if (typeof hiddenId !== 'string' || !defaultIds[hiddenId] || seenHidden[hiddenId]) {
+        changed = true;
+        continue;
+      }
+      seenHidden[hiddenId] = true;
+      normalized.hiddenCatalogIds.push(hiddenId);
+    }
+
+    var usedRewardIds = {};
+    var rawCustom = isArrayLike(source.customRewards) ? source.customRewards : [];
+    if (!isArrayLike(source.customRewards)) changed = true;
+    for (var c = 0; c < rawCustom.length; c++) {
+      var reward = rawCustom[c];
+      if (!reward || typeof reward !== 'object') {
+        changed = true;
+        continue;
+      }
+
+      var normalizedReward = cloneObject(reward);
+      var rewardId = (typeof normalizedReward.id === 'string' && normalizedReward.id) ? normalizedReward.id : '';
+      if (defaultIds[rewardId]) {
+        changed = true;
+        continue;
+      }
+      if (!rewardId || normalizedReward.id === '__new__') {
+        rewardId = makeLegacyRewardId('custom_reward', usedRewardIds);
+        changed = true;
+      } else if (usedRewardIds[rewardId]) {
+        changed = true;
+        continue;
+      }
+
+      if (!((typeof normalizedReward.name === 'string' && normalizedReward.name.trim()) ||
+            (typeof normalizedReward.icon === 'string' && normalizedReward.icon.trim()))) {
+        changed = true;
+        continue;
+      }
+
+      normalizedReward.id = rewardId;
+      normalizedReward.name = typeof normalizedReward.name === 'string' ? normalizedReward.name : 'Награда';
+      normalizedReward.icon = typeof normalizedReward.icon === 'string' ? normalizedReward.icon : '🎁';
+      var rawPrice = Number(normalizedReward.price);
+      var rawExpiresIn = Number(normalizedReward.expiresIn);
+      normalizedReward.price = parsePositiveInt(rawPrice, 10, 1);
+      normalizedReward.expiresIn = parsePositiveInt(rawExpiresIn, 24, 1);
+      if (rawPrice !== normalizedReward.price) changed = true;
+      if (rawExpiresIn !== normalizedReward.expiresIn) changed = true;
+      usedRewardIds[rewardId] = true;
+
+      normalized.customRewards.push(normalizedReward);
+    }
+
+    var usedPurchaseIds = {};
+    var rawPurchases = isArrayLike(source.purchases) ? source.purchases : [];
+    if (!isArrayLike(source.purchases)) changed = true;
+    for (var p = 0; p < rawPurchases.length; p++) {
+      var purchase = rawPurchases[p];
+      if (!purchase || typeof purchase !== 'object') {
+        changed = true;
+        continue;
+      }
+      var normalizedPurchase = cloneObject(purchase);
+      var purchaseId = (typeof normalizedPurchase.id === 'string' && normalizedPurchase.id) ? normalizedPurchase.id : '';
+      if (!purchaseId) {
+        purchaseId = makeLegacyPurchaseId(usedPurchaseIds);
+        changed = true;
+      } else if (usedPurchaseIds[purchaseId]) {
+        changed = true;
+        continue;
+      } else {
+        usedPurchaseIds[purchaseId] = true;
+      }
+      normalizedPurchase.id = purchaseId;
+      if (!normalizedPurchase.date) {
+        normalizedPurchase.date = new Date().toISOString();
+        changed = true;
+      }
+      normalized.purchases.push(normalizedPurchase);
+    }
+
+    return { store: normalized, changed: changed };
+  }
+
+  function getStoreState() {
+    var migratedFromLegacy = false;
+    var migratedFromLegacyShape = false;
+    var source = storeGet('store_v2');
+    if (!source) {
+      var old = storeGet('store_v1') || { rewards: [], purchases: [] };
+      source = { customRewards: old.rewards || [], catalogOverrides: {}, hiddenCatalogIds: [], purchases: old.purchases || [] };
+      migratedFromLegacy = true;
+    } else if (!source.customRewards && isArrayLike(source.rewards)) {
+      source = {
+        customRewards: source.rewards || [],
+        catalogOverrides: source.catalogOverrides || {},
+        hiddenCatalogIds: source.hiddenCatalogIds || [],
+        purchases: source.purchases || []
+      };
+      migratedFromLegacyShape = true;
+    }
+    var normalized = normalizeStoreData(source);
+    if (migratedFromLegacy || migratedFromLegacyShape || normalized.changed) {
+      storeSet('store_v2', normalized.store);
+    }
+    return normalized.store;
+  }
+
+  function getStore() {
+    var data = getStoreState();
 
     // Mix catalog with overrides and filter hidden
     var catalog = DEFAULT_REWARDS.filter(function(r) {
-        return data.hiddenCatalogIds.indexOf(r.id) === -1;
+      return data.hiddenCatalogIds.indexOf(r.id) === -1;
     }).map(function(r) {
-        var item = Object.assign({}, r);
-        if (data.catalogOverrides && data.catalogOverrides[r.id]) {
-            item.price = data.catalogOverrides[r.id];
-        }
-        return item;
+      var item = cloneObject(r);
+      if (data.catalogOverrides && data.catalogOverrides[r.id]) {
+        item.price = data.catalogOverrides[r.id];
+      }
+      return item;
     });
     return { catalog: catalog, customRewards: data.customRewards, purchases: data.purchases, catalogOverrides: data.catalogOverrides || {}, hiddenCatalogIds: data.hiddenCatalogIds };
   }
 
   function setCatalogPrice(rewardId, newPrice) {
-    var data = storeGet('store_v2');
-    if (!data) {
-        var old = storeGet('store_v1') || { rewards: [], purchases: [] };
-        data = { customRewards: old.rewards || [], catalogOverrides: {}, hiddenCatalogIds: [], purchases: old.purchases || [] };
-    }
-    data.catalogOverrides[rewardId] = newPrice;
+    var data = getStoreState();
+    var normalizedPrice = parsePositiveInt(newPrice, null, 1);
+    if (!normalizedPrice) return;
+    data.catalogOverrides[rewardId] = normalizedPrice;
     storeSet('store_v2', data);
   }
 
@@ -219,8 +401,7 @@
     var coins = spendCoins(reward.price, reward.name);
     if (!coins) return null;
     
-    var data = storeGet('store_v2');
-    if (!data) data = { customRewards: storeData.customRewards, catalogOverrides: storeData.catalogOverrides, purchases: storeData.purchases };
+    var data = getStoreState();
     
     // Add expiration
     var expiresAt = null;
@@ -244,7 +425,7 @@
   }
 
   function refundReward(purchaseId) {
-    var data = storeGet('store_v2');
+    var data = getStoreState();
     if (!data || !data.purchases) return null;
     
     var idx = -1;
@@ -261,19 +442,23 @@
   }
 
   function addReward(name, price, icon) { 
-    var storeData = getStore();
-    var id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-    var data = storeGet('store_v2');
-    if (!data) data = { customRewards: storeData.customRewards, catalogOverrides: storeData.catalogOverrides, purchases: storeData.purchases };
-    data.customRewards.push({ id: id, name: name, price: price, icon: icon || '🎁', expiresIn: 24 });
+    var data = getStoreState();
+    var normalizedName = typeof name === 'string' ? name : 'Награда';
+    var rewardPrice = parsePositiveInt(price, 10, 1);
+    var existingIds = {};
+    for (var i = 0; i < data.customRewards.length; i++) {
+      var existing = data.customRewards[i];
+      if (existing && typeof existing.id === 'string') existingIds[existing.id] = true;
+    }
+    var normalizedId = makeLegacyRewardId('custom', existingIds);
+    data.customRewards.push({ id: normalizedId, name: normalizedName, price: rewardPrice, icon: icon || '🎁', expiresIn: 24 });
     storeSet('store_v2', data);
     return data;
   }
 
   function removeReward(rewardId) { 
-    var storeData = getStore();
-    var data = storeGet('store_v2');
-    if (!data) data = { customRewards: storeData.customRewards, catalogOverrides: storeData.catalogOverrides, hiddenCatalogIds: [], purchases: storeData.purchases };
+    var storeData = getStoreState();
+    var data = storeData;
     
     var isCatalog = DEFAULT_REWARDS.some(function(it) { return it.id === rewardId; });
     
