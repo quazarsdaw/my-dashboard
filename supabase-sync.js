@@ -580,6 +580,8 @@
   /* ── Public API ── */
   window.SupabaseSync = {
     version: SYNC_VERSION,
+    get client() { return supabase; },
+    get user() { return currentUser; },
     isSignedIn: function () { return !!currentUser; },
     getUser: function () { return currentUser; },
     pullNow: pullFromCloud,
