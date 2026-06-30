@@ -16,6 +16,13 @@ test('topbar uses a lighter grouped layout for balance, water and add controls',
   assert.ok(topbar.includes('aria-label="Добавить воду"'));
 });
 
+test('main page uses the shared polished topbar implementation', () => {
+  const html = read('index.html');
+
+  assert.ok(html.includes('<script src="topbar.js?v=401" defer></script>'));
+  assert.ok(!html.includes('topbar_v405.js'));
+});
+
 test('sphere list opens a colorful enlarged sphere view before editing', () => {
   const html = read('index.html');
 
@@ -24,4 +31,15 @@ test('sphere list opens a colorful enlarged sphere view before editing', () => {
   assert.ok(html.includes('class="sphere-focus-art"'));
   assert.ok(html.includes('openSphereFocus(s.id)'));
   assert.ok(html.includes('sphereFocusEdit'));
+});
+
+test('radar field opens an enlarged all-spheres overview while points stay clickable', () => {
+  const html = read('index.html');
+
+  assert.ok(html.includes('function openSphereOverview()'));
+  assert.ok(html.includes('data-radar-overview="1"'));
+  assert.ok(html.includes('openSphereOverview();'));
+  assert.ok(html.includes('data-sphere-id='));
+  assert.ok(html.includes('window.PointerEvent'));
+  assert.ok(!html.includes("addEventListener('touchstart'"));
 });
