@@ -194,9 +194,41 @@ body::after {
 .day-ring-phase { font-family: var(--font-mono); font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-tertiary); margin-top: 5px; }
 .day-ring-clock { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); }
 .day-ring-info { max-width: 280px; display: flex; flex-direction: column; gap: 6px; }
+.day-ring-info-head { display: flex; align-items: center; gap: 8px; }
 .day-ring-status { font-size: 14px; font-weight: 700; }
 .day-ring-remaining { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
 .day-ring-range { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+.sleep-edit-btn { width: 28px; height: 28px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.09); background: rgba(255,255,255,0.055); color: var(--text-secondary); font-size: 13px; font-weight: 800; cursor: pointer; transition: background 0.15s, color 0.15s, transform 0.1s; }
+.sleep-edit-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+.sleep-edit-btn:active { transform: scale(0.94); }
+
+/* Sleep schedule editor */
+.sleep-schedule-overlay { display: none; position: fixed; inset: 0; z-index: 130; background: rgba(5,6,9,0.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); align-items: center; justify-content: center; padding: 18px; }
+.sleep-schedule-overlay.show { display: flex; }
+.sleep-schedule-box { width: min(480px, 100%); border-radius: 22px; border: 1px solid rgba(255,255,255,0.12); background: linear-gradient(160deg, rgba(28,30,36,0.98), rgba(16,18,24,0.99)); box-shadow: 0 30px 90px rgba(0,0,0,0.55); padding: 20px; }
+.sleep-schedule-title { font-size: 16px; font-weight: 850; margin-bottom: 16px; }
+.sleep-schedule-grid { display: grid; grid-template-columns: 150px 1fr; gap: 18px; align-items: center; }
+.sleep-clock-preview { position: relative; width: 150px; height: 150px; border-radius: 50%; background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.045), rgba(255,255,255,0.018)); border: 1px solid rgba(255,255,255,0.08); }
+.sleep-clock-svg { width: 100%; height: 100%; display: block; }
+.sleep-clock-face { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 7; }
+.sleep-clock-arc { fill: none; stroke: rgba(125,211,252,0.62); stroke-width: 7; stroke-linecap: round; }
+.sleep-clock-hand { stroke-width: 3.5; stroke-linecap: round; }
+.sleep-clock-hand.wake { stroke: var(--success); }
+.sleep-clock-hand.bed { stroke: #A78BFA; }
+.sleep-clock-center { fill: #FAFAFA; opacity: 0.9; }
+.sleep-fields { display: flex; flex-direction: column; gap: 12px; }
+.sleep-field { display: flex; flex-direction: column; gap: 6px; }
+.sleep-field span { font-size: 10px; font-weight: 850; letter-spacing: 0.12em; color: var(--text-tertiary); text-transform: uppercase; }
+.sleep-time-input { height: 42px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.065); color: var(--text-primary); padding: 0 12px; font-family: var(--font-mono); font-size: 14px; outline: none; }
+.sleep-time-input:focus { border-color: rgba(125,211,252,0.36); }
+.sleep-schedule-actions { display: flex; gap: 10px; margin-top: 16px; }
+.sleep-schedule-actions button { flex: 1; height: 42px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; font-size: 13px; font-weight: 800; }
+.sleep-schedule-save { background: linear-gradient(180deg,#FFFFFF,#E8E5DD); color: #1C1E24; }
+.sleep-schedule-close { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+@media (max-width: 520px) {
+  .sleep-schedule-grid { grid-template-columns: 1fr; justify-items: center; }
+  .sleep-fields { width: 100%; }
+}
 
 /* --- Spheres --- */
 .spheres-section { margin-bottom: 24px; }
@@ -487,9 +519,43 @@ body::after {
     </div>
   </div>
   <div class="day-ring-info">
-    <div class="day-ring-status" id="ringStatus">…</div>
+    <div class="day-ring-info-head">
+      <div class="day-ring-status" id="ringStatus">…</div>
+      <button class="sleep-edit-btn" id="sleepScheduleEdit" type="button" aria-label="Изменить режим сна">✎</button>
+    </div>
     <div class="day-ring-remaining" id="ringRemaining">…</div>
-    <div class="day-ring-range">8:00 — 0:00</div>
+    <div class="day-ring-range" id="ringRange">8:00 — 0:00</div>
+  </div>
+</div>
+
+<div class="sleep-schedule-overlay" id="sleepScheduleOverlay">
+  <div class="sleep-schedule-box">
+    <div class="sleep-schedule-title">режим сна</div>
+    <div class="sleep-schedule-grid">
+      <div class="sleep-clock-preview" aria-hidden="true">
+        <svg class="sleep-clock-svg" viewBox="0 0 100 100">
+          <circle class="sleep-clock-face" cx="50" cy="50" r="39"/>
+          <path class="sleep-clock-arc" id="sleepPreviewArc" d=""/>
+          <line class="sleep-clock-hand wake" id="sleepWakeHand" x1="50" y1="50" x2="50" y2="18"/>
+          <line class="sleep-clock-hand bed" id="sleepBedHand" x1="50" y1="50" x2="50" y2="82"/>
+          <circle class="sleep-clock-center" cx="50" cy="50" r="3"/>
+        </svg>
+      </div>
+      <div class="sleep-fields">
+        <label class="sleep-field">
+          <span>подъём</span>
+          <input class="sleep-time-input" id="sleepWakeInput" type="time" step="300">
+        </label>
+        <label class="sleep-field">
+          <span>сон</span>
+          <input class="sleep-time-input" id="sleepBedInput" type="time" step="300">
+        </label>
+      </div>
+    </div>
+    <div class="sleep-schedule-actions">
+      <button class="sleep-schedule-close" id="sleepScheduleClose" type="button">закрыть</button>
+      <button class="sleep-schedule-save" id="sleepScheduleSave" type="button">сохранить</button>
+    </div>
   </div>
 </div>
 
@@ -498,7 +564,7 @@ body::after {
   <div class="section-title">Сферы развития</div>
   <div class="spheres-section">
     <div class="radar-wrap">
-      <svg class="radar-chart" id="radarChart" viewBox="-20 -20 240 240"></svg>
+      <svg class="radar-chart" id="radarChart" viewBox="-44 -30 288 260"></svg>
       <div class="radar-list" id="radarList"></div>
     </div>
     <button class="sphere-add-btn" id="sphereAddBtn">+ Добавить сферу</button>
@@ -510,7 +576,7 @@ body::after {
   <div class="sphere-focus-box" id="sphereFocusBox">
     <div class="sphere-focus-art">
       <div class="sphere-focus-orb" id="sphereFocusIcon">✨</div>
-      <svg class="sphere-focus-radar" id="sphereFocusRadar" viewBox="-30 -30 260 260" aria-hidden="true"></svg>
+      <svg class="sphere-focus-radar" id="sphereFocusRadar" viewBox="-44 -30 288 260" aria-hidden="true"></svg>
     </div>
     <div class="sphere-focus-body">
       <div class="sphere-focus-kicker" id="sphereFocusKicker">сфера развития</div>
@@ -687,7 +753,8 @@ body::after {
 (function () {
   'use strict';
   var G = window.Gamification;
-  var WAKE_HOUR = 8, SLEEP_HOUR = 24;
+  var SLEEP_SCHEDULE_KEY = 'sleep_schedule_v1';
+  var DEFAULT_SLEEP_SCHEDULE = { wake: '08:00', bed: '00:00' };
   var NO_SPHERE_LABEL = 'Без сектора';
   var NO_SPHERE_ICON = '—';
 
@@ -711,6 +778,56 @@ body::after {
   }
   function storeGet(key) { return G.storeGet(key); }
   function storeSet(key, val) { G.storeSet(key, val); window.dispatchEvent(new CustomEvent('goals-changed')); }
+
+  function normalizeTimeValue(value, fallback) {
+    if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) return fallback;
+    var parts = value.split(':');
+    var h = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+    if (!isFinite(h) || !isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) return fallback;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+  }
+
+  function getSleepSchedule() {
+    var saved = storeGet(SLEEP_SCHEDULE_KEY) || {};
+    return {
+      wake: normalizeTimeValue(saved.wake, DEFAULT_SLEEP_SCHEDULE.wake),
+      bed: normalizeTimeValue(saved.bed, DEFAULT_SLEEP_SCHEDULE.bed)
+    };
+  }
+
+  function setSleepSchedule(schedule) {
+    var next = {
+      wake: normalizeTimeValue(schedule && schedule.wake, DEFAULT_SLEEP_SCHEDULE.wake),
+      bed: normalizeTimeValue(schedule && schedule.bed, DEFAULT_SLEEP_SCHEDULE.bed)
+    };
+    storeSet(SLEEP_SCHEDULE_KEY, next);
+    return next;
+  }
+
+  function timeToMinutes(value) {
+    var safe = normalizeTimeValue(value, '00:00');
+    var parts = safe.split(':');
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  }
+
+  function formatScheduleTime(value) {
+    var safe = normalizeTimeValue(value, '00:00');
+    var parts = safe.split(':');
+    return parseInt(parts[0], 10) + ':' + parts[1];
+  }
+
+  function sleepBounds(schedule) {
+    var wakeMin = timeToMinutes(schedule.wake);
+    var bedRaw = timeToMinutes(schedule.bed);
+    var bedMin = bedRaw <= wakeMin ? bedRaw + 1440 : bedRaw;
+    return { wakeMin: wakeMin, bedRaw: bedRaw, bedMin: bedMin };
+  }
+
+  function scheduleNowMinutes(now, bounds) {
+    var minutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    if (bounds.bedRaw <= bounds.wakeMin && minutes < bounds.bedRaw) return minutes + 1440;
+    return minutes;
+  }
 
   // --- Sphere selects ---
   function appendNoSphereOption(sel) {
@@ -946,29 +1063,34 @@ body::after {
   var C = 2 * Math.PI * 52;
   var ringFill = document.getElementById('ringFill');
   if (ringFill) ringFill.setAttribute('stroke-dasharray', C);
+  function formatDuration(minutes) {
+    var safe = Math.max(0, Math.round(minutes));
+    return Math.floor(safe / 60) + 'ч ' + (safe % 60) + 'м';
+  }
   function updateDayRing() {
     if (!ringFill) return;
     var now = new Date();
-    var hours = now.getHours() + now.getMinutes()/60 + now.getSeconds()/3600;
+    var schedule = getSleepSchedule();
+    var bounds = sleepBounds(schedule);
+    var minutesNow = scheduleNowMinutes(now, bounds);
     var pctEl = document.getElementById('ringPct'), phaseEl = document.getElementById('ringPhase');
     var clockEl = document.getElementById('ringClock'), statusEl = document.getElementById('ringStatus');
-    var remainEl = document.getElementById('ringRemaining');
+    var remainEl = document.getElementById('ringRemaining'), rangeEl = document.getElementById('ringRange');
     var h12 = now.getHours() % 12 || 12;
     if (clockEl) clockEl.textContent = h12 + ':' + String(now.getMinutes()).padStart(2,'0') + ' ' + (now.getHours()<12?'AM':'PM');
-    if (hours < WAKE_HOUR) {
+    if (rangeEl) rangeEl.textContent = formatScheduleTime(schedule.wake) + ' — ' + formatScheduleTime(schedule.bed);
+    if (minutesNow < bounds.wakeMin) {
       ringFill.setAttribute('stroke-dashoffset', C); ringFill.setAttribute('stroke', '#4D4B47');
       if (pctEl) pctEl.textContent = '—'; if (phaseEl) phaseEl.textContent = 'SLEEPING'; if (statusEl) statusEl.textContent = '😴 Ещё спишь';
-      var mins = Math.round((WAKE_HOUR - hours) * 60);
-      if (remainEl) remainEl.textContent = Math.floor(mins/60) + 'ч ' + (mins%60) + 'м до подъёма';
-    } else if (hours >= SLEEP_HOUR) {
+      if (remainEl) remainEl.textContent = formatDuration(bounds.wakeMin - minutesNow) + ' до подъёма';
+    } else if (minutesNow >= bounds.bedMin) {
       ringFill.setAttribute('stroke-dashoffset', 0); ringFill.setAttribute('stroke', '#E25D7A');
       if (pctEl) pctEl.textContent = '100%'; if (phaseEl) phaseEl.textContent = 'PAST BEDTIME'; if (statusEl) statusEl.textContent = '⚠️ Пора спать'; if (remainEl) remainEl.textContent = 'Спать!';
     } else {
-      var pct = (hours - WAKE_HOUR) / (SLEEP_HOUR - WAKE_HOUR) * 100;
+      var pct = (minutesNow - bounds.wakeMin) / (bounds.bedMin - bounds.wakeMin) * 100;
       ringFill.setAttribute('stroke-dashoffset', C * (1 - pct/100)); ringFill.setAttribute('stroke', lerpColor(pct));
       if (pctEl) pctEl.textContent = Math.round(pct) + '%';
-      var left = Math.round((SLEEP_HOUR - hours) * 60);
-      if (remainEl) remainEl.textContent = Math.floor(left/60) + 'ч ' + (left%60) + 'м бодрствования';
+      if (remainEl) remainEl.textContent = formatDuration(bounds.bedMin - minutesNow) + ' бодрствования';
       if (phaseEl && statusEl) {
         if (pct < 25) { phaseEl.textContent = 'MORNING'; statusEl.textContent = '☀️ Утро — свежий старт'; }
         else if (pct < 50) { phaseEl.textContent = 'MIDDAY'; statusEl.textContent = '⚡ День — не сбавляй'; }
@@ -980,10 +1102,103 @@ body::after {
   }
   updateDayRing(); setInterval(updateDayRing, 60000);
 
+  function setClockHand(line, minutes, length) {
+    if (!line) return;
+    var angle = minutes / 1440 * Math.PI * 2 - Math.PI / 2;
+    line.setAttribute('x2', (50 + Math.cos(angle) * length).toFixed(1));
+    line.setAttribute('y2', (50 + Math.sin(angle) * length).toFixed(1));
+  }
+
+  function clockPoint(minutes, radius) {
+    var angle = minutes / 1440 * Math.PI * 2 - Math.PI / 2;
+    return {
+      x: 50 + Math.cos(angle) * radius,
+      y: 50 + Math.sin(angle) * radius
+    };
+  }
+
+  function describeClockArc(startMin, endMin) {
+    var end = endMin <= startMin ? endMin + 1440 : endMin;
+    var startPoint = clockPoint(startMin, 39);
+    var endPoint = clockPoint(end % 1440, 39);
+    var span = end - startMin;
+    var largeArc = span > 720 ? 1 : 0;
+    return 'M ' + startPoint.x.toFixed(1) + ' ' + startPoint.y.toFixed(1) +
+      ' A 39 39 0 ' + largeArc + ' 1 ' + endPoint.x.toFixed(1) + ' ' + endPoint.y.toFixed(1);
+  }
+
+  function updateSleepPreview() {
+    var wakeInput = document.getElementById('sleepWakeInput');
+    var bedInput = document.getElementById('sleepBedInput');
+    var wake = normalizeTimeValue(wakeInput && wakeInput.value, DEFAULT_SLEEP_SCHEDULE.wake);
+    var bed = normalizeTimeValue(bedInput && bedInput.value, DEFAULT_SLEEP_SCHEDULE.bed);
+    var wakeMin = timeToMinutes(wake);
+    var bedMin = timeToMinutes(bed);
+    setClockHand(document.getElementById('sleepWakeHand'), wakeMin, 32);
+    setClockHand(document.getElementById('sleepBedHand'), bedMin, 32);
+    var arc = document.getElementById('sleepPreviewArc');
+    if (arc) arc.setAttribute('d', describeClockArc(wakeMin, bedMin));
+  }
+
+  function openSleepScheduleEditor() {
+    var schedule = getSleepSchedule();
+    var wakeInput = document.getElementById('sleepWakeInput');
+    var bedInput = document.getElementById('sleepBedInput');
+    if (wakeInput) wakeInput.value = schedule.wake;
+    if (bedInput) bedInput.value = schedule.bed;
+    updateSleepPreview();
+    var overlay = document.getElementById('sleepScheduleOverlay');
+    if (overlay) overlay.classList.add('show');
+  }
+
+  var sleepScheduleEdit = document.getElementById('sleepScheduleEdit');
+  if (sleepScheduleEdit) sleepScheduleEdit.addEventListener('click', openSleepScheduleEditor);
+  var sleepScheduleOverlay = document.getElementById('sleepScheduleOverlay');
+  if (sleepScheduleOverlay) {
+    sleepScheduleOverlay.addEventListener('click', function (e) {
+      if (e.target === sleepScheduleOverlay) sleepScheduleOverlay.classList.remove('show');
+    });
+  }
+  var sleepScheduleClose = document.getElementById('sleepScheduleClose');
+  if (sleepScheduleClose) sleepScheduleClose.addEventListener('click', function () {
+    var overlay = document.getElementById('sleepScheduleOverlay');
+    if (overlay) overlay.classList.remove('show');
+  });
+  var sleepWakeInput = document.getElementById('sleepWakeInput');
+  var sleepBedInput = document.getElementById('sleepBedInput');
+  if (sleepWakeInput) sleepWakeInput.addEventListener('input', updateSleepPreview);
+  if (sleepBedInput) sleepBedInput.addEventListener('input', updateSleepPreview);
+  var sleepScheduleSave = document.getElementById('sleepScheduleSave');
+  if (sleepScheduleSave) sleepScheduleSave.addEventListener('click', function () {
+    setSleepSchedule({
+      wake: sleepWakeInput ? sleepWakeInput.value : DEFAULT_SLEEP_SCHEDULE.wake,
+      bed: sleepBedInput ? sleepBedInput.value : DEFAULT_SLEEP_SCHEDULE.bed
+    });
+    updateDayRing();
+    var overlay = document.getElementById('sleepScheduleOverlay');
+    if (overlay) overlay.classList.remove('show');
+  });
+  updateSleepPreview();
+
   // --- Spheres: Radar Chart + List ---
   var SPHERE_EMOJIS = ['🏃','💼','💰','💛','📚','🎮','🧠','⚡','🎯','🔥','🌱','💎','🎨','🏋️','📊','🌍','💻','🎵','🧘','❤️','🚀','📖','🛡️','⭐'];
   var editingSphereId = null;
   var focusedSphereId = null;
+
+  function shortenRadarLabel(name) {
+    var text = String(name || '');
+    return text.length > 11 ? text.slice(0, 10) + '…' : text;
+  }
+
+  function clampRadarLabelX(x, anchor) {
+    if (anchor === 'end') return Math.max(26, x);
+    if (anchor === 'start') return Math.min(174, x);
+    return Math.max(38, Math.min(162, x));
+  }
+
+  function radarLabelFitAttr(label) {
+    return label.length >= 8 ? ' textLength="58" lengthAdjust="spacingAndGlyphs"' : '';
+  }
 
   function buildSphereOverviewSvg() {
     var spheres = G.SPHERES;
@@ -1037,10 +1252,11 @@ body::after {
       var lx = cx + (R + 22) * Math.cos(dotAngle), ly = cy + (R + 22) * Math.sin(dotAngle);
       var anchor = Math.abs(Math.cos(dotAngle)) < 0.2 ? 'middle' : Math.cos(dotAngle) > 0 ? 'start' : 'end';
       var dy = Math.sin(dotAngle) > 0.3 ? '1em' : Math.sin(dotAngle) < -0.3 ? '-0.45em' : '0.35em';
-      var label = spheres[j].name.length > 10 ? spheres[j].name.slice(0, 9) + '…' : spheres[j].name;
+      lx = clampRadarLabelX(lx, anchor);
+      var label = shortenRadarLabel(spheres[j].name);
       dataPts.push(x.toFixed(1) + ',' + y.toFixed(1));
       dots.push('<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="8" fill="' + spheres[j].color + '" stroke="#17191f" stroke-width="2"/>');
-      dots.push('<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" fill="' + spheres[j].color + '" font-size="8" font-weight="900" font-family="var(--font-sans)" text-anchor="' + anchor + '" dy="' + dy + '">' + G.esc(label.toUpperCase()) + '</text>');
+      dots.push('<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" fill="' + spheres[j].color + '" font-size="8" font-weight="900" font-family="var(--font-sans)" text-anchor="' + anchor + '" dy="' + dy + '"' + radarLabelFitAttr(label) + '>' + G.esc(label.toUpperCase()) + '</text>');
       dots.push('<text x="' + lx.toFixed(1) + '" y="' + (ly + 10).toFixed(1) + '" fill="rgba(255,255,255,0.46)" font-size="7.5" font-family="var(--font-mono)" text-anchor="' + anchor + '" dy="' + dy + '">' + values[j].level + '</text>');
     }
 
@@ -1059,7 +1275,7 @@ body::after {
     if (n === 0) { svg.innerHTML = ''; list.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;padding:14px;">Добавь первую сферу</div>'; return; }
 
     var cx = 100, cy = 100, R = 65;
-    var parts = ['<rect class="radar-field-hit" data-radar-overview="1" x="-20" y="-20" width="240" height="240" rx="16" />'];
+    var parts = ['<rect class="radar-field-hit" data-radar-overview="1" x="-44" y="-30" width="288" height="260" rx="16" />'];
 
     // Grid rings
     for (var ring = 1; ring <= 4; ring++) {
@@ -1110,8 +1326,9 @@ body::after {
       var lx = cx + (R + 20) * Math.cos(angle), ly = cy + (R + 20) * Math.sin(angle);
       var anchor = Math.abs(Math.cos(angle)) < 0.2 ? 'middle' : Math.cos(angle) > 0 ? 'start' : 'end';
       var dy = Math.sin(angle) > 0.3 ? '1em' : Math.sin(angle) < -0.3 ? '-0.5em' : '0.35em';
-      var label = spheres[i].name.length > 10 ? spheres[i].name.slice(0,9) + '…' : spheres[i].name;
-      parts.push('<text class="radar-label" data-sphere-id="' + spheres[i].id + '" x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" fill="' + spheres[i].color + '" font-size="7.5" font-weight="700" font-family="var(--font-sans)" text-anchor="' + anchor + '" dy="' + dy + '">' + G.esc(label.toUpperCase()) + '</text>');
+      lx = clampRadarLabelX(lx, anchor);
+      var label = shortenRadarLabel(spheres[i].name);
+      parts.push('<text class="radar-label" data-sphere-id="' + spheres[i].id + '" x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" fill="' + spheres[i].color + '" font-size="7.5" font-weight="700" font-family="var(--font-sans)" text-anchor="' + anchor + '" dy="' + dy + '"' + radarLabelFitAttr(label) + '>' + G.esc(label.toUpperCase()) + '</text>');
       parts.push('<text class="radar-level-label" data-sphere-id="' + spheres[i].id + '" x="' + lx.toFixed(1) + '" y="' + (ly + 9).toFixed(1) + '" fill="rgba(255,255,255,0.35)" font-size="7" font-family="var(--font-mono)" text-anchor="' + anchor + '" dy="' + dy + '">' + values[i].level + '</text>');
     }
     svg.innerHTML = parts.join('');

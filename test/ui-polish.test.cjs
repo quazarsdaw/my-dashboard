@@ -43,3 +43,33 @@ test('radar field opens an enlarged all-spheres overview while points stay click
   assert.ok(html.includes('window.PointerEvent'));
   assert.ok(!html.includes("addEventListener('touchstart'"));
 });
+
+test('dashboard keeps radar labels inside the visible chart area', () => {
+  const html = read('index.html');
+
+  assert.ok(html.includes('viewBox="-44 -30 288 260"'));
+  assert.ok(html.includes('function shortenRadarLabel(name)'));
+  assert.ok(html.includes('function clampRadarLabelX(x, anchor)'));
+  assert.ok(html.includes('textLength="58"'));
+});
+
+test('topbar and bottom navigation use balanced hit areas for short labels', () => {
+  const topbar = read('topbar.js');
+
+  assert.ok(topbar.includes('min-width: 104px'));
+  assert.ok(topbar.includes('height: 38px; min-width: 122px'));
+  assert.ok(topbar.includes('justify-content: center'));
+  assert.ok(topbar.includes('min-width: 64px'));
+});
+
+test('day ring exposes an editable local sleep schedule with live preview', () => {
+  const html = read('index.html');
+
+  assert.ok(html.includes('sleepScheduleOverlay'));
+  assert.ok(html.includes('function getSleepSchedule()'));
+  assert.ok(html.includes('function setSleepSchedule(schedule)'));
+  assert.ok(html.includes('id="sleepWakeInput"'));
+  assert.ok(html.includes('id="sleepBedInput"'));
+  assert.ok(html.includes('function updateSleepPreview()'));
+  assert.ok(html.includes('id="ringRange"'));
+});
