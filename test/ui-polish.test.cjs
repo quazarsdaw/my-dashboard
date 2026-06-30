@@ -58,8 +58,10 @@ test('topbar and bottom navigation use balanced hit areas for short labels', () 
 
   assert.ok(topbar.includes('min-width: 104px'));
   assert.ok(topbar.includes('height: 38px; min-width: 122px'));
-  assert.ok(topbar.includes('justify-content: center'));
-  assert.ok(topbar.includes('min-width: 64px'));
+  assert.ok(topbar.includes('display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));'));
+  assert.ok(topbar.includes('class="bottombar-tab-label"'));
+  assert.ok(topbar.includes('.bottombar-tab-label'));
+  assert.ok(topbar.includes('min-width: 78px'));
 });
 
 test('day ring exposes an editable local sleep schedule with live preview', () => {
@@ -72,4 +74,25 @@ test('day ring exposes an editable local sleep schedule with live preview', () =
   assert.ok(html.includes('id="sleepBedInput"'));
   assert.ok(html.includes('function updateSleepPreview()'));
   assert.ok(html.includes('id="ringRange"'));
+});
+
+test('sleep editor uses readable day timeline markers instead of clock hands', () => {
+  const html = read('index.html');
+
+  assert.ok(html.includes('class="sleep-day-preview"'));
+  assert.ok(html.includes('id="sleepWakeMarker"'));
+  assert.ok(html.includes('id="sleepBedMarker"'));
+  assert.ok(html.includes('function setSleepMarker'));
+  assert.ok(!html.includes('sleep-clock-hand'));
+});
+
+test('profile editor offers persisted gradient choices', () => {
+  const html = read('profile.html');
+
+  assert.ok(html.includes('id="gradientPicker"'));
+  assert.ok(html.includes('PROFILE_GRADIENTS'));
+  const gradientCount = (html.match(/id: 'grad-/g) || []).length;
+  assert.ok(gradientCount >= 15 && gradientCount <= 20);
+  assert.ok(html.includes('function applyProfileGradient'));
+  assert.ok(html.includes('gradientId'));
 });

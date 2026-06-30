@@ -205,17 +205,23 @@ body::after {
 /* Sleep schedule editor */
 .sleep-schedule-overlay { display: none; position: fixed; inset: 0; z-index: 130; background: rgba(5,6,9,0.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); align-items: center; justify-content: center; padding: 18px; }
 .sleep-schedule-overlay.show { display: flex; }
-.sleep-schedule-box { width: min(480px, 100%); border-radius: 22px; border: 1px solid rgba(255,255,255,0.12); background: linear-gradient(160deg, rgba(28,30,36,0.98), rgba(16,18,24,0.99)); box-shadow: 0 30px 90px rgba(0,0,0,0.55); padding: 20px; }
+.sleep-schedule-box { width: min(520px, 100%); border-radius: 22px; border: 1px solid rgba(255,255,255,0.12); background: linear-gradient(160deg, rgba(28,30,36,0.98), rgba(16,18,24,0.99)); box-shadow: 0 30px 90px rgba(0,0,0,0.55); padding: 20px; }
 .sleep-schedule-title { font-size: 16px; font-weight: 850; margin-bottom: 16px; }
-.sleep-schedule-grid { display: grid; grid-template-columns: 150px 1fr; gap: 18px; align-items: center; }
-.sleep-clock-preview { position: relative; width: 150px; height: 150px; border-radius: 50%; background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.045), rgba(255,255,255,0.018)); border: 1px solid rgba(255,255,255,0.08); }
-.sleep-clock-svg { width: 100%; height: 100%; display: block; }
-.sleep-clock-face { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 7; }
-.sleep-clock-arc { fill: none; stroke: rgba(125,211,252,0.62); stroke-width: 7; stroke-linecap: round; }
-.sleep-clock-hand { stroke-width: 3.5; stroke-linecap: round; }
-.sleep-clock-hand.wake { stroke: var(--success); }
-.sleep-clock-hand.bed { stroke: #A78BFA; }
-.sleep-clock-center { fill: #FAFAFA; opacity: 0.9; }
+.sleep-schedule-grid { display: grid; grid-template-columns: 180px 1fr; gap: 18px; align-items: center; }
+.sleep-day-preview { width: 180px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.035); padding: 15px 13px 12px; box-sizing: border-box; }
+.sleep-day-caption { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 9px; font-weight: 850; letter-spacing: 0.11em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 12px; }
+.sleep-day-rail { position: relative; height: 108px; margin: 0 3px; }
+.sleep-day-track,
+.sleep-day-awake { position: absolute; left: 0; right: 0; top: 50px; height: 8px; border-radius: 999px; }
+.sleep-day-track { background: rgba(255,255,255,0.08); }
+.sleep-day-awake { right: auto; width: 0; background: linear-gradient(90deg, rgba(107,227,164,0.86), rgba(125,211,252,0.86)); box-shadow: 0 0 16px rgba(125,211,252,0.18); }
+.sleep-day-marker { position: absolute; left: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 52px; pointer-events: none; }
+.sleep-day-marker.wake { top: 8px; color: var(--success); }
+.sleep-day-marker.bed { top: 64px; color: #A78BFA; }
+.sleep-day-dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px rgba(255,255,255,0.08); }
+.sleep-day-label { font-size: 9px; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; color: currentColor; }
+.sleep-day-value { font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); }
+.sleep-day-scale { display: flex; justify-content: space-between; padding-top: 14px; font-family: var(--font-mono); font-size: 9px; color: var(--text-tertiary); }
 .sleep-fields { display: flex; flex-direction: column; gap: 12px; }
 .sleep-field { display: flex; flex-direction: column; gap: 6px; }
 .sleep-field span { font-size: 10px; font-weight: 850; letter-spacing: 0.12em; color: var(--text-tertiary); text-transform: uppercase; }
@@ -532,14 +538,24 @@ body::after {
   <div class="sleep-schedule-box">
     <div class="sleep-schedule-title">режим сна</div>
     <div class="sleep-schedule-grid">
-      <div class="sleep-clock-preview" aria-hidden="true">
-        <svg class="sleep-clock-svg" viewBox="0 0 100 100">
-          <circle class="sleep-clock-face" cx="50" cy="50" r="39"/>
-          <path class="sleep-clock-arc" id="sleepPreviewArc" d=""/>
-          <line class="sleep-clock-hand wake" id="sleepWakeHand" x1="50" y1="50" x2="50" y2="18"/>
-          <line class="sleep-clock-hand bed" id="sleepBedHand" x1="50" y1="50" x2="50" y2="82"/>
-          <circle class="sleep-clock-center" cx="50" cy="50" r="3"/>
-        </svg>
+      <div class="sleep-day-preview" aria-hidden="true">
+        <div class="sleep-day-caption"><span>сутки</span><span>24ч</span></div>
+        <div class="sleep-day-rail">
+          <div class="sleep-day-track"></div>
+          <div class="sleep-day-awake" id="sleepAwakeFirst"></div>
+          <div class="sleep-day-awake" id="sleepAwakeSecond"></div>
+          <div class="sleep-day-marker wake" id="sleepWakeMarker">
+            <span class="sleep-day-label">подъём</span>
+            <span class="sleep-day-dot"></span>
+            <span class="sleep-day-value">8:00</span>
+          </div>
+          <div class="sleep-day-marker bed" id="sleepBedMarker">
+            <span class="sleep-day-value">0:00</span>
+            <span class="sleep-day-dot"></span>
+            <span class="sleep-day-label">сон</span>
+          </div>
+        </div>
+        <div class="sleep-day-scale"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
       </div>
       <div class="sleep-fields">
         <label class="sleep-field">
@@ -1102,29 +1118,24 @@ body::after {
   }
   updateDayRing(); setInterval(updateDayRing, 60000);
 
-  function setClockHand(line, minutes, length) {
-    if (!line) return;
-    var angle = minutes / 1440 * Math.PI * 2 - Math.PI / 2;
-    line.setAttribute('x2', (50 + Math.cos(angle) * length).toFixed(1));
-    line.setAttribute('y2', (50 + Math.sin(angle) * length).toFixed(1));
+  function formatPreviewMinute(minutes) {
+    var safe = ((Math.round(minutes) % 1440) + 1440) % 1440;
+    return Math.floor(safe / 60) + ':' + String(safe % 60).padStart(2, '0');
   }
 
-  function clockPoint(minutes, radius) {
-    var angle = minutes / 1440 * Math.PI * 2 - Math.PI / 2;
-    return {
-      x: 50 + Math.cos(angle) * radius,
-      y: 50 + Math.sin(angle) * radius
-    };
+  function setSleepMarker(marker, minutes) {
+    if (!marker) return;
+    var pct = minutes / 1440 * 100;
+    var labelPct = Math.max(4, Math.min(96, pct));
+    marker.style.left = labelPct.toFixed(2) + '%';
+    var value = marker.querySelector('.sleep-day-value');
+    if (value) value.textContent = formatPreviewMinute(minutes);
   }
 
-  function describeClockArc(startMin, endMin) {
-    var end = endMin <= startMin ? endMin + 1440 : endMin;
-    var startPoint = clockPoint(startMin, 39);
-    var endPoint = clockPoint(end % 1440, 39);
-    var span = end - startMin;
-    var largeArc = span > 720 ? 1 : 0;
-    return 'M ' + startPoint.x.toFixed(1) + ' ' + startPoint.y.toFixed(1) +
-      ' A 39 39 0 ' + largeArc + ' 1 ' + endPoint.x.toFixed(1) + ' ' + endPoint.y.toFixed(1);
+  function setSleepSegment(segment, leftPct, widthPct) {
+    if (!segment) return;
+    segment.style.left = leftPct.toFixed(2) + '%';
+    segment.style.width = Math.max(0, widthPct).toFixed(2) + '%';
   }
 
   function updateSleepPreview() {
@@ -1134,10 +1145,22 @@ body::after {
     var bed = normalizeTimeValue(bedInput && bedInput.value, DEFAULT_SLEEP_SCHEDULE.bed);
     var wakeMin = timeToMinutes(wake);
     var bedMin = timeToMinutes(bed);
-    setClockHand(document.getElementById('sleepWakeHand'), wakeMin, 32);
-    setClockHand(document.getElementById('sleepBedHand'), bedMin, 32);
-    var arc = document.getElementById('sleepPreviewArc');
-    if (arc) arc.setAttribute('d', describeClockArc(wakeMin, bedMin));
+    var wakePct = wakeMin / 1440 * 100;
+    var bedPct = bedMin / 1440 * 100;
+
+    setSleepMarker(document.getElementById('sleepWakeMarker'), wakeMin);
+    setSleepMarker(document.getElementById('sleepBedMarker'), bedMin);
+
+    if (wakeMin === bedMin) {
+      setSleepSegment(document.getElementById('sleepAwakeFirst'), 0, 100);
+      setSleepSegment(document.getElementById('sleepAwakeSecond'), 0, 0);
+    } else if (bedMin > wakeMin) {
+      setSleepSegment(document.getElementById('sleepAwakeFirst'), wakePct, bedPct - wakePct);
+      setSleepSegment(document.getElementById('sleepAwakeSecond'), 0, 0);
+    } else {
+      setSleepSegment(document.getElementById('sleepAwakeFirst'), wakePct, 100 - wakePct);
+      setSleepSegment(document.getElementById('sleepAwakeSecond'), 0, bedPct);
+    }
   }
 
   function openSleepScheduleEditor() {
