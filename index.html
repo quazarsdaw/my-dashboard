@@ -205,35 +205,40 @@ body::after {
 /* Sleep schedule editor */
 .sleep-schedule-overlay { display: none; position: fixed; inset: 0; z-index: 130; background: rgba(5,6,9,0.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); align-items: center; justify-content: center; padding: 18px; }
 .sleep-schedule-overlay.show { display: flex; }
-.sleep-schedule-box { width: min(520px, 100%); border-radius: 22px; border: 1px solid rgba(255,255,255,0.12); background: linear-gradient(160deg, rgba(28,30,36,0.98), rgba(16,18,24,0.99)); box-shadow: 0 30px 90px rgba(0,0,0,0.55); padding: 20px; }
-.sleep-schedule-title { font-size: 16px; font-weight: 850; margin-bottom: 16px; }
-.sleep-schedule-grid { display: grid; grid-template-columns: 180px 1fr; gap: 18px; align-items: center; }
-.sleep-day-preview { width: 180px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.035); padding: 15px 13px 12px; box-sizing: border-box; }
-.sleep-day-caption { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 9px; font-weight: 850; letter-spacing: 0.11em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 12px; }
-.sleep-day-rail { position: relative; height: 108px; margin: 0 3px; }
+.sleep-schedule-box { width: min(760px, calc(100vw - 48px)); border-radius: 24px; border: 1px solid rgba(255,255,255,0.12); background: linear-gradient(160deg, rgba(28,30,36,0.98), rgba(16,18,24,0.99)); box-shadow: 0 30px 90px rgba(0,0,0,0.55); padding: 32px; }
+.sleep-schedule-title { font-size: 20px; font-weight: 850; margin-bottom: 24px; }
+.sleep-schedule-grid { display: grid; grid-template-columns: 288px minmax(280px, 1fr); gap: 30px; align-items: center; }
+.sleep-day-preview { width: 288px; border-radius: 22px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.035); padding: 24px 24px 18px; box-sizing: border-box; }
+.sleep-day-caption { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; font-weight: 850; letter-spacing: 0.11em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 16px; }
+.sleep-day-rail { position: relative; height: 150px; margin: 0 10px; }
 .sleep-day-track,
-.sleep-day-awake { position: absolute; left: 0; right: 0; top: 50px; height: 8px; border-radius: 999px; }
+.sleep-day-awake { position: absolute; left: 0; right: 0; top: 72px; height: 10px; border-radius: 999px; }
 .sleep-day-track { background: rgba(255,255,255,0.08); }
 .sleep-day-awake { right: auto; width: 0; background: linear-gradient(90deg, rgba(107,227,164,0.86), rgba(125,211,252,0.86)); box-shadow: 0 0 16px rgba(125,211,252,0.18); }
-.sleep-day-marker { position: absolute; left: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 52px; pointer-events: none; }
-.sleep-day-marker.wake { top: 8px; color: var(--success); }
-.sleep-day-marker.bed { top: 64px; color: #A78BFA; }
-.sleep-day-dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px rgba(255,255,255,0.08); }
-.sleep-day-label { font-size: 9px; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; color: currentColor; }
-.sleep-day-value { font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); }
-.sleep-day-scale { display: flex; justify-content: space-between; padding-top: 14px; font-family: var(--font-mono); font-size: 9px; color: var(--text-tertiary); }
-.sleep-fields { display: flex; flex-direction: column; gap: 12px; }
-.sleep-field { display: flex; flex-direction: column; gap: 6px; }
-.sleep-field span { font-size: 10px; font-weight: 850; letter-spacing: 0.12em; color: var(--text-tertiary); text-transform: uppercase; }
-.sleep-time-input { height: 42px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.065); color: var(--text-primary); padding: 0 12px; font-family: var(--font-mono); font-size: 14px; outline: none; }
+.sleep-day-marker { position: absolute; left: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 60px; pointer-events: none; }
+.sleep-day-marker.wake { top: 22px; color: var(--success); }
+.sleep-day-marker.bed { top: 94px; color: #A78BFA; }
+.sleep-day-dot { width: 14px; height: 14px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 5px rgba(255,255,255,0.08); }
+.sleep-day-label { font-size: 10px; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; color: currentColor; }
+.sleep-day-value { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.sleep-day-scale { display: flex; justify-content: space-between; padding-top: 18px; font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); }
+.sleep-fields { display: flex; flex-direction: column; gap: 20px; }
+.sleep-field { display: flex; flex-direction: column; gap: 8px; }
+.sleep-field span { font-size: 11px; font-weight: 850; letter-spacing: 0.12em; color: var(--text-tertiary); text-transform: uppercase; }
+.sleep-time-input { height: 54px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.065); color: var(--text-primary); padding: 0 16px; font-family: var(--font-mono); font-size: 16px; outline: none; }
 .sleep-time-input:focus { border-color: rgba(125,211,252,0.36); }
-.sleep-schedule-actions { display: flex; gap: 10px; margin-top: 16px; }
-.sleep-schedule-actions button { flex: 1; height: 42px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; font-size: 13px; font-weight: 800; }
+.sleep-schedule-actions { display: flex; gap: 16px; margin-top: 26px; }
+.sleep-schedule-actions button { flex: 1; height: 52px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; font-size: 14px; font-weight: 800; }
 .sleep-schedule-save { background: linear-gradient(180deg,#FFFFFF,#E8E5DD); color: #1C1E24; }
 .sleep-schedule-close { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
 @media (max-width: 520px) {
+  .sleep-schedule-overlay { padding: 12px; }
+  .sleep-schedule-box { width: min(420px, calc(100vw - 24px)); padding: 20px; }
+  .sleep-schedule-title { margin-bottom: 18px; }
   .sleep-schedule-grid { grid-template-columns: 1fr; justify-items: center; }
+  .sleep-day-preview { width: min(288px, 100%); padding: 20px 18px 16px; }
   .sleep-fields { width: 100%; }
+  .sleep-schedule-actions { gap: 10px; margin-top: 18px; }
 }
 
 /* --- Spheres --- */

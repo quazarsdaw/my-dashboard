@@ -59,6 +59,9 @@ test('topbar and bottom navigation use balanced hit areas for short labels', () 
   assert.ok(topbar.includes('min-width: 104px'));
   assert.ok(topbar.includes('height: 38px; min-width: 122px'));
   assert.ok(topbar.includes('display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));'));
+  assert.ok(topbar.includes('class="bottombar-tab-shell"'));
+  assert.ok(topbar.includes('.bottombar-tab-shell'));
+  assert.ok(topbar.includes('width: min(112px, calc(100% - 8px))'));
   assert.ok(topbar.includes('class="bottombar-tab-label"'));
   assert.ok(topbar.includes('.bottombar-tab-label'));
   assert.ok(topbar.includes('min-width: 78px'));
@@ -84,6 +87,16 @@ test('sleep editor uses readable day timeline markers instead of clock hands', (
   assert.ok(html.includes('id="sleepBedMarker"'));
   assert.ok(html.includes('function setSleepMarker'));
   assert.ok(!html.includes('sleep-clock-hand'));
+});
+
+test('sleep editor has spacious desktop layout for the timeline and controls', () => {
+  const html = read('index.html');
+
+  assert.ok(html.includes('width: min(760px, calc(100vw - 48px))'));
+  assert.ok(html.includes('grid-template-columns: 288px minmax(280px, 1fr)'));
+  assert.ok(html.includes('.sleep-day-preview { width: 288px'));
+  assert.ok(html.includes('.sleep-day-rail { position: relative; height: 150px'));
+  assert.ok(html.includes('.sleep-schedule-actions { display: flex; gap: 16px; margin-top: 26px; }'));
 });
 
 test('profile editor offers persisted gradient choices', () => {
