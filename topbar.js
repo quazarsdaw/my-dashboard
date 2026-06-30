@@ -15,7 +15,7 @@ html { scrollbar-gutter: stable; }\
 }\
 .bottombar {\
   position: fixed; bottom: 12px; left: 12px; right: 12px; z-index: 10000;\
-  display: flex; justify-content: space-around; align-items: stretch;\
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: stretch;\
   height: 64px; padding: 0 8px; box-sizing: border-box;\
   background: linear-gradient(135deg, rgba(20,22,26,0.6) 0%, rgba(10,11,13,0.4) 100%);\
   backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);\
@@ -24,13 +24,16 @@ html { scrollbar-gutter: stable; }\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
 .bottombar-tab {\
-  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;\
-  gap: 3px; min-width: 64px; padding: 0; text-decoration: none; color: rgba(255,255,255,0.45);\
+  width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;\
+  gap: 3px; padding: 0; text-decoration: none; color: rgba(255,255,255,0.45);\
   font-size: 10px; font-weight: 600; transition: color 0.2s;\
   -webkit-tap-highlight-color: transparent;\
 }\
 .bottombar-tab-icon {\
   font-size: 20px; line-height: 1; opacity: 0.55; transition: opacity 0.2s, transform 0.15s;\
+}\
+.bottombar-tab-label {\
+  min-width: 78px; max-width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\
 }\
 .bottombar-tab.active { color: #FAFAFA; }\
 .bottombar-tab.active .bottombar-tab-icon { opacity: 1; transform: translateY(-2px); }\
@@ -95,7 +98,7 @@ body {\
   .topbar { top: 8px; left: 8px; right: 8px; height: 52px; padding: 0 10px; gap: 8px; }\
   .topbar-coins { padding: 0 10px; }\
   .bottombar { bottom: 8px; left: 8px; right: 8px; height: 58px; }\
-  .bottombar-tab span:not(.bottombar-tab-icon) { display: none; }\
+  .bottombar-tab-label { display: none; }\
 }\
 ';
 
@@ -123,12 +126,12 @@ body {\
 
   var bottombarHtml = '\
 <nav class="bottombar" id="bottombar">\
-  <a href="index.html" class="bottombar-tab" data-page="main"><span class="bottombar-tab-icon">🏠</span><span>Главная</span></a>\
-  <a href="inbox.html" class="bottombar-tab" data-page="inbox"><span class="bottombar-tab-icon">📥</span><span>Входящие</span></a>\
-  <a href="tracker.html" class="bottombar-tab" data-page="tracker"><span class="bottombar-tab-icon">✅</span><span>Трекер</span></a>\
-  <a href="goals.html" class="bottombar-tab" data-page="goals"><span class="bottombar-tab-icon">🎯</span><span>Цели</span></a>\
-  <a href="store.html" class="bottombar-tab" data-page="store"><span class="bottombar-tab-icon">🏪</span><span>Магазин</span></a>\
-  <a href="profile.html" class="bottombar-tab" data-page="profile"><span class="bottombar-tab-icon">👤</span><span>Профиль</span></a>\
+  <a href="index.html" class="bottombar-tab" data-page="main"><span class="bottombar-tab-icon">🏠</span><span class="bottombar-tab-label">Главная</span></a>\
+  <a href="inbox.html" class="bottombar-tab" data-page="inbox"><span class="bottombar-tab-icon">📥</span><span class="bottombar-tab-label">Входящие</span></a>\
+  <a href="tracker.html" class="bottombar-tab" data-page="tracker"><span class="bottombar-tab-icon">✅</span><span class="bottombar-tab-label">Трекер</span></a>\
+  <a href="goals.html" class="bottombar-tab" data-page="goals"><span class="bottombar-tab-icon">🎯</span><span class="bottombar-tab-label">Цели</span></a>\
+  <a href="store.html" class="bottombar-tab" data-page="store"><span class="bottombar-tab-icon">🏪</span><span class="bottombar-tab-label">Магазин</span></a>\
+  <a href="profile.html" class="bottombar-tab" data-page="profile"><span class="bottombar-tab-icon">👤</span><span class="bottombar-tab-label">Профиль</span></a>\
 </nav>';
 
   function isEmbedded() { try { return window.self !== window.top; } catch (e) { return true; } }
