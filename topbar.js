@@ -24,10 +24,16 @@ html { scrollbar-gutter: stable; }\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
 .bottombar-tab {\
-  width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;\
-  gap: 3px; padding: 0; text-decoration: none; color: rgba(255,255,255,0.45);\
+  width: 100%; min-width: 0; display: flex; align-items: center; justify-content: center;\
+  padding: 0; text-decoration: none; color: rgba(255,255,255,0.45);\
   font-size: 10px; font-weight: 600; transition: color 0.2s;\
   -webkit-tap-highlight-color: transparent;\
+}\
+.bottombar-tab-shell {\
+  width: min(112px, calc(100% - 8px)); min-height: 50px; border-radius: 12px;\
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;\
+  background: rgba(255,255,255,0.018); box-sizing: border-box;\
+  transition: background 0.2s, box-shadow 0.2s, transform 0.15s;\
 }\
 .bottombar-tab-icon {\
   font-size: 20px; line-height: 1; opacity: 0.55; transition: opacity 0.2s, transform 0.15s;\
@@ -36,6 +42,7 @@ html { scrollbar-gutter: stable; }\
   min-width: 78px; max-width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\
 }\
 .bottombar-tab.active { color: #FAFAFA; }\
+.bottombar-tab.active .bottombar-tab-shell { background: rgba(255,255,255,0.07); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); }\
 .bottombar-tab.active .bottombar-tab-icon { opacity: 1; transform: translateY(-2px); }\
 .topbar-coins {\
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;\
@@ -98,6 +105,7 @@ body {\
   .topbar { top: 8px; left: 8px; right: 8px; height: 52px; padding: 0 10px; gap: 8px; }\
   .topbar-coins { padding: 0 10px; }\
   .bottombar { bottom: 8px; left: 8px; right: 8px; height: 58px; }\
+  .bottombar-tab-shell { width: 44px; min-height: 44px; }\
   .bottombar-tab-label { display: none; }\
 }\
 ';
@@ -126,12 +134,12 @@ body {\
 
   var bottombarHtml = '\
 <nav class="bottombar" id="bottombar">\
-  <a href="index.html" class="bottombar-tab" data-page="main"><span class="bottombar-tab-icon">🏠</span><span class="bottombar-tab-label">Главная</span></a>\
-  <a href="inbox.html" class="bottombar-tab" data-page="inbox"><span class="bottombar-tab-icon">📥</span><span class="bottombar-tab-label">Входящие</span></a>\
-  <a href="tracker.html" class="bottombar-tab" data-page="tracker"><span class="bottombar-tab-icon">✅</span><span class="bottombar-tab-label">Трекер</span></a>\
-  <a href="goals.html" class="bottombar-tab" data-page="goals"><span class="bottombar-tab-icon">🎯</span><span class="bottombar-tab-label">Цели</span></a>\
-  <a href="store.html" class="bottombar-tab" data-page="store"><span class="bottombar-tab-icon">🏪</span><span class="bottombar-tab-label">Магазин</span></a>\
-  <a href="profile.html" class="bottombar-tab" data-page="profile"><span class="bottombar-tab-icon">👤</span><span class="bottombar-tab-label">Профиль</span></a>\
+  <a href="index.html" class="bottombar-tab" data-page="main"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🏠</span><span class="bottombar-tab-label">Главная</span></span></a>\
+  <a href="inbox.html" class="bottombar-tab" data-page="inbox"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">📥</span><span class="bottombar-tab-label">Входящие</span></span></a>\
+  <a href="tracker.html" class="bottombar-tab" data-page="tracker"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">✅</span><span class="bottombar-tab-label">Трекер</span></span></a>\
+  <a href="goals.html" class="bottombar-tab" data-page="goals"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🎯</span><span class="bottombar-tab-label">Цели</span></span></a>\
+  <a href="store.html" class="bottombar-tab" data-page="store"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🏪</span><span class="bottombar-tab-label">Магазин</span></span></a>\
+  <a href="profile.html" class="bottombar-tab" data-page="profile"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">👤</span><span class="bottombar-tab-label">Профиль</span></span></a>\
 </nav>';
 
   function isEmbedded() { try { return window.self !== window.top; } catch (e) { return true; } }
