@@ -25,7 +25,7 @@ html { scrollbar-gutter: stable; }\
 }\
 .bottombar-tab {\
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;\
-  gap: 3px; padding: 0; text-decoration: none; color: rgba(255,255,255,0.45);\
+  gap: 3px; min-width: 64px; padding: 0; text-decoration: none; color: rgba(255,255,255,0.45);\
   font-size: 10px; font-weight: 600; transition: color 0.2s;\
   -webkit-tap-highlight-color: transparent;\
 }\
@@ -35,17 +35,18 @@ html { scrollbar-gutter: stable; }\
 .bottombar-tab.active { color: #FAFAFA; }\
 .bottombar-tab.active .bottombar-tab-icon { opacity: 1; transform: translateY(-2px); }\
 .topbar-coins {\
-  display: inline-flex; align-items: center; gap: 6px;\
-  min-height: 38px; padding: 0 13px; background: rgba(242,192,99,0.105); border: 1px solid rgba(242,192,99,0.18); border-radius: 13px;\
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;\
+  height: 38px; min-width: 104px; padding: 0 13px; box-sizing: border-box;\
+  background: rgba(242,192,99,0.105); border: 1px solid rgba(242,192,99,0.18); border-radius: 13px;\
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; font-weight: 700; color: #F2C063; text-decoration: none;\
 }\
 .topbar-water-wrap {\
-  display: inline-flex; align-items: center; height: 40px; border-radius: 14px;\
+  display: inline-flex; align-items: center; height: 38px; min-width: 122px; border-radius: 14px;\
   background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.08); overflow: hidden;\
 }\
 .topbar-water-pill {\
-  display: inline-flex; align-items: center; gap: 8px;\
-  min-height: 38px; padding: 0 13px; background: rgba(125,211,252,0.055); border: 0;\
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px;\
+  height: 38px; padding: 0 12px; background: rgba(125,211,252,0.055); border: 0;\
   border-right: 1px solid rgba(255,255,255,0.08); border-radius: 0; text-decoration: none; color: #FAFAFA;\
 }\
 .topbar-pill-dot {\
