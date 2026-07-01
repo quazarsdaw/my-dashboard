@@ -7,6 +7,10 @@ function read(file) {
   return fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 }
 
+function exists(file) {
+  return fs.existsSync(path.join(__dirname, '..', file));
+}
+
 test('topbar uses a lighter grouped layout for balance, water and add controls', () => {
   const topbar = read('topbar.js');
 
@@ -103,9 +107,59 @@ test('profile editor offers persisted gradient choices', () => {
   const html = read('profile.html');
 
   assert.ok(html.includes('id="gradientPicker"'));
-  assert.ok(html.includes('PROFILE_GRADIENTS'));
-  const gradientCount = (html.match(/id: 'grad-/g) || []).length;
+  assert.ok(html.includes('window.ProfileTheme.list'));
+  assert.ok(!html.includes('var PROFILE_GRADIENTS = ['));
+  assert.ok(exists('profile-theme.js'));
+
+  const shared = read('profile-theme.js');
+  assert.ok(shared.includes('window.ProfileTheme'));
+  assert.ok(shared.includes('function applyProfileTheme'));
+  assert.ok(shared.includes('function applyProfileHero'));
+  assert.ok(shared.includes('--app-theme-glow-primary'));
+  assert.ok(shared.includes('--app-theme-chrome-border'));
+  assert.ok(shared.includes('softGlowPrimary'));
+
+  const gradientCount = (shared.match(/id: 'grad-/g) || []).length;
   assert.ok(gradientCount >= 15 && gradientCount <= 20);
   assert.ok(html.includes('function applyProfileGradient'));
   assert.ok(html.includes('gradientId'));
+});
+
+test('all primary pages load the soft profile theme before topbar', () => {
+  const pages = [
+    'index.html',
+    'inbox.html',
+    'tracker.html',
+    'goals.html',
+    'store.html',
+    'profile.html',
+    'health.html',
+    'gym.html',
+    'finance.html',
+  ];
+
+  pages.forEach((file) => {
+    const html = read(file);
+    const themeScript = '<script src="profile-theme.js?v=401"></script>';
+    const topbarScript = '<script src="topbar.js?v=401" defer></script>';
+    const themeIndex = html.indexOf(themeScript);
+    const topbarIndex = html.indexOf(topbarScript);
+
+    assert.ok(themeIndex !== -1, `${file} loads shared profile theme`);
+    assert.ok(topbarIndex !== -1, `${file} loads topbar`);
+    assert.ok(themeIndex < topbarIndex, `${file} loads theme before topbar`);
+    assert.ok(html.includes('var(--app-theme-glow-primary'), `${file} keeps local glow with theme hook`);
+    assert.ok(html.includes('var(--app-theme-glow-secondary'), `${file} keeps secondary glow with theme hook`);
+  });
+});
+
+test('topbar uses soft theme variables without owning page background', () => {
+  const topbar = read('topbar.js');
+
+  assert.ok(topbar.includes('function applyStoredProfileTheme'));
+  assert.ok(topbar.includes('window.ProfileTheme.applyStored'));
+  assert.ok(topbar.includes('var(--app-theme-chrome-border'));
+  assert.ok(topbar.includes('var(--app-theme-nav-active'));
+  assert.ok(!topbar.includes('body::before'));
+  assert.ok(!topbar.includes('--profile-hero-bg'));
 });

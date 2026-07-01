@@ -13,6 +13,7 @@
 <title>Спорт</title>
 <script src="gamification.js?v=401"></script>
 <script src="supabase-sync.js?v=406-sb" defer></script>
+<script src="profile-theme.js?v=401"></script>
 <script src="topbar.js?v=401" defer></script><style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -26,8 +27,8 @@ html{background:#1C1E24}
 body{font-family:var(--font-sans);color:var(--text-primary);background:#1C1E24;
   min-height:100vh;max-width:1100px;margin:0 auto;-webkit-font-smoothing:antialiased}
 body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
-  background:radial-gradient(ellipse 50% 50% at 82% 14%,rgba(224,118,88,0.22),transparent),
-  radial-gradient(ellipse 50% 50% at 18% 90%,rgba(180,180,200,0.06),transparent);
+  background:radial-gradient(ellipse 50% 50% at 82% 14%,var(--app-theme-glow-primary, rgba(224,118,88,0.22)),transparent),
+  radial-gradient(ellipse 50% 50% at 18% 90%,var(--app-theme-glow-secondary, rgba(180,180,200,0.06)),transparent);
   filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
 @keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
 body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
