@@ -9,7 +9,7 @@ html { scrollbar-gutter: stable; }\
   gap: 10px; height: 56px; padding: 0 14px; box-sizing: border-box;\
   background: linear-gradient(135deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.025) 100%);\
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);\
-  border: 1px solid var(--app-chrome-border, rgba(255,255,255,0.09)); border-radius: 15px;\
+  border: 1px solid rgba(255,255,255,0.09); border-radius: 15px;\
   box-shadow: 0 10px 28px rgba(0,0,0,0.16);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
@@ -19,7 +19,7 @@ html { scrollbar-gutter: stable; }\
   height: 64px; padding: 0 8px; box-sizing: border-box;\
   background: linear-gradient(135deg, rgba(20,22,26,0.6) 0%, rgba(10,11,13,0.4) 100%);\
   backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);\
-  border: 1px solid var(--app-chrome-border, rgba(255,255,255,0.08)); border-radius: 16px;\
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;\
   box-shadow: 0 -4px 32px rgba(0,0,0,0.3);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
@@ -42,7 +42,7 @@ html { scrollbar-gutter: stable; }\
   min-width: 78px; max-width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\
 }\
 .bottombar-tab.active { color: #FAFAFA; }\
-.bottombar-tab.active .bottombar-tab-shell { background: var(--app-active-tab-bg, rgba(255,255,255,0.07)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); }\
+.bottombar-tab.active .bottombar-tab-shell { background: rgba(255,255,255,0.07); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); }\
 .bottombar-tab.active .bottombar-tab-icon { opacity: 1; transform: translateY(-2px); }\
 .topbar-coins {\
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;\
@@ -98,12 +98,6 @@ html { scrollbar-gutter: stable; }\
 .ach-toast-label { font-size: 8px; font-weight: 800; color: #F2C063; text-transform: uppercase; letter-spacing: 0.12em; }\
 .ach-toast-name { font-size: 14px; font-weight: 700; color: #fff; }\
 \
-body::before {\
-  content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;\
-  background: var(--app-page-glow, radial-gradient(ellipse 50% 50% at 82% 14%, rgba(192,132,252,0.18), transparent), radial-gradient(ellipse 50% 50% at 18% 90%, rgba(125,211,252,0.09), transparent));\
-  filter: blur(40px); animation: bgDrift 36s ease-in-out infinite alternate;\
-}\
-@keyframes bgDrift { 0% { transform: translate(0,0); } 100% { transform: translate(-12px,8px); } }\
 body {\
   padding-top: 82px !important; padding-bottom: 96px !important; padding-left: 16px !important; padding-right: 16px !important;\
 }\
@@ -166,17 +160,6 @@ body {\
     var d = new Date();
     var offset = d.getTimezoneOffset() * 60000;
     return new Date(d.getTime() - offset).toISOString().slice(0, 10);
-  }
-
-  function getProfileForTheme() {
-    var profile = null;
-    try { profile = JSON.parse(localStorage.getItem('profile_v1') || 'null'); } catch (e) {}
-    return profile && typeof profile === 'object' ? profile : {};
-  }
-
-  function applyProfileGradientThemeFromProfile() {
-    if (!window.AppProfileGradients || typeof window.AppProfileGradients.apply !== 'function') return;
-    window.AppProfileGradients.apply(getProfileForTheme().gradientId);
   }
 
   function inject() {
@@ -270,19 +253,12 @@ body {\
   }
 
   function boot() {
-    applyProfileGradientThemeFromProfile();
     inject();
     var btn = document.getElementById('topbarWaterAdd');
     if (btn) btn.onclick = function(e) { e.preventDefault(); addWater(); };
     render();
-    window.addEventListener('gamification-update', function () {
-      applyProfileGradientThemeFromProfile();
-      render();
-    });
-    window.addEventListener('storage', function (e) {
-      if (!e || !e.key || e.key === 'profile_v1') applyProfileGradientThemeFromProfile();
-      render();
-    });
+    window.addEventListener('gamification-update', render);
+    window.addEventListener('storage', render);
     setInterval(render, 30000);
   }
 
