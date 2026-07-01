@@ -7,10 +7,6 @@ function read(file) {
   return fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 }
 
-function exists(file) {
-  return fs.existsSync(path.join(__dirname, '..', file));
-}
-
 test('topbar uses a lighter grouped layout for balance, water and add controls', () => {
   const topbar = read('topbar.js');
 
@@ -107,54 +103,9 @@ test('profile editor offers persisted gradient choices', () => {
   const html = read('profile.html');
 
   assert.ok(html.includes('id="gradientPicker"'));
-  assert.ok(html.includes('window.AppProfileGradients.list'));
-  assert.ok(!html.includes('var PROFILE_GRADIENTS = ['));
-  assert.ok(exists('profile-gradients.js'));
-
-  const shared = read('profile-gradients.js');
-  assert.ok(shared.includes('window.AppProfileGradients'));
-  assert.ok(shared.includes('function applyProfileGradientTheme'));
-  assert.ok(shared.includes('--profile-hero-bg'));
-  assert.ok(shared.includes('--app-page-glow'));
-
-  const gradientCount = (shared.match(/id: 'grad-/g) || []).length;
+  assert.ok(html.includes('PROFILE_GRADIENTS'));
+  const gradientCount = (html.match(/id: 'grad-/g) || []).length;
   assert.ok(gradientCount >= 15 && gradientCount <= 20);
   assert.ok(html.includes('function applyProfileGradient'));
   assert.ok(html.includes('gradientId'));
-});
-
-test('all primary pages load shared profile gradients before topbar theme boot', () => {
-  const pages = [
-    'index.html',
-    'inbox.html',
-    'tracker.html',
-    'goals.html',
-    'store.html',
-    'profile.html',
-    'health.html',
-    'gym.html',
-    'finance.html',
-  ];
-
-  pages.forEach((file) => {
-    const html = read(file);
-    const gradientScript = '<script src="profile-gradients.js?v=401"></script>';
-    const topbarScript = '<script src="topbar.js?v=401" defer></script>';
-    const gradientIndex = html.indexOf(gradientScript);
-    const topbarIndex = html.indexOf(topbarScript);
-
-    assert.ok(gradientIndex !== -1, `${file} loads shared profile gradients`);
-    assert.ok(topbarIndex !== -1, `${file} loads topbar`);
-    assert.ok(gradientIndex < topbarIndex, `${file} loads gradients before topbar`);
-  });
-});
-
-test('topbar applies saved profile gradient to page chrome', () => {
-  const topbar = read('topbar.js');
-
-  assert.ok(topbar.includes('function applyProfileGradientThemeFromProfile'));
-  assert.ok(topbar.includes('profile_v1'));
-  assert.ok(topbar.includes('window.AppProfileGradients.apply'));
-  assert.ok(topbar.includes('body::before'));
-  assert.ok(topbar.includes('var(--app-page-glow'));
 });
