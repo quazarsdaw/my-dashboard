@@ -13,6 +13,7 @@
 <title>Магазин наград</title>
 <script src="gamification.js?v=401"></script>
 <script src="supabase-sync.js?v=406-sb" defer></script>
+<script src="profile-theme.js?v=401"></script>
 <script src="topbar.js?v=401" defer></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -38,8 +39,8 @@ body {
 body::before {
   content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
   background:
-    radial-gradient(ellipse 50% 50% at 82% 14%, rgba(224,118,88,0.28), transparent),
-    radial-gradient(ellipse 50% 50% at 18% 90%, rgba(180,180,200,0.1), transparent);
+    radial-gradient(ellipse 50% 50% at 82% 14%, var(--app-theme-glow-primary, rgba(224,118,88,0.28)), transparent),
+    radial-gradient(ellipse 50% 50% at 18% 90%, var(--app-theme-glow-secondary, rgba(180,180,200,0.1)), transparent);
   filter: blur(40px);
   animation: bgDrift 36s ease-in-out infinite alternate;
 }

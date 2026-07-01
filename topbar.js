@@ -9,7 +9,7 @@ html { scrollbar-gutter: stable; }\
   gap: 10px; height: 56px; padding: 0 14px; box-sizing: border-box;\
   background: linear-gradient(135deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.025) 100%);\
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);\
-  border: 1px solid rgba(255,255,255,0.09); border-radius: 15px;\
+  border: 1px solid var(--app-theme-chrome-border, rgba(255,255,255,0.09)); border-radius: 15px;\
   box-shadow: 0 10px 28px rgba(0,0,0,0.16);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
@@ -19,7 +19,7 @@ html { scrollbar-gutter: stable; }\
   height: 64px; padding: 0 8px; box-sizing: border-box;\
   background: linear-gradient(135deg, rgba(20,22,26,0.6) 0%, rgba(10,11,13,0.4) 100%);\
   backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);\
-  border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;\
+  border: 1px solid var(--app-theme-chrome-border, rgba(255,255,255,0.08)); border-radius: 16px;\
   box-shadow: 0 -4px 32px rgba(0,0,0,0.3);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
@@ -42,7 +42,7 @@ html { scrollbar-gutter: stable; }\
   min-width: 78px; max-width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\
 }\
 .bottombar-tab.active { color: #FAFAFA; }\
-.bottombar-tab.active .bottombar-tab-shell { background: rgba(255,255,255,0.07); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); }\
+.bottombar-tab.active .bottombar-tab-shell { background: var(--app-theme-nav-active, rgba(255,255,255,0.07)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); }\
 .bottombar-tab.active .bottombar-tab-icon { opacity: 1; transform: translateY(-2px); }\
 .topbar-coins {\
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;\
@@ -162,6 +162,11 @@ body {\
     return new Date(d.getTime() - offset).toISOString().slice(0, 10);
   }
 
+  function applyStoredProfileTheme() {
+    if (!window.ProfileTheme || typeof window.ProfileTheme.applyStored !== 'function') return;
+    window.ProfileTheme.applyStored();
+  }
+
   function inject() {
     if (document.getElementById('topbar') || isEmbedded()) return;
     var style = document.createElement('style');
@@ -253,12 +258,19 @@ body {\
   }
 
   function boot() {
+    applyStoredProfileTheme();
     inject();
     var btn = document.getElementById('topbarWaterAdd');
     if (btn) btn.onclick = function(e) { e.preventDefault(); addWater(); };
     render();
-    window.addEventListener('gamification-update', render);
-    window.addEventListener('storage', render);
+    window.addEventListener('gamification-update', function () {
+      applyStoredProfileTheme();
+      render();
+    });
+    window.addEventListener('storage', function (e) {
+      if (!e || !e.key || e.key === 'profile_v1') applyStoredProfileTheme();
+      render();
+    });
     setInterval(render, 30000);
   }
 
