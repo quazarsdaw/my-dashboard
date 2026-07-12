@@ -89,7 +89,7 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .habit-table th,.habit-table td{padding:0;text-align:center;vertical-align:middle}
 .habit-name-cell{text-align:left!important;padding:8px 10px!important;font-size:13px;font-weight:600;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;
-  position:sticky;left:0;z-index:2;background:#1C1E24}
+  position:sticky;left:0;z-index:2;background:#1C1E24;box-shadow:-16px 0 0 #1C1E24}
 .habit-date-header{font-size:9px;font-weight:700;color:var(--text-tertiary);letter-spacing:0.04em;
   padding:4px 2px!important;min-width:36px;font-family:var(--font-mono)}
 .habit-date-header.today{color:var(--warning)}
@@ -116,10 +116,19 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .ultra-compact .habit-cell{width:8px;height:8px;padding:0!important}
 .ultra-compact .habit-dot{width:7px;height:7px;border-radius:2px;border-width:0}
 
-.habit-del{background:none;border:none;color:var(--text-tertiary);font-size:14px;cursor:pointer;opacity:0;
-  transition:opacity 0.15s;padding:0 6px;vertical-align:middle}
-.habit-name-cell:hover .habit-del{opacity:1}
-@media(pointer:coarse){.habit-del{opacity:0.5}}
+.habit-name-wrap{display:flex;align-items:center;min-width:0;width:100%}
+.habit-name-text{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+.habit-name-input{width:min(118px,calc(100% - 42px));min-width:64px;padding:5px 7px;border-radius:7px;
+  border:1px solid rgba(255,255,255,0.16);background:rgba(255,255,255,0.08);color:var(--text-primary);
+  font:600 12px/1.2 var(--font-sans);outline:none;vertical-align:middle}
+.habit-name-input:focus{border-color:rgba(107,227,164,0.45)}
+.habit-edit,.habit-del{background:none;border:none;color:var(--text-tertiary);font-size:14px;cursor:pointer;opacity:0;
+  transition:opacity 0.15s;padding:0;width:22px;height:22px;flex:0 0 22px;vertical-align:middle;
+  display:inline-flex;align-items:center;justify-content:center}
+.habit-edit{opacity:0.55}
+.habit-name-cell:hover .habit-edit,.habit-name-cell:hover .habit-del,.habit-name-cell.editing .habit-edit{opacity:1}
+@media(pointer:coarse){.habit-edit,.habit-del{opacity:0.5}}
+.habit-edit:hover{color:var(--success)}
 .habit-del:hover{color:var(--danger)}
 
 /* Add habit */
@@ -310,6 +319,50 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
   function setData(d){ G.storeSet('tracker_v1', d); }
   function getMarkKey(habitId, dateStr){ return habitId + ':' + dateStr; }
 
+  function normalizeHabitName(name){
+    return String(name || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  }
+
+  function startHabitNameEdit(btn){
+    var data = getData();
+    var arr = btn.dataset.type === 'good' ? data.good : data.bad;
+    var habit = arr[parseInt(btn.dataset.idx, 10)];
+    var cell = btn.parentNode;
+    var text = cell && cell.querySelector('.habit-name-text');
+    if(!habit || !cell || !text) return;
+
+    var input = document.createElement('input');
+    input.className = 'habit-name-input';
+    input.type = 'text';
+    input.maxLength = 60;
+    input.value = habit.name;
+    input.setAttribute('aria-label', 'Изменить название привычки');
+    cell.classList.add('editing');
+    text.replaceWith(input);
+
+    var finished = false;
+    function finish(save){
+      if(finished) return;
+      finished = true;
+      if(save){
+        var nextName = normalizeHabitName(input.value);
+        if(nextName){
+          habit.name = nextName;
+          setData(data);
+        }
+      }
+      renderAll();
+    }
+
+    input.addEventListener('blur', function(){ finish(true); });
+    input.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){ e.preventDefault(); input.blur(); }
+      if(e.key === 'Escape'){ e.preventDefault(); finish(false); }
+    });
+    input.focus();
+    input.select();
+  }
+
   /* === Score === */
   function calcDayScore(data, dateStr){
     var score = 0;
@@ -385,7 +438,9 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
         var sev = h.severity || 'medium';
         penaltyTag = '<span class="penalty-tag">' + (PENALTY_LABELS[sev] || '−10') + '🪙</span>';
       }
-      nameCell.innerHTML = G.esc(h.name) + penaltyTag + '<button class="habit-del" data-idx="'+idx+'" data-type="'+type+'" title="Удалить">×</button>';
+      nameCell.innerHTML = '<span class="habit-name-wrap"><span class="habit-name-text">' + G.esc(h.name) + '</span>' + penaltyTag +
+        '<button class="habit-edit" data-idx="'+idx+'" data-type="'+type+'" title="Изменить" aria-label="Изменить привычку">✎</button>' +
+        '<button class="habit-del" data-idx="'+idx+'" data-type="'+type+'" title="Удалить" aria-label="Удалить привычку">×</button></span>';
       tr.appendChild(nameCell);
 
       dates.forEach(function(d){
@@ -430,12 +485,21 @@ body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 
     table.appendChild(tbody);
 
+    table.querySelectorAll('.habit-edit').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        startHabitNameEdit(btn);
+      });
+    });
+
     // Delete handlers
     table.querySelectorAll('.habit-del').forEach(function(btn){
       btn.addEventListener('click', function(e){
         e.stopPropagation();
         var data = getData();
         var arr = btn.dataset.type === 'good' ? data.good : data.bad;
+        var habit = arr[parseInt(btn.dataset.idx, 10)];
+        if(!habit || !confirm('Удалить привычку «' + habit.name + '»?')) return;
         arr.splice(parseInt(btn.dataset.idx, 10), 1);
         setData(data);
         renderAll();
