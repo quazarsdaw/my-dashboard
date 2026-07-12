@@ -47,12 +47,35 @@ body::after {
   background-image: url("data:image/svg+xml,%3Csvg width='3' height='3' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='white' fill-opacity='0.014'/%3E%3C/svg%3E");
   background-repeat: repeat;
 }
+.dash-title-row {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  margin: 16px 0 14px;
+}
 .dash-title {
   font-size: 28px; font-weight: 700; letter-spacing: -0.025em;
   background: linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  margin: 16px 0 14px;
+  margin: 0; min-width: 0; overflow-wrap: anywhere;
 }
+.dash-title-input {
+  display: none; width: min(520px, 100%); min-width: 0; height: 44px;
+  padding: 0 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.07); color: var(--text-primary);
+  font: 700 24px/1 var(--font-sans); outline: none;
+}
+.dash-title-input:focus { border-color: rgba(255,255,255,0.26); }
+.dash-title-row.editing .dash-title { display: none; }
+.dash-title-row.editing .dash-title-input { display: block; }
+.dash-title-edit {
+  width: 30px; height: 30px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.09);
+  background: rgba(255,255,255,0.055); color: var(--text-tertiary);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 13px; font-weight: 800; flex-shrink: 0;
+  transition: color 0.15s, background 0.15s, transform 0.1s;
+}
+.dash-title-edit:hover { color: var(--text-primary); background: rgba(255,255,255,0.1); }
+.dash-title-edit:active { transform: scale(0.94); }
+.dash-title-row.editing .dash-title-edit { color: var(--success); border-color: rgba(107,227,164,0.25); }
 
 /* ФИКС: Убираем возможные перекрытия */
 .task-details-overlay:not(.show) { display: none !important; pointer-events: none !important; }
@@ -320,6 +343,7 @@ body::after {
 .gm-card.gm-all-done { background: radial-gradient(ellipse at 50% 0%, rgba(107,227,164,0.08) 0%, transparent 60%), var(--card-bg); }
 .gm-card.gm-all-done .gm-progress-num, .gm-card.gm-all-done .gm-progress-label { color: var(--success); }
 .gm-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin-bottom: 14px; gap: 8px; }
+.gm-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .gm-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 6px; }
 .gm-progress-row { display: flex; align-items: baseline; gap: 6px; }
 .gm-progress-num { font-size: 42px; font-weight: 700; letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
@@ -330,6 +354,14 @@ body::after {
 .gm-streak-icon { font-size: 13px; line-height: 1; }
 .gm-streak.gm-streak-active .gm-streak-icon { filter: drop-shadow(0 0 6px rgba(242,192,99,0.6)); }
 .gm-streak-num { font-family: var(--font-mono); font-weight: 700; }
+.gm-clear-all {
+  height: 34px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid rgba(255,107,107,0.16); background: rgba(255,107,107,0.08);
+  color: var(--danger); font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+  text-transform: uppercase; cursor: pointer; transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.gm-clear-all:hover:not(:disabled) { background: rgba(255,107,107,0.14); border-color: rgba(255,107,107,0.28); }
+.gm-clear-all:disabled { opacity: 0; pointer-events: none; }
 .gm-bar { display: flex; gap: 4px; height: 6px; margin-bottom: 16px; }
 .gm-bar:empty { display: none; }
 .gm-bar-seg { flex: 1; border-radius: 3px; background: rgba(255,255,255,0.08); transition: background 0.3s; }
@@ -433,6 +465,9 @@ body::after {
 
 @media (max-width: 480px) {
   .dash-title { font-size: 22px; }
+  .dash-title-row { align-items: flex-start; }
+  .dash-title-input { height: 40px; font-size: 20px; }
+  .gm-header-actions { justify-content: flex-start; }
   .goal-ticker { padding: 9px 12px; }
   .goal-ticker-label { font-size: 9px; }
   .goal-ticker-row { font-size: 12px; }
@@ -453,7 +488,11 @@ body::after {
 </head>
 <body>
 
-<h1 class="dash-title">My Dashboard</h1>
+<div class="dash-title-row" id="dashboardTitleRow">
+  <h1 class="dash-title" id="dashboardTitle">My Dashboard</h1>
+  <input class="dash-title-input" id="dashboardTitleInput" type="text" maxlength="48" autocomplete="off" aria-label="название дашборда">
+  <button class="dash-title-edit" id="dashboardTitleEdit" type="button" aria-label="изменить название дашборда">✎</button>
+</div>
 
 <!-- Ticker -->
 <div class="ticker-row">
@@ -645,10 +684,13 @@ body::after {
           <span class="gm-progress-label" id="gmProgressLabel">задач пока нет</span>
         </div>
       </div>
-      <div class="gm-streak" id="gmStreak">
-        <span class="gm-streak-icon">⚡</span>
-        <span class="gm-streak-num" id="gmStreakNum">0</span>
-        <span>day streak</span>
+      <div class="gm-header-actions">
+        <button class="gm-clear-all" id="gmClearAllBtn" type="button">удалить все</button>
+        <div class="gm-streak" id="gmStreak">
+          <span class="gm-streak-icon">⚡</span>
+          <span class="gm-streak-num" id="gmStreakNum">0</span>
+          <span>day streak</span>
+        </div>
       </div>
     </div>
     <div class="gm-bar" id="gmBar"></div>
@@ -775,6 +817,7 @@ body::after {
 (function () {
   'use strict';
   var G = window.Gamification;
+  var DASHBOARD_TITLE_KEY = 'dashboard_title_v1';
   var SLEEP_SCHEDULE_KEY = 'sleep_schedule_v1';
   var DEFAULT_SLEEP_SCHEDULE = { wake: '08:00', bed: '00:00' };
   var NO_SPHERE_LABEL = 'Без сектора';
@@ -800,6 +843,64 @@ body::after {
   }
   function storeGet(key) { return G.storeGet(key); }
   function storeSet(key, val) { G.storeSet(key, val); window.dispatchEvent(new CustomEvent('goals-changed')); }
+
+  function normalizeDashboardTitle(title) {
+    var safe = typeof title === 'string' ? title.trim().replace(/\s+/g, ' ') : '';
+    return safe ? safe.slice(0, 48) : 'My Dashboard';
+  }
+
+  function getDashboardTitle() {
+    return normalizeDashboardTitle(storeGet(DASHBOARD_TITLE_KEY));
+  }
+
+  function setDashboardTitle(title) {
+    var next = normalizeDashboardTitle(title);
+    storeSet(DASHBOARD_TITLE_KEY, next);
+    return next;
+  }
+
+  function renderDashboardTitle() {
+    var title = getDashboardTitle();
+    var titleEl = document.getElementById('dashboardTitle');
+    var input = document.getElementById('dashboardTitleInput');
+    if (titleEl) titleEl.textContent = title;
+    if (input && document.activeElement !== input) input.value = title;
+    document.title = title;
+  }
+
+  function wireDashboardTitleEditor() {
+    var row = document.getElementById('dashboardTitleRow');
+    var titleEl = document.getElementById('dashboardTitle');
+    var input = document.getElementById('dashboardTitleInput');
+    var edit = document.getElementById('dashboardTitleEdit');
+    if (!row || !titleEl || !input || !edit) return;
+
+    function openEdit() {
+      row.classList.add('editing');
+      input.value = getDashboardTitle();
+      input.focus();
+      input.select();
+    }
+
+    function closeEdit(save) {
+      if (save) setDashboardTitle(input.value);
+      row.classList.remove('editing');
+      renderDashboardTitle();
+    }
+
+    titleEl.addEventListener('click', openEdit);
+    edit.addEventListener('click', function () {
+      if (row.classList.contains('editing')) closeEdit(true);
+      else openEdit();
+    });
+    input.addEventListener('blur', function () { closeEdit(true); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeEdit(false); }
+    });
+    renderDashboardTitle();
+  }
+  wireDashboardTitleEditor();
 
   function normalizeTimeValue(value, fallback) {
     if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) return fallback;
@@ -1704,6 +1805,7 @@ body::after {
     var todayCard = document.getElementById('todayCard');
     var bar = document.getElementById('gmBar');
     var pushBtn = document.getElementById('gmPushBtn');
+    var clearAllBtn = document.getElementById('gmClearAllBtn');
 
     if (progressNum) progressNum.textContent = done;
     if (progressTotal) progressTotal.textContent = '/ ' + total;
@@ -1718,6 +1820,29 @@ body::after {
       goals.forEach(function (g) { var seg = document.createElement('div'); seg.className = 'gm-bar-seg' + (g.done ? ' gm-bar-seg-done' : ''); bar.appendChild(seg); });
     }
     if (pushBtn) pushBtn.style.display = goals.some(function (g) { return !g.done; }) ? '' : 'none';
+    if (clearAllBtn) clearAllBtn.disabled = total === 0;
+  }
+
+  async function clearTodayGoals() {
+    var key = 'goals:' + getActiveDateString();
+    var goals = storeGet(key) || [];
+    if (goals.length === 0) return;
+    if (!confirm('удалить все задачи на сегодня?')) return;
+
+    storeSet(key, []);
+    loadToday();
+    cycleIdx = 0;
+    tick();
+
+    if (window.DashboardSync && window.DashboardSync.forceSync) {
+      try {
+        var syncKey = key;
+        await window.DashboardSync.forceSync(syncKey);
+      } catch (err) {
+        console.error('[SUPABASE] Ошибка синка при очистке задач:', err);
+        alert('задачи удалены локально, но синхронизация недоступна. изменения отправятся позже.');
+      }
+    }
   }
 
   function buildGoalRow(goal, idx, key, readOnly) {
@@ -1936,6 +2061,9 @@ body::after {
   wireAdd('goalInput', 'goalTimeInput', 'goalSphere', 'goalDiff', 'goalAddBtn', 'goals:' + getActiveDateString(), function () { loadToday(); renderRadar(); });
   wireAdd('tomorrowInput', 'tomorrowTimeInput', 'tomorrowSphere', 'tomorrowDiff', 'tomorrowAddBtn', 'goals:' + getTomorrowDateString(), loadTomorrow);
 
+  var clearAllBtn = document.getElementById('gmClearAllBtn');
+  if (clearAllBtn) clearAllBtn.addEventListener('click', clearTodayGoals);
+
   // --- Push ---
   var pushBtn = document.getElementById('gmPushBtn');
   if (pushBtn) {
@@ -1956,6 +2084,7 @@ body::after {
     var keys = (e.detail && e.detail.changedKeys) || [];
     var todayKey = 'goals:' + getActiveDateString();
     var tomorrowKey = 'goals:' + getTomorrowDateString();
+    if (keys.length === 0 || keys.indexOf(DASHBOARD_TITLE_KEY) !== -1) renderDashboardTitle();
     var affectsGoals = keys.length === 0 || keys.indexOf(todayKey) !== -1 || keys.indexOf(tomorrowKey) !== -1 ||
       keys.indexOf('goal_streak_v1') !== -1 || keys.indexOf('spheres_v1') !== -1 || keys.indexOf('sphere_defs_v1') !== -1;
     if (!affectsGoals) return;
@@ -1966,6 +2095,7 @@ body::after {
     var key = e && e.detail && e.detail.key;
     var todayKey = 'goals:' + getActiveDateString();
     var tomorrowKey = 'goals:' + getTomorrowDateString();
+    if (key === DASHBOARD_TITLE_KEY) renderDashboardTitle();
     if (!key || key === todayKey || key === tomorrowKey || key.indexOf('goals:') === 0) { loadToday(); loadTomorrow(); cycleIdx = 0; tick(); }
     renderRadar();
     populateSphereSelect(document.getElementById('goalSphere'));

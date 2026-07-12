@@ -103,6 +103,29 @@ test('sleep editor has spacious desktop layout for the timeline and controls', (
   assert.ok(html.includes('.sleep-schedule-actions { display: flex; gap: 16px; margin-top: 26px; }'));
 });
 
+test('today card offers a compact clear all action beside the streak', () => {
+  const html = read('index.html');
+
+  assert.ok(html.includes('class="gm-header-actions"'));
+  assert.ok(html.includes('id="gmClearAllBtn"'));
+  assert.ok(html.includes('удалить все'));
+  assert.ok(html.includes('function clearTodayGoals()'));
+  assert.ok(html.includes("confirm('удалить все задачи на сегодня?')"));
+});
+
+test('dashboard title can be edited and persisted locally', () => {
+  const html = read('index.html');
+
+  assert.ok(html.includes("DASHBOARD_TITLE_KEY = 'dashboard_title_v1'"));
+  assert.ok(html.includes('id="dashboardTitle"'));
+  assert.ok(html.includes('id="dashboardTitleInput"'));
+  assert.ok(html.includes('id="dashboardTitleEdit"'));
+  assert.ok(html.includes('function getDashboardTitle()'));
+  assert.ok(html.includes('function setDashboardTitle(title)'));
+  assert.ok(html.includes('function wireDashboardTitleEditor()'));
+  assert.ok(html.includes('keys.indexOf(DASHBOARD_TITLE_KEY)'));
+});
+
 test('profile editor offers persisted gradient choices', () => {
   const html = read('profile.html');
 
