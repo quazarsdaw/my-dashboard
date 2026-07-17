@@ -103,6 +103,10 @@
     return '≈' + (min === max ? min : min + '–' + max) + (unit ? ' ' + unit : '');
   }
 
+  function formatRub(value) {
+    return Math.round(Number(value) || 0).toLocaleString('ru-RU') + ' ₽';
+  }
+
   function parseDateKey(value) {
     var parts = String(value || '').split('-').map(Number);
     return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
@@ -536,7 +540,7 @@
 
   function beginNextCycle(mode) {
     if (!window.confirm('завершить текущий цикл и начать следующие 14 дней?')) return;
-    var snapshot = NutritionCore.createCycleSnapshot(state, NutritionData.plan14, catalog);
+    var snapshot = NutritionCore.createCycleSnapshot(state, NutritionData.plan14, catalog, NutritionData.ingredientPrices);
     state = NutritionCore.startNextCycle(state, NutritionCore.getLocalDateKey(), mode, snapshot);
     selectedDay = 1;
     saveState();
@@ -803,9 +807,14 @@
 
   function renderShopping() {
     var container = document.getElementById('shoppingGroups');
-    if (!container) return;
+    var budgetMeta = document.getElementById('shoppingBudgetMeta');
+    if (!container || !budgetMeta) return;
     clearElement(container);
-    var items = NutritionCore.buildShoppingList(NutritionData.plan14, state, catalog, shoppingWeek);
+    var shoppingItems = NutritionCore.buildShoppingList(NutritionData.plan14, state, catalog, shoppingWeek);
+    var items = NutritionCore.priceShoppingItems(shoppingItems, state.ingredientPrices, NutritionData.ingredientPrices);
+    var missingPrices = items.filter(function (item) { return !item.hasPrice; }).length;
+    var totalRub = NutritionCore.calculateShoppingTotal(items);
+    budgetMeta.textContent = 'неделя ' + shoppingWeek + ' · ≈' + formatRub(totalRub) + (missingPrices ? ' · без цены: ' + missingPrices : '');
     var groups = groupShopping(items);
     Object.keys(NutritionData.ingredientCategories).forEach(function (category) {
       if (!groups[category] || !groups[category].length) return;
@@ -814,9 +823,10 @@
       var list = createElement('div', 'shopping-list');
       groups[category].forEach(function (item) {
         var key = state.activeCycle.id + ':' + shoppingWeek + ':' + item.id + ':' + item.unit;
-        var row = createElement('label', 'shopping-item');
-        var checkbox = createElement('input');
+        var row = createElement('div', 'shopping-item');
+        var checkbox = createElement('input', 'shopping-check');
         checkbox.type = 'checkbox';
+        checkbox.setAttribute('aria-label', 'куплено: ' + item.name);
         checkbox.checked = state.shoppingChecks[key] === true;
         row.classList.toggle('checked', checkbox.checked);
         checkbox.addEventListener('change', function () {
@@ -825,7 +835,33 @@
           saveState();
           row.classList.toggle('checked', checkbox.checked);
         });
-        appendChildren(row, [checkbox, createElement('span', 'shopping-name', item.name), createElement('span', 'shopping-amount', formatIngredientAmount(item.amount) + ' ' + item.unit)]);
+        var priceKey = item.priceKey;
+        var priceField = createElement('label', 'shopping-price-field');
+        var priceInput = createElement('input', 'shopping-price-input');
+        priceInput.type = 'number';
+        priceInput.min = '0';
+        priceInput.step = '1';
+        priceInput.inputMode = 'decimal';
+        priceInput.value = item.unitPriceRub === null ? '' : String(item.unitPriceRub);
+        priceInput.setAttribute('aria-label', 'цена: ' + item.name + ', ' + item.priceLabel);
+        priceInput.addEventListener('change', function () {
+          var nextPrice = priceInput.value === '' ? null : Number(priceInput.value);
+          if (nextPrice !== null && Number.isFinite(nextPrice) && nextPrice >= 0) {
+            state.ingredientPrices[priceKey] = Math.round(nextPrice * 100) / 100;
+          } else {
+            delete state.ingredientPrices[priceKey];
+          }
+          saveState();
+          renderShopping();
+        });
+        appendChildren(priceField, [priceInput, createElement('span', 'shopping-price-unit', item.priceLabel)]);
+        appendChildren(row, [
+          checkbox,
+          createElement('span', 'shopping-name', item.name),
+          createElement('span', 'shopping-amount', formatIngredientAmount(item.amount) + ' ' + item.unit),
+          priceField,
+          createElement('span', 'shopping-line-cost', item.hasPrice ? '≈' + formatRub(item.lineCostRub) : '—')
+        ]);
         list.appendChild(row);
       });
       section.appendChild(list);
@@ -1173,20 +1209,37 @@
 
   function renderHistory() {
     var container = document.getElementById('historyList');
-    if (!container) return;
+    var summary = document.getElementById('historySummary');
+    if (!container || !summary) return;
     clearElement(container);
+    clearElement(summary);
     if (!state.history.length) {
+      summary.hidden = true;
       var empty = createElement('div', 'empty-state');
       appendChildren(empty, [createElement('strong', '', 'завершённых циклов пока нет'), createElement('span', '', 'первый результат появится после 14 дней')]);
       container.appendChild(empty);
       return;
     }
+    summary.hidden = false;
+    var pricedHistory = state.history.filter(function (item) { return Number.isFinite(item.shoppingCostRub); });
+    var latestCost = pricedHistory.length ? pricedHistory[pricedHistory.length - 1].shoppingCostRub : null;
+    var averageCost = pricedHistory.length ? Math.round(pricedHistory.reduce(function (total, item) { return total + item.shoppingCostRub; }, 0) / pricedHistory.length) : null;
+    [
+      ['завершено циклов', String(state.history.length)],
+      ['последний расход', latestCost === null ? 'нет данных' : formatRub(latestCost)],
+      ['средний расход', averageCost === null ? 'нет данных' : formatRub(averageCost)]
+    ].forEach(function (metric) {
+      var stat = createElement('div', 'history-stat');
+      appendChildren(stat, [createElement('span', 'history-stat-label', metric[0]), createElement('strong', 'history-stat-value', metric[1])]);
+      summary.appendChild(stat);
+    });
     state.history.slice().reverse().forEach(function (item) {
       var row = createElement('article', 'history-item');
       appendChildren(row, [
         createElement('div', 'history-date', formatDate(item.startDate) + ' — ' + formatDate(item.endDate)),
         createElement('div', 'history-metric', item.completedMeals + ' / ' + item.plannedMeals + ' приёмов'),
-        createElement('div', 'history-metric', item.adherencePercent + '% · ' + item.trainingDays + ' тренировок')
+        createElement('div', 'history-metric', item.adherencePercent + '% · ' + item.trainingDays + ' тренировок'),
+        createElement('div', 'history-metric history-cost', Number.isFinite(item.shoppingCostRub) ? formatRub(item.shoppingCostRub) : 'расход не зафиксирован')
       ]);
       container.appendChild(row);
     });

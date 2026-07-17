@@ -100,6 +100,8 @@ test('nutrition page provides clickable desktop and mobile section navigation', 
   assert.ok(html.includes('class="cooking-week-context"'));
   assert.ok(html.includes('id="cycleBatchRail"'));
   assert.ok(html.includes('class="cycle-scroll"'));
+  assert.ok(html.includes('id="shoppingBudgetMeta"'));
+  assert.ok(html.includes('id="historySummary"'));
   assert.ok(html.includes('id="cookingTimeline"'));
   assert.ok(html.includes('id="cookingNow"'));
   assert.ok(html.includes('@media(max-width:820px)'));

@@ -48,6 +48,23 @@ test('nutrition controller renders every approved view and weekly preparation in
   assert.ok(js.includes('cookingWeek'));
 });
 
+test('nutrition shopping renders editable persisted prices and expense analytics', () => {
+  const html = read('menu.html');
+  const js = read('nutrition.js');
+
+  assert.ok(html.includes('id="shoppingBudgetMeta"'));
+  assert.ok(html.includes('id="historySummary"'));
+  assert.ok(html.includes('.shopping-price-input'));
+  assert.ok(html.includes('.shopping-line-cost'));
+  assert.ok(js.includes('NutritionCore.priceShoppingItems'));
+  assert.ok(js.includes('NutritionCore.calculateShoppingTotal'));
+  assert.ok(js.includes('NutritionData.ingredientPrices'));
+  assert.ok(js.includes("priceInput.type = 'number'"));
+  assert.ok(js.includes('state.ingredientPrices[priceKey]'));
+  assert.ok(js.includes("priceInput.addEventListener('change'"));
+  assert.ok(js.includes('shoppingCostRub'));
+});
+
 test('nutrition controller renders weekly calendar batches and invalidates only a replaced week', () => {
   const html = read('menu.html');
   const js = read('nutrition.js');
