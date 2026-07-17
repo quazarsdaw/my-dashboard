@@ -190,6 +190,7 @@
       trainingDays: {},
       trainingExtras: {},
       shoppingChecks: {},
+      ingredientPrices: {},
       cookingChecks: {},
       history: []
     };
@@ -197,6 +198,16 @@
 
   function normalizeDictionary(value) {
     return isRecord(value) ? clone(value) : {};
+  }
+
+  function normalizePriceBook(value) {
+    var result = {};
+    if (!isRecord(value)) return result;
+    Object.keys(value).forEach(function (key) {
+      var price = value[key];
+      if (typeof price === 'number' && Number.isFinite(price) && price >= 0) result[key] = price;
+    });
+    return result;
   }
 
   function normalizeState(rawState, todayKey) {
@@ -217,6 +228,7 @@
       trainingDays: normalizeDictionary(rawState.trainingDays),
       trainingExtras: normalizeDictionary(rawState.trainingExtras),
       shoppingChecks: normalizeDictionary(rawState.shoppingChecks),
+      ingredientPrices: normalizePriceBook(rawState.ingredientPrices),
       cookingChecks: normalizeDictionary(rawState.cookingChecks),
       history: Array.isArray(rawState.history) ? clone(rawState.history) : []
     };
@@ -321,7 +333,46 @@
     });
   }
 
-  function createCycleSnapshot(state, template) {
+  function priceKey(item) {
+    return item.id + '::' + item.unit;
+  }
+
+  function priceBasis(unit) {
+    if (unit === 'г') return { amount: 1000, label: '₽/кг' };
+    if (unit === 'мл') return { amount: 1000, label: '₽/л' };
+    return { amount: 1, label: '₽/' + unit };
+  }
+
+  function validPrice(book, key) {
+    if (!isRecord(book) || !Object.prototype.hasOwnProperty.call(book, key)) return null;
+    var value = book[key];
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+  }
+
+  function priceShoppingItems(items, priceBook, defaultPrices) {
+    return (items || []).map(function (item) {
+      var key = priceKey(item);
+      var savedPrice = validPrice(priceBook, key);
+      var fallbackPrice = validPrice(defaultPrices, key);
+      var unitPrice = savedPrice !== null ? savedPrice : fallbackPrice;
+      var basis = priceBasis(item.unit);
+      return Object.assign({}, item, {
+        priceKey: key,
+        priceLabel: basis.label,
+        unitPriceRub: unitPrice,
+        lineCostRub: unitPrice === null ? null : Math.round((Number(item.amount) || 0) / basis.amount * unitPrice),
+        hasPrice: unitPrice !== null
+      });
+    });
+  }
+
+  function calculateShoppingTotal(items) {
+    return Math.round((items || []).reduce(function (total, item) {
+      return total + (Number.isFinite(item.lineCostRub) ? item.lineCostRub : 0);
+    }, 0));
+  }
+
+  function createCycleSnapshot(state, template, catalog, defaultPrices) {
     var cycle = state && state.activeCycle ? state.activeCycle : {};
     var cyclePrefix = (cycle.id || '') + ':';
     var completedMeals = Object.keys(state && state.completions || {}).filter(function (key) {
@@ -337,6 +388,16 @@
       var end = new Date(startUtc + 13 * 86400000);
       endDate = end.toISOString().slice(0, 10);
     }
+    var pricedShopping = [];
+    if (Array.isArray(catalog)) {
+      [1, 2].forEach(function (week) {
+        var items = buildShoppingList(template, state, catalog, week);
+        pricedShopping = pricedShopping.concat(priceShoppingItems(items, state && state.ingredientPrices, defaultPrices));
+      });
+    }
+    var shoppingCostRub = pricedShopping.length && pricedShopping.every(function (item) { return item.hasPrice; })
+      ? calculateShoppingTotal(pricedShopping)
+      : null;
     return {
       id: cycle.id || '',
       templateId: cycle.templateId || 'plan-14-v1',
@@ -346,6 +407,7 @@
       plannedMeals: plannedMeals,
       adherencePercent: plannedMeals ? Math.round(completedMeals / plannedMeals * 100) : 0,
       trainingDays: trainingDays,
+      shoppingCostRub: shoppingCostRub,
       overrides: clone(state && state.overrides || {}),
       completions: clone(state && state.completions || {}),
       notes: clone(state && state.notes || {}),
@@ -373,6 +435,7 @@
       trainingDays: {},
       trainingExtras: {},
       shoppingChecks: {},
+      ingredientPrices: clone(safeState.ingredientPrices),
       cookingChecks: {},
       history: history
     };
@@ -394,6 +457,10 @@
     resolveDayPlan: resolveDayPlan,
     calculateDaySummary: calculateDaySummary,
     buildShoppingList: buildShoppingList,
+    priceKey: priceKey,
+    priceBasis: priceBasis,
+    priceShoppingItems: priceShoppingItems,
+    calculateShoppingTotal: calculateShoppingTotal,
     createCycleSnapshot: createCycleSnapshot,
     startNextCycle: startNextCycle
   };

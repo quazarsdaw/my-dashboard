@@ -221,6 +221,32 @@ test('does not add outside meals to the grocery shopping list', () => {
   assert.equal(shopping.some((item) => item.id === 'chicken'), true);
 });
 
+test('prices shopping amounts by kilogram, litre and item', () => {
+  const priced = NutritionCore.priceShoppingItems([
+    ingredient('chicken', 'курица', 300, 'г', 'protein'),
+    ingredient('milk', 'молоко', 500, 'мл', 'dairy'),
+    ingredient('eggs', 'яйца', 4, 'шт', 'protein')
+  ], {
+    'chicken::г': 500,
+    'milk::мл': 120,
+    'eggs::шт': 12
+  }, {});
+
+  assert.deepEqual(priced.map((item) => item.priceLabel), ['₽/кг', '₽/л', '₽/шт']);
+  assert.deepEqual(priced.map((item) => item.lineCostRub), [150, 60, 48]);
+  assert.equal(NutritionCore.calculateShoppingTotal(priced), 258);
+});
+
+test('uses defaults only when a saved ingredient price is absent', () => {
+  const priced = NutritionCore.priceShoppingItems([
+    ingredient('oats', 'овсяные хлопья', 500)
+  ], { 'oats::г': 240 }, { 'oats::г': 180 });
+
+  assert.equal(priced[0].unitPriceRub, 240);
+  assert.equal(priced[0].lineCostRub, 120);
+  assert.equal(priced[0].hasPrice, true);
+});
+
 test('normalizes damaged state while preserving supported cycle data', () => {
   const normalized = NutritionCore.normalizeState({
     version: 1,
@@ -230,6 +256,12 @@ test('normalizes damaged state while preserving supported cycle data', () => {
     notes: 'broken',
     trainingDays: [],
     shoppingChecks: null,
+    ingredientPrices: {
+      'oats::г': 180,
+      'negative::г': -1,
+      'broken::шт': 'дорого',
+      'free::шт': 0
+    },
     cookingChecks: null,
     history: 'broken'
   }, '2026-07-17');
@@ -239,7 +271,23 @@ test('normalizes damaged state while preserving supported cycle data', () => {
   assert.deepEqual(normalized.overrides, {});
   assert.equal(normalized.completions['cycle-custom:1:breakfast'], true);
   assert.deepEqual(normalized.notes, {});
+  assert.deepEqual(normalized.ingredientPrices, { 'oats::г': 180, 'free::шт': 0 });
   assert.deepEqual(normalized.history, []);
+});
+
+test('stores an immutable two-week shopping cost in a cycle snapshot', () => {
+  const state = NutritionCore.createDefaultState('2026-07-01');
+  state.ingredientPrices = {
+    'oats::г': 200,
+    'rice::г': 100,
+    'chicken::г': 500,
+    'potato::г': 50
+  };
+
+  const snapshot = NutritionCore.createCycleSnapshot(state, template, seedMeals, {});
+  state.ingredientPrices['chicken::г'] = 900;
+
+  assert.equal(snapshot.shoppingCostRub, 342);
 });
 
 test('starts a new cycle with a snapshot and clean active collections', () => {
@@ -255,6 +303,7 @@ test('starts a new cycle with a snapshot and clean active collections', () => {
   assert.deepEqual(next.overrides, {});
   assert.deepEqual(next.completions, {});
   assert.deepEqual(next.trainingDays, {});
+  assert.deepEqual(next.ingredientPrices, state.ingredientPrices);
   assert.equal(next.history.length, 1);
   assert.equal(next.history[0].completedMeals, 1);
   assert.equal(next.history[0].trainingDays, 1);
