@@ -185,6 +185,24 @@ test('clears cached plans without deleting the active session or its plan', () =
   assert.equal(CookingCore.getCachedPlan(invalidated, 'active-plan').week, 1);
 });
 
+test('migrates the calibration order from completed legacy sessions', () => {
+  const migrated = CookingCore.normalizeCookingStore({
+    version: 1,
+    sessionsById: {
+      later: { id: 'later', status: 'completed', completedAt: 200, calibrationBase: {}, calibrationResult: {} },
+      running: { id: 'running', status: 'running', createdAt: 150 },
+      earlier: { id: 'earlier', status: 'completed', completedAt: 100, calibrationBase: {}, calibrationResult: {} }
+    }
+  });
+
+  assert.deepEqual(migrated.calibrationSessionIds, ['earlier', 'later']);
+  const resetStore = CookingCore.normalizeCookingStore({
+    sessionsById: migrated.sessionsById,
+    calibrationSessionIds: []
+  });
+  assert.deepEqual(resetStore.calibrationSessionIds, [], 'явный пустой список после сброса не восстанавливает старую историю');
+});
+
 test('requires an ai plan to cover every cooking batch exactly', () => {
   const demand = {
     batches: [

@@ -253,7 +253,17 @@
     empty.activeSessionId = typeof raw.activeSessionId === 'string' ? raw.activeSessionId : null;
     empty.lastSessionId = typeof raw.lastSessionId === 'string' ? raw.lastSessionId : null;
     empty.lastSessionIdsByWeek = isRecord(raw.lastSessionIdsByWeek) ? clone(raw.lastSessionIdsByWeek) : {};
-    empty.calibrationSessionIds = cleanStringArray(raw.calibrationSessionIds);
+    if (Array.isArray(raw.calibrationSessionIds)) {
+      empty.calibrationSessionIds = cleanStringArray(raw.calibrationSessionIds);
+    } else {
+      empty.calibrationSessionIds = Object.keys(empty.sessionsById).map(function (id) {
+        return empty.sessionsById[id];
+      }).filter(function (session) {
+        return session && session.status === 'completed' && isRecord(session.calibrationBase) && isRecord(session.calibrationResult);
+      }).sort(function (left, right) {
+        return Number(left.completedAt || left.createdAt || 0) - Number(right.completedAt || right.createdAt || 0);
+      }).map(function (session) { return session.id; }).filter(Boolean);
+    }
     return empty;
   }
 
