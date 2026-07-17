@@ -7,13 +7,17 @@ function read(file) {
   return fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 }
 
-test('nutrition controller persists both state layers through gamification storage', () => {
+test('nutrition controller persists menu, kitchen and cooking state through gamification storage', () => {
   const js = read('nutrition.js');
+  const profile = read('profile.html');
 
   assert.ok(js.includes("STATE_KEY = 'nutrition_state_v1'"));
   assert.ok(js.includes("MEALS_KEY = 'nutrition_meals_v1'"));
   assert.ok(js.includes('Gamification.storeSet(STATE_KEY'));
   assert.ok(js.includes('Gamification.storeSet(MEALS_KEY'));
+  assert.ok(profile.includes("'nutrition_kitchen_profile_v1'"));
+  assert.ok(profile.includes("'nutrition_cooking_plans_v1'"));
+  assert.equal(profile.includes("'openrouter_settings_v1'"), false);
 });
 
 test('nutrition controller synchronizes hash, desktop navigation and mobile selection', () => {

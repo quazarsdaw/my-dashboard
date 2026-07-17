@@ -1,0 +1,253 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+
+let CookingCore = null;
+try {
+  CookingCore = require('../nutrition-cooking-core.js');
+} catch (_) {
+  CookingCore = null;
+}
+
+function range(min, max) {
+  return { min, max };
+}
+
+function meal(id, title, mealType = 'lunch') {
+  return {
+    id,
+    source: 'seed',
+    mealType,
+    title,
+    tags: [],
+    prepMinutes: range(20, 30),
+    caloriesApprox: range(500, 600),
+    proteinApprox: range(25, 35),
+    estimatedCostRub: range(150, 200),
+    ingredients: [{ id: `${id}-base`, name: 'основа', amount: 100, unit: 'г', category: 'bases' }],
+    instructions: ['подготовить продукты', 'приготовить до готовности'],
+    notes: ''
+  };
+}
+
+const catalog = [
+  meal('meal-rice', 'рис с курицей'),
+  meal('meal-fish', 'рыба с картофелем', 'dinner'),
+  meal('meal-eggs', 'яйца с творогом', 'breakfast'),
+  meal('meal-oats', 'овсянка', 'breakfast')
+];
+
+const plan = {
+  id: 'plan-14-v1',
+  days: Array.from({ length: 14 }, (_, index) => ({
+    day: index + 1,
+    meals: {
+      breakfast: index === 0 ? 'meal-eggs' : 'meal-oats',
+      lunch: index < 7 ? 'meal-rice' : 'meal-fish',
+      dinner: 'meal-fish'
+    }
+  }))
+};
+
+function state() {
+  return {
+    activeCycle: { id: 'cycle-test', startDate: '2026-07-18' },
+    overrides: {}
+  };
+}
+
+test('creates the approved extended kitchen profile by default', () => {
+  assert.ok(CookingCore, 'nutrition-cooking-core.js должен существовать');
+  const profile = CookingCore.createDefaultKitchenProfile();
+
+  assert.equal(profile.activeMode, 'extended');
+  assert.equal(profile.modes.extended.kitchenOutlets, 2);
+  assert.equal(profile.modes.extended.roomOutlets, 2);
+  assert.equal(profile.modes.winter.roomOutlets, 0);
+  assert.equal(profile.calibration.defaultActiveFactor, 1.5);
+  assert.equal(profile.resources.filter((item) => item.type === 'burner').length, 3);
+  assert.equal(profile.resources.find((item) => item.id === 'air-fryer').preferredLocation, 'room');
+  assert.equal(profile.resources.find((item) => item.id === 'multicooker').preferredLocation, 'room');
+});
+
+test('normalizes a damaged kitchen profile without mutating it', () => {
+  const damaged = {
+    activeMode: 'unknown',
+    modes: { extended: { kitchenOutlets: -5, roomOutlets: 'two' } },
+    calibration: { defaultActiveFactor: 99, factors: { prep: 0 } },
+    resources: [{ id: 'fake', type: 'laser' }]
+  };
+  const snapshot = JSON.stringify(damaged);
+
+  const normalized = CookingCore.normalizeKitchenProfile(damaged);
+
+  assert.equal(JSON.stringify(damaged), snapshot);
+  assert.equal(normalized.activeMode, 'extended');
+  assert.equal(normalized.modes.extended.kitchenOutlets, 2);
+  assert.equal(normalized.calibration.defaultActiveFactor, 1.5);
+  assert.equal(normalized.calibration.factors.prep, undefined);
+  assert.equal(normalized.resources.some((item) => item.id === 'fake'), false);
+});
+
+test('exposes concrete outlets for the active kitchen mode', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+
+  assert.deepEqual(
+    CookingCore.getActiveOutletPool(profile).map((item) => `${item.location}:${item.id}`),
+    ['kitchen:kitchen-outlet-1', 'kitchen:kitchen-outlet-2', 'room:room-outlet-1', 'room:room-outlet-2']
+  );
+
+  profile.activeMode = 'winter';
+  assert.deepEqual(
+    CookingCore.getActiveOutletPool(profile).map((item) => item.id),
+    ['kitchen-outlet-1', 'kitchen-outlet-2']
+  );
+});
+
+test('groups repeated meals into stable weekly batches', () => {
+  const demand = CookingCore.buildCookingDemand(plan, state(), catalog, 1);
+  const rice = demand.batches.find((item) => item.mealId === 'meal-rice');
+  const eggs = demand.batches.find((item) => item.mealId === 'meal-eggs');
+
+  assert.equal(rice.strategy, 'batch');
+  assert.equal(rice.portions, 7);
+  assert.deepEqual(rice.servingDays, [1, 2, 3, 4, 5, 6, 7]);
+  assert.match(rice.label, /^партия /);
+  assert.equal(Number.isInteger(rice.colorIndex), true);
+  assert.equal(eggs.strategy, 'serve-day');
+  assert.equal(eggs.portions, 1);
+});
+
+test('changes only the affected week fingerprint after a replacement', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+  const current = state();
+  const beforeWeekOne = CookingCore.createPlanFingerprint(
+    CookingCore.buildCookingDemand(plan, current, catalog, 1),
+    profile
+  );
+  const beforeWeekTwo = CookingCore.createPlanFingerprint(
+    CookingCore.buildCookingDemand(plan, current, catalog, 2),
+    profile
+  );
+
+  current.overrides['cycle-test:2:lunch'] = 'meal-fish';
+  const afterWeekOne = CookingCore.createPlanFingerprint(
+    CookingCore.buildCookingDemand(plan, current, catalog, 1),
+    profile
+  );
+  const afterWeekTwo = CookingCore.createPlanFingerprint(
+    CookingCore.buildCookingDemand(plan, current, catalog, 2),
+    profile
+  );
+
+  assert.notEqual(afterWeekOne, beforeWeekOne);
+  assert.equal(afterWeekTwo, beforeWeekTwo);
+});
+
+test('stores plans by hash and invalidates one cycle week', () => {
+  let store = CookingCore.createEmptyCookingStore();
+  store = CookingCore.putCachedPlan(store, {
+    planHash: 'hash-1', cycleId: 'cycle-test', week: 1, status: 'ready'
+  });
+  store = CookingCore.putCachedPlan(store, {
+    planHash: 'hash-2', cycleId: 'cycle-test', week: 2, status: 'ready'
+  });
+
+  assert.equal(CookingCore.getCachedPlan(store, 'hash-1').week, 1);
+  const invalidated = CookingCore.invalidateWeek(store, 'cycle-test', 1);
+  assert.equal(CookingCore.getCachedPlan(invalidated, 'hash-1'), null);
+  assert.equal(CookingCore.getCachedPlan(invalidated, 'hash-2').week, 2);
+  assert.equal(CookingCore.getCachedPlan(store, 'hash-1').week, 1, 'исходное хранилище не мутируется');
+});
+
+function action(overrides = {}) {
+  return {
+    id: 'rice:wash',
+    batchId: 'batch-meal-rice',
+    title: 'промыть рис',
+    durationMinutes: 8,
+    mode: 'active',
+    category: 'prep',
+    dependsOn: [],
+    requires: {
+      equipmentTypes: [],
+      cookwareTypes: ['pot'],
+      outletCount: 0,
+      locationPreference: 'kitchen'
+    },
+    ...overrides
+  };
+}
+
+test('accepts a strict generated action contract', () => {
+  const result = CookingCore.validateGeneratedPlan({
+    batches: [{ id: 'batch-meal-rice', mealId: 'meal-rice', title: 'рис', portions: 3 }],
+    actions: [action()]
+  }, CookingCore.createDefaultKitchenProfile());
+
+  assert.equal(result.ok, true);
+  assert.equal(result.value.actions[0].title, 'промыть рис');
+  assert.deepEqual(result.errors, []);
+});
+
+test('rejects duplicate ids, unknown resources and missing dependencies', () => {
+  const result = CookingCore.validateGeneratedPlan({
+    batches: [{ id: 'batch-meal-rice', mealId: 'meal-rice', title: 'рис', portions: 3 }],
+    actions: [
+      action({ dependsOn: ['missing'], requires: { equipmentTypes: ['laser'], cookwareTypes: [], outletCount: 0, locationPreference: 'kitchen' } }),
+      action({ durationMinutes: -1 })
+    ]
+  }, CookingCore.createDefaultKitchenProfile());
+
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((item) => item.code === 'duplicate-action-id'));
+  assert.ok(result.errors.some((item) => item.code === 'unknown-resource'));
+  assert.ok(result.errors.some((item) => item.code === 'missing-dependency'));
+  assert.ok(result.errors.some((item) => item.code === 'invalid-duration'));
+});
+
+test('rejects cyclic generated actions', () => {
+  const result = CookingCore.validateGeneratedPlan({
+    batches: [{ id: 'batch-meal-rice', mealId: 'meal-rice', title: 'рис', portions: 3 }],
+    actions: [
+      action({ id: 'a', dependsOn: ['b'] }),
+      action({ id: 'b', dependsOn: ['a'] })
+    ]
+  }, CookingCore.createDefaultKitchenProfile());
+
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((item) => item.code === 'cyclic-dependency'));
+});
+
+test('builds a conservative sequential fallback from meal instructions', () => {
+  const demand = {
+    version: 1,
+    cycleId: 'cycle-test',
+    week: 1,
+    batches: [{
+      id: 'batch-rice',
+      mealId: 'rice',
+      title: 'рис',
+      portions: 3,
+      strategy: 'batch',
+      servingDays: [1, 2, 3],
+      meal: {
+        id: 'rice',
+        title: 'рис',
+        prepMinutes: range(20, 30),
+        instructions: ['промыть рис', 'варить рис 20 минут']
+      }
+    }]
+  };
+
+  const actions = CookingCore.buildFallbackActions(demand, CookingCore.createDefaultKitchenProfile());
+
+  assert.equal(actions.length, 3);
+  assert.equal(actions[0].mode, 'active');
+  assert.ok(actions[0].durationMinutes >= 15 * 1.5);
+  assert.equal(actions[1].mode, 'passive');
+  assert.equal(actions[1].durationMinutes, 20, 'физическое время варки не сокращается');
+  assert.deepEqual(actions[1].dependsOn, [actions[0].id]);
+  assert.match(actions[2].title, /разложить 3 порции/);
+  assert.deepEqual(actions[2].dependsOn, [actions[1].id]);
+  assert.equal(CookingCore.validateGeneratedPlan({ batches: demand.batches, actions }, CookingCore.createDefaultKitchenProfile()).ok, true);
+});
