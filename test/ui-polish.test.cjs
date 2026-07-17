@@ -126,6 +126,46 @@ test('dashboard title can be edited and persisted locally', () => {
   assert.ok(html.includes('keys.indexOf(DASHBOARD_TITLE_KEY)'));
 });
 
+test('dashboard title draft survives refresh and flushes through sync', () => {
+  const html = read('index.html');
+
+  assert.ok(html.includes("input.addEventListener('input'"));
+  assert.ok(html.includes("window.addEventListener('pagehide'"));
+  assert.ok(html.includes('syncDashboardTitle'));
+  assert.ok(html.includes('DashboardSync.forceSync(DASHBOARD_TITLE_KEY)'));
+});
+
+test('tracker sticky habit column masks the scroll gutter', () => {
+  const html = read('tracker.html');
+
+  assert.ok(html.includes('box-shadow:-16px 0 0 #1C1E24'));
+});
+
+test('tracker asks before deleting a habit', () => {
+  const html = read('tracker.html');
+
+  const confirmIndex = html.indexOf("confirm('Удалить привычку «' + habit.name + '»?')");
+  const spliceIndex = html.indexOf('arr.splice(parseInt(btn.dataset.idx, 10), 1)');
+
+  assert.ok(confirmIndex !== -1);
+  assert.ok(spliceIndex !== -1);
+  assert.ok(confirmIndex < spliceIndex);
+});
+
+test('tracker supports inline habit renaming without replacing its id', () => {
+  const html = read('tracker.html');
+
+  assert.ok(html.includes('class="habit-name-wrap"'));
+  assert.ok(html.includes('class="habit-name-text"'));
+  assert.ok(html.includes('class="habit-edit"'));
+  assert.ok(html.includes('function startHabitNameEdit'));
+  assert.ok(html.includes('habit.name = nextName'));
+  assert.ok(html.includes('.habit-name-wrap{display:flex;align-items:center;min-width:0;width:100%}'));
+  assert.ok(html.includes('width:22px;height:22px;flex:0 0 22px'));
+  assert.ok(html.includes('.habit-edit{opacity:0.55}'));
+  assert.ok(!html.includes('habit.id ='));
+});
+
 test('profile editor offers persisted gradient choices', () => {
   const html = read('profile.html');
 
