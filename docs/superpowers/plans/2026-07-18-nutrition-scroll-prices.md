@@ -264,4 +264,3 @@ Run a full code review against `origin/main`; fix all correctness, persistence, 
 - [ ] **Step 3: Push and open the pull request**
 
 Push `feature/nutrition-scroll-prices` and open a non-draft pull request with a detailed lowercase russian description covering the cause, implementation, persistence migration, expense history semantics, visual impact, tests, and `closes #34` / `closes #35`.
-
