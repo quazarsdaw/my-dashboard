@@ -98,18 +98,29 @@ test('nutrition page provides clickable desktop and mobile section navigation', 
   assert.ok(html.includes('class="nutrition-main"'));
   assert.ok(html.includes('id="healthContext"'));
   assert.ok(html.includes('class="cooking-week-context"'));
-  assert.ok(html.includes('готовка на неделю'));
+  assert.ok(html.includes('id="cycleBatchRail"'));
+  assert.ok(html.includes('id="cookingTimeline"'));
+  assert.ok(html.includes('id="cookingNow"'));
+  assert.ok(html.includes('@media(max-width:760px)'));
+  assert.ok(html.includes('.cycle-calendar{display:block;'));
+  assert.ok(html.includes('@media(prefers-reduced-motion:reduce)'));
 });
 
 test('nutrition scripts load data and pure logic before the page controller', () => {
   const html = read('menu.html');
   const dataPosition = html.indexOf('nutrition-data.js');
   const corePosition = html.indexOf('nutrition-core.js');
+  const cookingCorePosition = html.indexOf('nutrition-cooking-core.js');
+  const schedulerPosition = html.indexOf('nutrition-scheduler.js');
+  const openRouterPosition = html.indexOf('nutrition-openrouter.js');
   const controllerPosition = html.indexOf('nutrition.js');
 
   assert.ok(dataPosition !== -1);
   assert.ok(corePosition > dataPosition);
-  assert.ok(controllerPosition > corePosition);
+  assert.ok(cookingCorePosition > corePosition);
+  assert.ok(schedulerPosition > cookingCorePosition);
+  assert.ok(openRouterPosition > schedulerPosition);
+  assert.ok(controllerPosition > openRouterPosition);
 });
 
 test('profile backup includes nutrition state and imported meals', () => {
@@ -117,6 +128,8 @@ test('profile backup includes nutrition state and imported meals', () => {
 
   assert.ok(html.includes("'nutrition_meals_v1'"));
   assert.ok(html.includes("'nutrition_state_v1'"));
+  assert.ok(html.includes("'nutrition_kitchen_profile_v1'"));
+  assert.ok(html.includes("'nutrition_cooking_plans_v1'"));
 });
 
 test('day ring exposes an editable local sleep schedule with live preview', () => {

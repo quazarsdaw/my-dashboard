@@ -13,8 +13,12 @@ test('nutrition controller persists menu, kitchen and cooking state through gami
 
   assert.ok(js.includes("STATE_KEY = 'nutrition_state_v1'"));
   assert.ok(js.includes("MEALS_KEY = 'nutrition_meals_v1'"));
+  assert.ok(js.includes("KITCHEN_PROFILE_KEY = 'nutrition_kitchen_profile_v1'"));
+  assert.ok(js.includes("COOKING_PLANS_KEY = 'nutrition_cooking_plans_v1'"));
   assert.ok(js.includes('Gamification.storeSet(STATE_KEY'));
   assert.ok(js.includes('Gamification.storeSet(MEALS_KEY'));
+  assert.ok(js.includes('Gamification.storeSet(KITCHEN_PROFILE_KEY'));
+  assert.ok(js.includes('Gamification.storeSet(COOKING_PLANS_KEY'));
   assert.ok(profile.includes("'nutrition_kitchen_profile_v1'"));
   assert.ok(profile.includes("'nutrition_cooking_plans_v1'"));
   assert.equal(profile.includes("'openrouter_settings_v1'"), false);
@@ -37,8 +41,39 @@ test('nutrition controller renders every approved view and weekly preparation in
     assert.ok(js.includes(`function ${name}(`), name);
   });
   assert.ok(js.includes('NutritionCore.buildShoppingList'));
-  assert.ok(js.includes('NutritionData.cookingSessions'));
+  assert.ok(js.includes('NutritionCookingCore.buildCookingDemand'));
+  assert.ok(js.includes('NutritionCookingCore.buildFallbackActions'));
+  assert.ok(js.includes('NutritionScheduler.scheduleActions'));
+  assert.equal(js.includes('NutritionData.cookingSessions'), false);
   assert.ok(js.includes('cookingWeek'));
+});
+
+test('nutrition controller renders weekly calendar batches and invalidates only a replaced week', () => {
+  const html = read('menu.html');
+  const js = read('nutrition.js');
+
+  assert.ok(html.includes('id="cycleWeekTabs"'));
+  assert.ok(html.includes('id="cycleBatchRail"'));
+  assert.ok(html.includes('class="cycle-workspace"'));
+  assert.ok(js.includes("setAttribute('data-batch-id'"));
+  assert.ok(js.includes('activeBatchId'));
+  assert.ok(js.includes('NutritionCookingCore.invalidateWeek'));
+  assert.ok(js.includes('scheduleCookingGeneration'));
+});
+
+test('nutrition controller exposes all cooking plan states and resource timeline controls', () => {
+  const html = read('menu.html');
+  const js = read('nutrition.js');
+
+  ['ready', 'generating', 'stale', 'fallback', 'error'].forEach((state) => {
+    assert.ok(js.includes(`'${state}'`), state);
+  });
+  assert.ok(html.includes('id="kitchenModeSelect"'));
+  assert.ok(html.includes('id="regenerateCookingBtn"'));
+  assert.ok(html.includes('id="clearCookingCacheBtn"'));
+  assert.ok(html.includes('id="cookingTimeline"'));
+  assert.ok(html.includes('id="cookingNow"'));
+  assert.ok(js.includes('function ensureCookingPlan('));
 });
 
 test('nutrition controller supports completion, notes, replacement and training extras', () => {

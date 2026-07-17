@@ -3,6 +3,8 @@
 
   var STATE_KEY = 'nutrition_state_v1';
   var MEALS_KEY = 'nutrition_meals_v1';
+  var KITCHEN_PROFILE_KEY = 'nutrition_kitchen_profile_v1';
+  var COOKING_PLANS_KEY = 'nutrition_cooking_plans_v1';
   var DEFAULT_VIEW = 'today';
   var VIEWS = ['today', 'cycle', 'dishes', 'shopping', 'cooking', 'history'];
   var MAIN_SLOTS = ['breakfast', 'lunch', 'dinner'];
@@ -10,17 +12,28 @@
   var Gamification = window.Gamification;
   var NutritionCore = window.NutritionCore;
   var NutritionData = window.NutritionData;
+  var NutritionCookingCore = window.NutritionCookingCore;
+  var NutritionScheduler = window.NutritionScheduler;
+  var NutritionOpenRouter = window.NutritionOpenRouter;
 
-  if (!Gamification || !NutritionCore || !NutritionData) return;
+  if (!Gamification || !NutritionCore || !NutritionData || !NutritionCookingCore || !NutritionScheduler || !NutritionOpenRouter) return;
 
   var state;
   var importedMeals = [];
   var catalog = [];
   var selectedDay = 1;
+  var cycleWeek = 1;
   var shoppingWeek = 1;
   var cookingWeek = 1;
   var activeView = DEFAULT_VIEW;
   var replacementTarget = null;
+  var activeBatchId = null;
+  var kitchenProfile;
+  var cookingStore;
+  var cookingClient = NutritionOpenRouter.createOpenRouterCookingClient({});
+  var cookingUiState = { 1: 'fallback', 2: 'fallback' };
+  var cookingUiError = { 1: '', 2: '' };
+  var generationTimers = {};
 
   function getStored(key) {
     return Gamification.storeGet(key);
@@ -32,6 +45,21 @@
 
   function saveImportedMeals() {
     Gamification.storeSet(MEALS_KEY, { version: 1, meals: importedMeals });
+  }
+
+  function saveKitchenProfile() {
+    Gamification.storeSet(KITCHEN_PROFILE_KEY, kitchenProfile);
+  }
+
+  function saveCookingStore() {
+    Gamification.storeSet(COOKING_PLANS_KEY, cookingStore);
+  }
+
+  function loadCookingData() {
+    kitchenProfile = NutritionCookingCore.normalizeKitchenProfile(getStored(KITCHEN_PROFILE_KEY));
+    cookingStore = NutritionCookingCore.normalizeCookingStore(getStored(COOKING_PLANS_KEY));
+    if (!getStored(KITCHEN_PROFILE_KEY)) saveKitchenProfile();
+    if (!getStored(COOKING_PLANS_KEY)) saveCookingStore();
   }
 
   function loadImportedMeals() {
@@ -136,6 +164,144 @@
 
   function currentDayPlan(dayNumber) {
     return NutritionCore.resolveDayPlan(NutritionData.plan14, state, dayNumber, catalog);
+  }
+
+  function getWeekDemand(week) {
+    return NutritionCookingCore.buildCookingDemand(NutritionData.plan14, state, catalog, week);
+  }
+
+  function getOpenRouterSettings() {
+    var stored = getStored('openrouter_settings_v1');
+    return stored && typeof stored === 'object' ? stored : {};
+  }
+
+  function formatMinutes(value) {
+    var minutes = Math.max(0, Math.round(Number(value) || 0));
+    var hours = Math.floor(minutes / 60);
+    var rest = minutes % 60;
+    if (!hours) return rest + ' мин';
+    return hours + ' ч' + (rest ? ' ' + rest + ' мин' : '');
+  }
+
+  function buildFallbackPlan(demand, planHash) {
+    var actions = NutritionCookingCore.buildFallbackActions(demand, kitchenProfile);
+    var scheduled = NutritionScheduler.scheduleActions(actions, kitchenProfile);
+    return {
+      version: 1,
+      planHash: planHash,
+      cycleId: demand.cycleId,
+      week: demand.week,
+      model: '',
+      generatedAt: new Date().toISOString(),
+      status: scheduled.ok ? 'fallback' : 'error',
+      source: 'fallback',
+      batches: demand.batches,
+      actions: actions,
+      schedule: scheduled.ok ? scheduled.schedule : [],
+      estimate: scheduled.ok ? scheduled.estimate : { minMinutes: 0, maxMinutes: 0 },
+      peakOutlets: scheduled.ok ? scheduled.peakOutlets : 0,
+      warnings: scheduled.ok
+        ? ['последовательный план собран локально из инструкций блюд']
+        : ['не удалось построить резервный план']
+    };
+  }
+
+  function planMatchesDemand(plan, demand) {
+    if (!plan || !Array.isArray(plan.actions)) return false;
+    var batchIds = {};
+    demand.batches.forEach(function (batch) { batchIds[batch.id] = true; });
+    return plan.actions.every(function (action) { return batchIds[action.batchId] === true; });
+  }
+
+  function createAiPlan(demand, planHash, result) {
+    if (!result.ok || !planMatchesDemand(result.value, demand)) return null;
+    var scheduled = NutritionScheduler.scheduleActions(result.value.actions, kitchenProfile);
+    if (!scheduled.ok) return null;
+    return {
+      version: 1,
+      planHash: planHash,
+      cycleId: demand.cycleId,
+      week: demand.week,
+      model: result.model || '',
+      generatedAt: new Date().toISOString(),
+      status: 'ready',
+      source: 'ai',
+      batches: demand.batches,
+      actions: result.value.actions,
+      schedule: scheduled.schedule,
+      estimate: scheduled.estimate,
+      peakOutlets: scheduled.peakOutlets,
+      warnings: scheduled.warnings || []
+    };
+  }
+
+  function requestAiCookingPlan(week, demand, planHash) {
+    var settings = getOpenRouterSettings();
+    if (!settings.key) {
+      cookingUiState[week] = 'fallback';
+      cookingUiError[week] = '';
+      return;
+    }
+    cookingUiState[week] = 'generating';
+    cookingUiError[week] = '';
+    if (activeView === 'cooking' && cookingWeek === week) renderCooking();
+    if (activeView === 'cycle' && cycleWeek === week) renderBatchRail(demand, NutritionCookingCore.getCachedPlan(cookingStore, planHash));
+
+    cookingClient.decompose({
+      apiKey: settings.key,
+      model: settings.model || 'google/gemini-2.0-flash-001',
+      demand: demand,
+      profile: kitchenProfile
+    }).then(function (result) {
+      var currentDemand = getWeekDemand(week);
+      var currentHash = NutritionCookingCore.createPlanFingerprint(currentDemand, kitchenProfile);
+      if (currentHash !== planHash) return;
+      var aiPlan = createAiPlan(demand, planHash, result);
+      if (aiPlan) {
+        cookingStore = NutritionCookingCore.putCachedPlan(cookingStore, aiPlan);
+        saveCookingStore();
+        cookingUiState[week] = 'ready';
+        cookingUiError[week] = '';
+      } else {
+        cookingUiState[week] = 'error';
+        cookingUiError[week] = result && result.error ? result.error.message : 'план не прошёл локальную проверку';
+      }
+      if (activeView === 'cycle' && cycleWeek === week) renderCycle();
+      if (activeView === 'cooking' && cookingWeek === week) renderCooking();
+    });
+  }
+
+  function ensureCookingPlan(week, options) {
+    var demand = getWeekDemand(week);
+    var planHash = NutritionCookingCore.createPlanFingerprint(demand, kitchenProfile);
+    var cached = NutritionCookingCore.getCachedPlan(cookingStore, planHash);
+    if (!cached) {
+      cached = buildFallbackPlan(demand, planHash);
+      cookingStore = NutritionCookingCore.putCachedPlan(cookingStore, cached);
+      saveCookingStore();
+    }
+    if (cookingUiState[week] !== 'generating' && cookingUiState[week] !== 'stale' && cookingUiState[week] !== 'error') {
+      cookingUiState[week] = cached.status === 'ready' ? 'ready' : 'fallback';
+    }
+    var settings = getOpenRouterSettings();
+    if (settings.key && cookingUiState[week] !== 'generating' && (
+      options && options.forceAi || cookingUiState[week] !== 'stale' && cached.source !== 'ai'
+    )) {
+      requestAiCookingPlan(week, demand, planHash);
+    }
+    return cached;
+  }
+
+  function scheduleCookingGeneration(week, delay) {
+    cookingUiState[week] = 'stale';
+    cookingUiError[week] = '';
+    if (generationTimers[week]) clearTimeout(generationTimers[week]);
+    generationTimers[week] = setTimeout(function () {
+      delete generationTimers[week];
+      ensureCookingPlan(week, { forceAi: true });
+      if (activeView === 'cycle' && cycleWeek === week) renderCycle();
+      if (activeView === 'cooking' && cookingWeek === week) renderCooking();
+    }, Number(delay) || 450);
   }
 
   function renderView(view) {
@@ -382,47 +548,141 @@
     });
     renderTrainingExtra(trainingExtra);
     var week = getWeekForDay(selectedDay);
+    var quickPlan = ensureCookingPlan(week);
     var shoppingMeta = document.getElementById('shoppingQuickMeta');
     var cookingMeta = document.getElementById('cookingQuickMeta');
     if (shoppingMeta) shoppingMeta.textContent = 'неделя ' + week;
-    if (cookingMeta) cookingMeta.textContent = 'неделя ' + week + ' · ≈80–100 мин';
+    if (cookingMeta) cookingMeta.textContent = 'неделя ' + week + ' · ' + formatMinutes(quickPlan.estimate.minMinutes) + '–' + formatMinutes(quickPlan.estimate.maxMinutes);
     renderCycleCompleteActions();
   }
 
   function renderCycle() {
     var grid = document.getElementById('cycleGrid');
+    var rail = document.getElementById('cycleBatchRail');
+    if (!grid || !rail) return;
     clearElement(grid);
+    var demand = getWeekDemand(cycleWeek);
+    var cookingPlan = ensureCookingPlan(cycleWeek);
+    var occurrenceBatches = {};
+    demand.batches.forEach(function (batch) {
+      batch.occurrences.forEach(function (occurrence) {
+        occurrenceBatches[occurrence.day + ':' + occurrence.slot] = batch;
+      });
+    });
     var todayInfo = NutritionCore.getCycleDay(state.activeCycle.startDate, NutritionCore.getLocalDateKey());
-    for (var dayNumber = 1; dayNumber <= 14; dayNumber++) {
+    var startDay = cycleWeek === 1 ? 1 : 8;
+    var endDay = startDay + 6;
+    for (var dayNumber = startDay; dayNumber <= endDay; dayNumber++) {
       (function (day) {
         var plan = currentDayPlan(day);
         var extra = isTrainingDay(day) ? getTrainingExtra(day) : null;
         var summary = NutritionCore.calculateDaySummary(plan, catalog, extra);
-        var button = createElement('button', 'cycle-day');
-        button.type = 'button';
-        if (todayInfo && !todayInfo.completed && day === todayInfo.dayNumber) button.classList.add('current');
-        var head = createElement('div', 'cycle-day-head');
+        var column = createElement('section', 'calendar-day');
+        if (todayInfo && !todayInfo.completed && day === todayInfo.dayNumber) column.classList.add('current');
+        var head = createElement('header', 'calendar-day-head');
         appendChildren(head, [
-          createElement('span', 'cycle-day-number', 'день ' + day + (isTrainingDay(day) ? ' · тренировка' : '')),
-          createElement('span', 'cycle-day-date', formatDate(getDayDate(day), { day: 'numeric', month: 'short' }))
+          createElement('span', 'calendar-weekday', formatDate(getDayDate(day), { weekday: 'short' })),
+          createElement('span', 'calendar-date', formatDate(getDayDate(day), { day: 'numeric', month: 'short' })),
+          isTrainingDay(day) ? createElement('span', 'calendar-training', 'тренировка') : null
         ]);
-        button.appendChild(head);
-        var mealsList = createElement('div', 'cycle-meals');
+        column.appendChild(head);
+        var mealsList = createElement('div', 'calendar-meals');
         MAIN_SLOTS.forEach(function (slot) {
-          var selected = plan.meals[slot];
-          if (selected) mealsList.appendChild(createElement('span', '', SLOT_LABELS[slot] + ': ' + selected.title));
+          var meal = plan.meals[slot];
+          if (!meal) return;
+          var batch = occurrenceBatches[day + ':' + slot];
+          var button = createElement('button', 'calendar-meal');
+          button.type = 'button';
+          button.setAttribute('data-batch-id', batch ? batch.id : '');
+          if (batch) button.classList.add('batch-color-' + batch.colorIndex);
+          appendChildren(button, [
+            createElement('span', 'calendar-meal-type', SLOT_LABELS[slot]),
+            createElement('span', 'calendar-meal-title', meal.title),
+            createElement('span', 'calendar-meal-meta', formatRange(meal.caloriesApprox, 'ккал') + ' · ' + formatRange(meal.proteinApprox, 'г')),
+            createElement('span', 'calendar-batch-label', batch ? batch.label : 'готовить в день подачи')
+          ]);
+          button.addEventListener('click', function () {
+            selectedDay = day;
+            switchView('today');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+          mealsList.appendChild(button);
         });
-        button.appendChild(mealsList);
+        column.appendChild(mealsList);
         var completeCount = MAIN_SLOTS.filter(function (slot) { return state.completions[cycleKey(day, slot)] === true; }).length;
-        button.appendChild(createElement('div', 'cycle-day-summary', completeCount + '/3 · ' + formatRange(summary.caloriesApprox, 'ккал') + ' · ' + formatRange(summary.proteinApprox, 'г белка')));
-        button.addEventListener('click', function () {
-          selectedDay = day;
-          switchView('today');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        });
-        grid.appendChild(button);
+        head.title = completeCount + '/3 · ' + formatRange(summary.caloriesApprox, 'ккал');
+        grid.appendChild(column);
       })(dayNumber);
     }
+    renderBatchRail(demand, cookingPlan);
+    applyBatchHighlight();
+  }
+
+  function cookingStateLabel(week, plan) {
+    var stateName = cookingUiState[week] || plan && plan.status || 'fallback';
+    var labels = {
+      ready: 'план актуален',
+      generating: 'пересобирается',
+      stale: 'состав изменён',
+      fallback: 'локальный резервный план',
+      error: 'используется резервный план'
+    };
+    return { name: stateName, label: labels[stateName] || labels.fallback };
+  }
+
+  function batchScheduleMinutes(plan, batchId) {
+    return (plan && Array.isArray(plan.schedule) ? plan.schedule : []).filter(function (entry) {
+      return entry.batchId === batchId;
+    }).reduce(function (total, entry) { return total + entry.durationMinutes; }, 0);
+  }
+
+  function renderBatchRail(demand, plan) {
+    var rail = document.getElementById('cycleBatchRail');
+    if (!rail) return;
+    clearElement(rail);
+    var stateInfo = cookingStateLabel(cycleWeek, plan);
+    var head = createElement('div', 'batch-rail-head');
+    appendChildren(head, [
+      createElement('div', 'batch-rail-title', 'партии этой недели'),
+      createElement('div', 'batch-rail-status', stateInfo.label)
+    ]);
+    rail.appendChild(head);
+    var list = createElement('div', 'batch-rail-list');
+    demand.batches.forEach(function (batch) {
+      var button = createElement('button', 'batch-rail-item batch-color-' + batch.colorIndex);
+      button.type = 'button';
+      button.setAttribute('data-batch-id', batch.id);
+      if (activeBatchId === batch.id) button.classList.add('active');
+      var strategy = batch.strategy === 'batch'
+        ? batch.portions + ' порц. · дни ' + batch.servingDays.join(', ')
+        : batch.strategy === 'outside' ? 'без готовки' : 'в день подачи';
+      var minutes = batchScheduleMinutes(plan, batch.id);
+      appendChildren(button, [
+        createElement('strong', '', batch.title),
+        createElement('span', '', strategy + (minutes ? ' · ' + formatMinutes(minutes) : ''))
+      ]);
+      button.addEventListener('click', function () {
+        activeBatchId = activeBatchId === batch.id ? null : batch.id;
+        renderCycle();
+      });
+      list.appendChild(button);
+    });
+    rail.appendChild(list);
+    var open = createElement('button', 'primary-btn batch-rail-action', 'открыть готовку');
+    open.type = 'button';
+    open.addEventListener('click', function () {
+      setWeek('cooking', cycleWeek);
+      switchView('cooking');
+    });
+    rail.appendChild(open);
+  }
+
+  function applyBatchHighlight() {
+    document.querySelectorAll('[data-batch-id]').forEach(function (element) {
+      var batchId = element.getAttribute('data-batch-id');
+      element.classList.toggle('batch-active', Boolean(activeBatchId) && batchId === activeBatchId);
+      element.classList.toggle('batch-muted', Boolean(activeBatchId) && batchId !== activeBatchId);
+    });
   }
 
   function dishMatchesFilters(meal) {
@@ -560,41 +820,165 @@
   }
 
   function renderCooking() {
-    var container = document.getElementById('cookingSessions');
     var context = document.getElementById('cookingWeekContext');
-    if (!container) return;
-    clearElement(container);
-    if (context) context.textContent = 'готовка на неделю ' + cookingWeek;
-    var sessions = NutritionData.cookingSessions[cookingWeek] || [];
-    sessions.forEach(function (session) {
-      var block = createElement('section', 'cooking-session');
-      var head = createElement('div', 'cooking-session-head');
-      var title = createElement('div');
-      appendChildren(title, [
-        createElement('h3', 'cooking-session-title', session.title),
-        createElement('div', 'cooking-session-meta', session.scheduleLabel + ' · ' + session.durationLabel)
-      ]);
-      head.appendChild(title);
-      block.appendChild(head);
-      var list = createElement('div', 'prep-list');
-      session.steps.forEach(function (step) {
-        var key = state.activeCycle.id + ':' + cookingWeek + ':' + session.id + ':' + step.id;
-        var row = createElement('label', 'prep-step');
-        var checkbox = createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = state.cookingChecks[key] === true;
-        row.classList.toggle('checked', checkbox.checked);
-        checkbox.addEventListener('change', function () {
-          if (checkbox.checked) state.cookingChecks[key] = true;
-          else delete state.cookingChecks[key];
-          saveState();
-          row.classList.toggle('checked', checkbox.checked);
-        });
-        appendChildren(row, [checkbox, createElement('span', '', step.title)]);
-        list.appendChild(row);
+    var status = document.getElementById('cookingStatus');
+    var overview = document.getElementById('cookingOverview');
+    var timeline = document.getElementById('cookingTimeline');
+    var now = document.getElementById('cookingNow');
+    var legend = document.getElementById('cookingBatchLegend');
+    if (!context || !status || !overview || !timeline || !now || !legend) return;
+    var plan = ensureCookingPlan(cookingWeek);
+    var stateInfo = cookingStateLabel(cookingWeek, plan);
+    context.textContent = 'неделя ' + cookingWeek + ' · ' + plan.batches.length + ' партий';
+    status.className = 'cooking-status ' + stateInfo.name;
+    status.textContent = cookingUiError[cookingWeek] || stateInfo.label;
+    var modeSelect = document.getElementById('kitchenModeSelect');
+    if (modeSelect) modeSelect.value = kitchenProfile.activeMode;
+
+    clearElement(overview);
+    appendChildren(overview, [
+      createElement('strong', '', formatMinutes(plan.estimate.minMinutes) + '–' + formatMinutes(plan.estimate.maxMinutes)),
+      createElement('span', '', 'пик ' + plan.peakOutlets + ' роз.'),
+      createElement('span', '', plan.source === 'ai' ? 'openrouter · ' + (plan.model || 'модель') : 'локально · без api'),
+      createElement('span', '', plan.generatedAt ? 'обновлено ' + new Date(plan.generatedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '')
+    ]);
+    renderCookingTimeline(plan, timeline);
+    renderCookingNow(plan, now);
+    renderCookingLegend(plan, legend);
+    applyBatchHighlight();
+  }
+
+  function resourceTitle(resourceId) {
+    var resource = kitchenProfile.resources.find(function (item) { return item.id === resourceId; });
+    return resource ? resource.title : resourceId;
+  }
+
+  function timelineLanes(plan) {
+    var lanes = [{ id: 'user', title: 'ты', entries: plan.schedule.filter(function (entry) { return entry.userOccupied; }) }];
+    var resourceIds = [];
+    plan.schedule.forEach(function (entry) {
+      entry.equipmentIds.forEach(function (id) {
+        if (resourceIds.indexOf(id) === -1) resourceIds.push(id);
       });
-      block.appendChild(list);
-      container.appendChild(block);
+    });
+    resourceIds.forEach(function (id) {
+      lanes.push({
+        id: id,
+        title: resourceTitle(id),
+        entries: plan.schedule.filter(function (entry) { return entry.equipmentIds.indexOf(id) !== -1; })
+      });
+    });
+    var passiveWithoutEquipment = plan.schedule.filter(function (entry) {
+      return !entry.userOccupied && !entry.equipmentIds.length;
+    });
+    if (passiveWithoutEquipment.length) lanes.push({ id: 'process', title: 'ожидание', entries: passiveWithoutEquipment });
+    return lanes;
+  }
+
+  function renderCookingTimeline(plan, container) {
+    clearElement(container);
+    if (!plan.schedule.length) {
+      container.appendChild(createElement('div', 'cooking-empty', 'для этой недели нет действий готовки'));
+      return;
+    }
+    var duration = Math.max(1, plan.estimate.minMinutes);
+    var ruler = createElement('div', 'timeline-ruler');
+    ruler.appendChild(createElement('div', 'timeline-ruler-label', 'ресурс'));
+    var scale = createElement('div', 'timeline-scale');
+    [0, 25, 50, 75, 100].forEach(function (percent) {
+      var tick = createElement('span', 'timeline-tick', formatMinutes(duration * percent / 100));
+      tick.style.left = percent + '%';
+      scale.appendChild(tick);
+    });
+    ruler.appendChild(scale);
+    container.appendChild(ruler);
+
+    timelineLanes(plan).forEach(function (lane) {
+      var row = createElement('div', 'timeline-lane');
+      row.appendChild(createElement('div', 'timeline-lane-name', lane.title));
+      var track = createElement('div', 'timeline-track');
+      lane.entries.forEach(function (entry) {
+        var batch = plan.batches.find(function (item) { return item.id === entry.batchId; });
+        var block = createElement('button', 'timeline-block ' + entry.mode + ' batch-color-' + (batch ? batch.colorIndex : 0));
+        block.type = 'button';
+        block.setAttribute('data-batch-id', entry.batchId);
+        block.style.left = Math.min(100, entry.startMinute / duration * 100) + '%';
+        block.style.width = Math.max(2, (entry.endMinute - entry.startMinute) / duration * 100) + '%';
+        block.title = entry.title + ' · ' + entry.location + ' · ' + formatMinutes(entry.durationMinutes);
+        appendChildren(block, [
+          createElement('strong', '', entry.title),
+          createElement('span', '', formatMinutes(entry.startMinute) + ' → ' + formatMinutes(entry.endMinute))
+        ]);
+        block.addEventListener('click', function () {
+          activeBatchId = activeBatchId === entry.batchId ? null : entry.batchId;
+          renderCooking();
+        });
+        track.appendChild(block);
+      });
+      row.appendChild(track);
+      container.appendChild(row);
+    });
+  }
+
+  function actionMeta(entry) {
+    var pieces = [];
+    entry.equipmentIds.forEach(function (id) { pieces.push(resourceTitle(id)); });
+    entry.cookwareIds.forEach(function (id) { pieces.push(resourceTitle(id)); });
+    if (entry.outletIds.length) pieces.push(entry.location === 'room' ? 'комната' : 'кухня');
+    entry.outletIds.forEach(function (id) { pieces.push(id.replace('-outlet-', ' · розетка ')); });
+    return pieces.length ? pieces.join(' · ') : 'без отдельного оборудования';
+  }
+
+  function renderCookingNow(plan, container) {
+    clearElement(container);
+    var current = plan.schedule.find(function (entry) { return entry.userOccupied; }) || plan.schedule[0];
+    if (!current) {
+      container.appendChild(createElement('div', 'cooking-empty', 'готовить нечего'));
+      return;
+    }
+    var passive = plan.schedule.filter(function (entry) {
+      return !entry.userOccupied && entry.startMinute <= current.startMinute && entry.endMinute > current.startMinute;
+    });
+    var next = plan.schedule.find(function (entry) {
+      return entry.userOccupied && entry.startMinute >= current.endMinute && entry.actionId !== current.actionId;
+    });
+    appendChildren(container, [
+      createElement('div', 'cooking-now-eyebrow', 'делай сейчас'),
+      createElement('h3', 'cooking-now-title', current.title),
+      createElement('div', 'cooking-now-meta', formatMinutes(current.durationMinutes) + ' · ' + actionMeta(current)),
+      next ? createElement('div', 'cooking-now-meta', 'дальше: ' + next.title) : null
+    ]);
+    var passiveBlock = createElement('div', 'cooking-now-passive');
+    passiveBlock.appendChild(createElement('strong', '', 'параллельно'));
+    passiveBlock.appendChild(createElement('span', '', passive.length
+      ? passive.map(function (entry) { return entry.title + ' до ' + formatMinutes(entry.endMinute); }).join(' · ')
+      : 'пассивных процессов пока нет'));
+    container.appendChild(passiveBlock);
+    var actions = createElement('div', 'cooking-now-actions');
+    var start = createElement('button', 'primary-btn', 'начать');
+    var pause = createElement('button', 'quiet-btn', 'пауза');
+    var done = createElement('button', 'quiet-btn', 'готово');
+    var skip = createElement('button', 'quiet-btn', 'пропустить');
+    start.type = pause.type = done.type = skip.type = 'button';
+    start.id = 'cookingStartStepBtn';
+    pause.id = 'cookingPauseStepBtn';
+    done.id = 'cookingCompleteStepBtn';
+    skip.id = 'cookingSkipStepBtn';
+    appendChildren(actions, [start, pause, done, skip]);
+    container.appendChild(actions);
+  }
+
+  function renderCookingLegend(plan, container) {
+    clearElement(container);
+    plan.batches.filter(function (batch) { return batch.strategy !== 'outside'; }).forEach(function (batch) {
+      var button = createElement('button', 'cooking-batch-chip batch-color-' + batch.colorIndex, batch.label);
+      button.type = 'button';
+      button.setAttribute('data-batch-id', batch.id);
+      button.addEventListener('click', function () {
+        activeBatchId = activeBatchId === batch.id ? null : batch.id;
+        renderCooking();
+      });
+      container.appendChild(button);
     });
   }
 
@@ -632,13 +1016,19 @@
         createElement('span', '', formatRange(meal.caloriesApprox, 'ккал') + ' · ' + formatRange(meal.proteinApprox, 'г белка') + ' · ' + formatRange(meal.estimatedCostRub, '₽'))
       ]);
       button.addEventListener('click', function () {
+        var affectedWeek = getWeekForDay(replacementTarget.day);
         var key = cycleKey(replacementTarget.day, replacementTarget.slot);
         state.overrides[key] = meal.id;
         saveState();
+        cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, affectedWeek);
+        saveCookingStore();
+        activeBatchId = null;
+        scheduleCookingGeneration(affectedWeek, 450);
         closeReplaceDialog();
         renderToday();
         renderCycle();
         renderShopping();
+        renderCooking();
       });
       list.appendChild(button);
     });
@@ -665,12 +1055,14 @@
 
   function setWeek(kind, week) {
     var safeWeek = Number(week) === 2 ? 2 : 1;
+    if (kind === 'cycle') cycleWeek = safeWeek;
     if (kind === 'shopping') shoppingWeek = safeWeek;
     if (kind === 'cooking') cookingWeek = safeWeek;
     var tabs = document.querySelector('[data-week-tabs="' + kind + '"]');
     if (tabs) tabs.querySelectorAll('[data-week]').forEach(function (button) {
       button.classList.toggle('active', Number(button.getAttribute('data-week')) === safeWeek);
     });
+    if (kind === 'cycle') renderCycle();
     if (kind === 'shopping') renderShopping();
     if (kind === 'cooking') renderCooking();
   }
@@ -696,6 +1088,33 @@
         var button = event.target.closest('[data-week]');
         if (button) setWeek(tabs.getAttribute('data-week-tabs'), button.getAttribute('data-week'));
       });
+    });
+    document.getElementById('kitchenModeSelect').addEventListener('change', function (event) {
+      kitchenProfile.activeMode = event.target.value === 'winter' ? 'winter' : 'extended';
+      kitchenProfile = NutritionCookingCore.normalizeKitchenProfile(kitchenProfile);
+      saveKitchenProfile();
+      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
+      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);
+      saveCookingStore();
+      scheduleCookingGeneration(cookingWeek, 10);
+      renderCycle();
+      renderCooking();
+    });
+    document.getElementById('regenerateCookingBtn').addEventListener('click', function () {
+      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
+      saveCookingStore();
+      scheduleCookingGeneration(cookingWeek, 10);
+      renderCooking();
+    });
+    document.getElementById('clearCookingCacheBtn').addEventListener('click', function () {
+      if (!window.confirm('удалить кеш планов готовки? рацион и блюда останутся без изменений.')) return;
+      cookingClient.abort();
+      cookingStore = NutritionCookingCore.createEmptyCookingStore();
+      cookingUiState = { 1: 'fallback', 2: 'fallback' };
+      cookingUiError = { 1: '', 2: '' };
+      saveCookingStore();
+      renderCycle();
+      renderCooking();
     });
     document.getElementById('previousDayBtn').addEventListener('click', function () {
       selectedDay = Math.max(1, selectedDay - 1);
@@ -742,9 +1161,10 @@
       switchView(window.location.hash.slice(1), false);
     });
     window.addEventListener('storage', function (event) {
-      if (!event || (event.key !== STATE_KEY && event.key !== MEALS_KEY)) return;
+      if (!event || [STATE_KEY, MEALS_KEY, KITCHEN_PROFILE_KEY, COOKING_PLANS_KEY].indexOf(event.key) === -1) return;
       if (event.key === MEALS_KEY) loadImportedMeals();
       if (event.key === STATE_KEY) loadState();
+      if (event.key === KITCHEN_PROFILE_KEY || event.key === COOKING_PLANS_KEY) loadCookingData();
       renderAll();
     });
   }
@@ -752,6 +1172,7 @@
   function boot() {
     loadImportedMeals();
     loadState();
+    loadCookingData();
     wireEvents();
     var initialView = window.location.hash.slice(1);
     switchView(initialView || DEFAULT_VIEW, false);
