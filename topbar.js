@@ -5,7 +5,7 @@
 html { scrollbar-gutter: stable; }\
 .topbar {\
   position: fixed; top: 12px; left: 12px; right: 12px; z-index: 10000;\
-  display: flex; justify-content: flex-end; align-items: center;\
+  display: flex; justify-content: space-between; align-items: center;\
   gap: 10px; height: 56px; padding: 0 14px; box-sizing: border-box;\
   background: linear-gradient(135deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.025) 100%);\
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);\
@@ -13,9 +13,18 @@ html { scrollbar-gutter: stable; }\
   box-shadow: 0 10px 28px rgba(0,0,0,0.16);\
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;\
 }\
+.topbar-brand {\
+  display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;\
+  border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04);\
+  text-decoration: none; flex-shrink: 0; transition: background 0.15s, transform 0.15s;\
+}\
+.topbar-brand:hover { background: rgba(255,255,255,0.08); }\
+.topbar-brand:active { transform: scale(0.96); }\
+.topbar-brand img { width: 28px; height: 28px; display: block; border-radius: 9px; }\
+.topbar-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }\
 .bottombar {\
   position: fixed; bottom: 12px; left: 12px; right: 12px; z-index: 10000;\
-  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: stretch;\
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); align-items: stretch;\
   height: 64px; padding: 0 8px; box-sizing: border-box;\
   background: linear-gradient(135deg, rgba(20,22,26,0.6) 0%, rgba(10,11,13,0.4) 100%);\
   backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);\
@@ -101,27 +110,38 @@ html { scrollbar-gutter: stable; }\
 body {\
   padding-top: 82px !important; padding-bottom: 96px !important; padding-left: 16px !important; padding-right: 16px !important;\
 }\
+@media (max-width: 640px) {\
+  .bottombar-tab-shell { width: 100%; min-height: 44px; }\
+  .bottombar-tab-label { display: none; }\
+}\
 @media (max-width: 480px) {\
   .topbar { top: 8px; left: 8px; right: 8px; height: 52px; padding: 0 10px; gap: 8px; }\
+  .topbar-brand { width: 34px; height: 34px; border-radius: 10px; }\
+  .topbar-brand img { width: 25px; height: 25px; }\
+  .topbar-actions { gap: 6px; }\
   .topbar-coins { padding: 0 10px; }\
   .bottombar { bottom: 8px; left: 8px; right: 8px; height: 58px; }\
-  .bottombar-tab-shell { width: 44px; min-height: 44px; }\
-  .bottombar-tab-label { display: none; }\
+  .bottombar-tab-shell { width: 100%; min-height: 44px; }\
 }\
 ';
 
   var topbarHtml = '\
 <header class="topbar" id="topbar">\
-  <div class="topbar-coins" id="topbarCoins">\
-    <span class="topbar-coins-icon">🪙</span>\
-    <span id="topbarCoinsCount">0</span>\
-  </div>\
-  <div class="topbar-water-wrap">\
-    <a href="health.html#water" class="topbar-water-pill" id="topbarWater">\
-      <span class="topbar-pill-dot"></span>\
-      <span class="topbar-pill-count" id="topbarWaterCount">0/0</span>\
-    </a>\
-    <button class="topbar-water-add" id="topbarWaterAdd" type="button" aria-label="Добавить воду">+</button>\
+  <a href="index.html" class="topbar-brand" aria-label="На главную">\
+    <img src="app-icon.svg" alt="">\
+  </a>\
+  <div class="topbar-actions">\
+    <div class="topbar-coins" id="topbarCoins">\
+      <span class="topbar-coins-icon">🪙</span>\
+      <span id="topbarCoinsCount">0</span>\
+    </div>\
+    <div class="topbar-water-wrap">\
+      <a href="health.html#water" class="topbar-water-pill" id="topbarWater">\
+        <span class="topbar-pill-dot"></span>\
+        <span class="topbar-pill-count" id="topbarWaterCount">0/0</span>\
+      </a>\
+      <button class="topbar-water-add" id="topbarWaterAdd" type="button" aria-label="Добавить воду">+</button>\
+    </div>\
   </div>\
 </header>\
 <div id="achToast">\
@@ -137,6 +157,7 @@ body {\
   <a href="index.html" class="bottombar-tab" data-page="main"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🏠</span><span class="bottombar-tab-label">Главная</span></span></a>\
   <a href="inbox.html" class="bottombar-tab" data-page="inbox"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">📥</span><span class="bottombar-tab-label">Входящие</span></span></a>\
   <a href="tracker.html" class="bottombar-tab" data-page="tracker"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">✅</span><span class="bottombar-tab-label">Трекер</span></span></a>\
+  <a href="menu.html" class="bottombar-tab" data-page="menu"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🍽️</span><span class="bottombar-tab-label">Меню</span></span></a>\
   <a href="goals.html" class="bottombar-tab" data-page="goals"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🎯</span><span class="bottombar-tab-label">Цели</span></span></a>\
   <a href="store.html" class="bottombar-tab" data-page="store"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🏪</span><span class="bottombar-tab-label">Магазин</span></span></a>\
   <a href="profile.html" class="bottombar-tab" data-page="profile"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">👤</span><span class="bottombar-tab-label">Профиль</span></span></a>\
@@ -147,6 +168,7 @@ body {\
     var p = window.location.pathname.toLowerCase();
     if (p.indexOf('inbox') !== -1) return 'inbox';
     if (p.indexOf('tracker') !== -1) return 'tracker';
+    if (p.indexOf('menu') !== -1) return 'menu';
     if (p.indexOf('health') !== -1) return 'health';
     if (p.indexOf('gym') !== -1) return 'fitness';
     if (p.indexOf('finance') !== -1) return 'finance';

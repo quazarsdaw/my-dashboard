@@ -23,7 +23,7 @@ test('topbar uses a lighter grouped layout for balance, water and add controls',
 test('main page uses the shared polished topbar implementation', () => {
   const html = read('index.html');
 
-  assert.ok(html.includes('<script src="topbar.js?v=401" defer></script>'));
+  assert.ok(html.includes('<script src="topbar.js?v=402" defer></script>'));
   assert.ok(!html.includes('topbar_v405.js'));
 });
 
@@ -62,13 +62,74 @@ test('topbar and bottom navigation use balanced hit areas for short labels', () 
 
   assert.ok(topbar.includes('min-width: 104px'));
   assert.ok(topbar.includes('height: 38px; min-width: 122px'));
-  assert.ok(topbar.includes('display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));'));
+  assert.ok(topbar.includes('display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));'));
   assert.ok(topbar.includes('class="bottombar-tab-shell"'));
   assert.ok(topbar.includes('.bottombar-tab-shell'));
   assert.ok(topbar.includes('width: min(112px, calc(100% - 8px))'));
   assert.ok(topbar.includes('class="bottombar-tab-label"'));
   assert.ok(topbar.includes('.bottombar-tab-label'));
   assert.ok(topbar.includes('min-width: 78px'));
+});
+
+test('shared navigation exposes the menu tab and a home logo on every page', () => {
+  const topbar = read('topbar.js');
+  const trackerPosition = topbar.indexOf('data-page="tracker"');
+  const menuPosition = topbar.indexOf('data-page="menu"');
+  const goalsPosition = topbar.indexOf('data-page="goals"');
+
+  assert.ok(topbar.includes('class="topbar-brand"'));
+  assert.ok(topbar.includes('src="app-icon.svg"'));
+  assert.ok(topbar.includes('class="topbar-actions"'));
+  assert.ok(topbar.includes("if (p.indexOf('menu') !== -1) return 'menu';"));
+  assert.ok(trackerPosition < menuPosition);
+  assert.ok(menuPosition < goalsPosition);
+});
+
+test('nutrition page provides clickable desktop and mobile section navigation', () => {
+  assert.ok(exists('menu.html'));
+  const html = read('menu.html');
+
+  ['today', 'cycle', 'dishes', 'shopping', 'cooking', 'history'].forEach((view) => {
+    assert.ok(html.includes(`data-menu-view="${view}"`), view);
+    assert.ok(html.includes(`data-menu-panel="${view}"`), view);
+  });
+  assert.ok(html.includes('id="menuViewSelect"'));
+  assert.ok(html.includes('class="nutrition-sidebar"'));
+  assert.ok(html.includes('class="nutrition-main"'));
+  assert.ok(html.includes('id="healthContext"'));
+  assert.ok(html.includes('class="cooking-week-context"'));
+  assert.ok(html.includes('id="cycleBatchRail"'));
+  assert.ok(html.includes('id="cookingTimeline"'));
+  assert.ok(html.includes('id="cookingNow"'));
+  assert.ok(html.includes('@media(max-width:760px)'));
+  assert.ok(html.includes('.cycle-calendar{display:block;'));
+  assert.ok(html.includes('@media(prefers-reduced-motion:reduce)'));
+});
+
+test('nutrition scripts load data and pure logic before the page controller', () => {
+  const html = read('menu.html');
+  const dataPosition = html.indexOf('nutrition-data.js');
+  const corePosition = html.indexOf('nutrition-core.js');
+  const cookingCorePosition = html.indexOf('nutrition-cooking-core.js');
+  const schedulerPosition = html.indexOf('nutrition-scheduler.js');
+  const openRouterPosition = html.indexOf('nutrition-openrouter.js');
+  const controllerPosition = html.indexOf('nutrition.js');
+
+  assert.ok(dataPosition !== -1);
+  assert.ok(corePosition > dataPosition);
+  assert.ok(cookingCorePosition > corePosition);
+  assert.ok(schedulerPosition > cookingCorePosition);
+  assert.ok(openRouterPosition > schedulerPosition);
+  assert.ok(controllerPosition > openRouterPosition);
+});
+
+test('profile backup includes nutrition state and imported meals', () => {
+  const html = read('profile.html');
+
+  assert.ok(html.includes("'nutrition_meals_v1'"));
+  assert.ok(html.includes("'nutrition_state_v1'"));
+  assert.ok(html.includes("'nutrition_kitchen_profile_v1'"));
+  assert.ok(html.includes("'nutrition_cooking_plans_v1'"));
 });
 
 test('day ring exposes an editable local sleep schedule with live preview', () => {
@@ -199,12 +260,13 @@ test('all primary pages load the soft profile theme before topbar', () => {
     'health.html',
     'gym.html',
     'finance.html',
+    'menu.html',
   ];
 
   pages.forEach((file) => {
     const html = read(file);
     const themeScript = '<script src="profile-theme.js?v=401"></script>';
-    const topbarScript = '<script src="topbar.js?v=401" defer></script>';
+    const topbarScript = '<script src="topbar.js?v=402" defer></script>';
     const themeIndex = html.indexOf(themeScript);
     const topbarIndex = html.indexOf(topbarScript);
 

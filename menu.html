@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dashboard">
+<meta name="theme-color" content="#1C1E24">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="app-icon.svg">
+<title>Меню</title>
+<script src="gamification.js?v=401"></script>
+<script src="supabase-sync.js?v=406-sb" defer></script>
+<script src="profile-theme.js?v=401"></script>
+<script src="topbar.js?v=402" defer></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --text-primary:#FAFAFA;--text-secondary:#D1D1D1;--text-tertiary:#96999F;
+  --success:#6BE3A4;--warning:#F2C063;--danger:#FF7676;--accent:#7DD3FC;
+  --surface:rgba(255,255,255,0.065);--surface-strong:rgba(255,255,255,0.09);
+  --line:rgba(255,255,255,0.085);
+}
+html{background:#1C1E24;scrollbar-gutter:stable}
+body{min-height:100vh;max-width:1320px;margin:0 auto;background:#1C1E24;color:var(--text-primary);
+  font-family:var(--font-sans);-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background:radial-gradient(ellipse 52% 46% at 88% 10%,var(--app-theme-glow-primary,rgba(224,118,88,0.18)),transparent),
+  radial-gradient(ellipse 45% 44% at 12% 90%,var(--app-theme-glow-secondary,rgba(125,211,252,0.07)),transparent);filter:blur(42px)}
+body::after{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg width='3' height='3' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='white' fill-opacity='0.014'/%3E%3C/svg%3E")}
+button,input,select,textarea{font:inherit}
+button{color:inherit}
+.nutrition-page{padding:18px 0 32px}
+.nutrition-page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:18px}
+.nutrition-title{font-size:32px;font-weight:800;line-height:1.05}
+.nutrition-cycle-mark{font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-secondary);
+  padding-bottom:3px;font-variant-numeric:tabular-nums}
+.nutrition-shell{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:660px;border-top:1px solid var(--line)}
+.nutrition-sidebar{padding:24px 22px 24px 0;border-right:1px solid var(--line)}
+.nutrition-nav{display:flex;flex-direction:column;gap:2px;position:sticky;top:94px}
+.nutrition-nav-item{position:relative;width:100%;border:0;background:transparent;color:var(--text-secondary);
+  text-align:left;padding:11px 14px;font-size:14px;font-weight:650;cursor:pointer;transition:color .15s,background .15s}
+.nutrition-nav-item::before{content:'';position:absolute;left:0;top:9px;bottom:9px;width:2px;background:transparent}
+.nutrition-nav-item:hover{color:var(--text-primary);background:rgba(255,255,255,.035)}
+.nutrition-nav-item.active{color:var(--text-primary);background:rgba(255,255,255,.055)}
+.nutrition-nav-item.active::before{background:var(--accent)}
+.nutrition-main{min-width:0;padding:24px 0 40px 28px}
+.mobile-view-control{display:none;margin-bottom:16px}
+.mobile-view-control label{display:block;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text-tertiary);margin-bottom:7px}
+.mobile-view-control select,.field-control{width:100%;height:44px;border-radius:10px;border:1px solid var(--line);
+  background:#292C33;color:var(--text-primary);padding:0 12px;outline:none}
+.menu-panel{display:none;animation:panelIn .18s ease}
+.menu-panel.active{display:block}
+@keyframes panelIn{from{opacity:.55;transform:translateY(3px)}to{opacity:1;transform:none}}
+.panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:22px}
+.panel-title{font-size:22px;font-weight:780;line-height:1.15}
+.panel-meta{font-size:12px;color:var(--text-tertiary);margin-top:5px}
+.panel-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.icon-btn,.quiet-btn,.primary-btn,.danger-btn{border:1px solid var(--line);cursor:pointer;transition:background .15s,transform .1s}
+.icon-btn:active,.quiet-btn:active,.primary-btn:active,.danger-btn:active{transform:scale(.97)}
+.icon-btn{width:40px;height:40px;border-radius:10px;background:var(--surface);font-size:17px}
+.quiet-btn,.primary-btn,.danger-btn{min-height:40px;border-radius:10px;padding:0 14px;font-size:12px;font-weight:750}
+.quiet-btn{background:var(--surface);color:var(--text-secondary)}
+.quiet-btn:hover,.icon-btn:hover{background:var(--surface-strong);color:var(--text-primary)}
+.primary-btn{background:#F4F1EA;border-color:#F4F1EA;color:#202228}
+.danger-btn{background:rgba(255,118,118,.08);border-color:rgba(255,118,118,.18);color:var(--danger)}
+.date-control{display:flex;align-items:center;gap:8px}
+.date-control label{font-size:11px;color:var(--text-tertiary)}
+.date-control input{height:40px;border-radius:10px;border:1px solid var(--line);background:#292C33;color:var(--text-primary);
+  padding:0 10px;font-family:var(--font-mono);color-scheme:dark}
+.switch-row{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 12px;border:1px solid var(--line);
+  background:var(--surface);font-size:12px;font-weight:700}
+.switch-row input{width:17px;height:17px;accent-color:var(--success)}
+.day-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);margin-bottom:22px}
+.summary-item{padding:16px 18px;border-right:1px solid var(--line);min-width:0}
+.summary-item:last-child{border-right:0}
+.summary-label{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--text-tertiary)}
+.summary-value{margin-top:6px;font-family:var(--font-mono);font-size:17px;font-weight:750;font-variant-numeric:tabular-nums}
+.summary-note{font-size:10px;color:var(--text-tertiary);margin-top:4px}
+.health-context{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:38px;margin-bottom:12px;
+  padding:8px 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-family:var(--font-mono);
+  font-size:10.5px;color:var(--text-secondary)}
+.health-context-label{font-family:var(--font-sans);font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--text-tertiary)}
+.health-context-link{margin-left:auto;color:var(--accent);text-decoration:none;font-family:var(--font-sans);font-weight:750}
+.health-context-link:hover{text-decoration:underline}
+.meal-list{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.meal-row{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:16px;align-items:center;
+  padding:18px 2px;border-bottom:1px solid var(--line)}
+.meal-slot{font-size:10px;font-weight:850;letter-spacing:.13em;text-transform:uppercase;color:var(--text-tertiary)}
+.meal-title{font-size:16px;font-weight:760;line-height:1.25}
+.meal-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:7px;font-family:var(--font-mono);
+  font-size:10.5px;color:var(--text-tertiary)}
+.meal-tag{padding:3px 7px;border:1px solid var(--line);background:rgba(255,255,255,.035);color:var(--text-secondary)}
+.meal-actions{display:flex;align-items:center;gap:7px}
+.meal-complete{width:24px;height:24px;accent-color:var(--success)}
+.meal-details{grid-column:2/4;display:none;padding:2px 0 8px;color:var(--text-secondary);font-size:12px;line-height:1.55}
+.meal-row.expanded .meal-details{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.detail-title{font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:7px}
+.detail-list{padding-left:18px}
+.meal-note-input{width:100%;min-height:64px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text-primary);
+  padding:10px 12px;resize:vertical;outline:none}
+.training-extra{margin-top:18px;padding:16px 18px;border-left:2px solid var(--success);background:rgba(107,227,164,.045)}
+.quick-links{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:22px}
+.quick-link{display:flex;align-items:center;justify-content:space-between;min-height:58px;padding:0 16px;border:1px solid var(--line);
+  background:rgba(255,255,255,.035);color:var(--text-primary);text-decoration:none;font-size:13px;font-weight:750}
+.quick-link span{color:var(--text-tertiary);font-family:var(--font-mono);font-size:10px}
+.cycle-workspace{display:grid;grid-template-columns:minmax(0,1fr) 248px;gap:24px;align-items:start}
+.cycle-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
+.calendar-day{min-width:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(255,255,255,.018)}
+.calendar-day.current{background:rgba(125,211,252,.035);box-shadow:inset 0 2px 0 var(--accent)}
+.calendar-day-head{min-height:62px;padding:12px 10px;border-bottom:1px solid var(--line)}
+.calendar-weekday{font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--text-tertiary)}
+.calendar-date{display:block;margin-top:5px;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)}
+.calendar-training{display:block;margin-top:5px;font-size:9px;color:var(--warning)}
+.calendar-meals{display:flex;flex-direction:column}
+.calendar-meal{position:relative;width:100%;min-height:112px;border:0;border-bottom:1px solid var(--line);background:transparent;color:inherit;
+  padding:11px 9px 12px 12px;text-align:left;cursor:pointer;transition:background .15s ease,opacity .15s ease}
+.calendar-meal:last-child{border-bottom:0}.calendar-meal::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;background:var(--batch-color,var(--text-tertiary))}
+.calendar-meal:hover{background:rgba(255,255,255,.04)}.calendar-meal:active{background:rgba(255,255,255,.065)}
+.calendar-meal-type{font-size:8px;font-weight:850;letter-spacing:.11em;text-transform:uppercase;color:var(--text-tertiary)}
+.calendar-meal-title{display:block;margin-top:7px;font-size:11px;font-weight:760;line-height:1.35;overflow-wrap:anywhere}
+.calendar-meal-meta{display:block;margin-top:8px;font-family:var(--font-mono);font-size:8.5px;line-height:1.35;color:var(--text-tertiary)}
+.calendar-batch-label{display:block;margin-top:8px;font-size:9px;line-height:1.3;color:var(--batch-color,var(--text-secondary))}
+.calendar-meal.batch-muted{opacity:.28}.calendar-meal.batch-active{background:color-mix(in srgb,var(--batch-color) 12%,transparent)}
+.batch-color-0{--batch-color:#7DD3FC}.batch-color-1{--batch-color:#6BE3A4}.batch-color-2{--batch-color:#F2C063}.batch-color-3{--batch-color:#C4A7FF}
+.batch-color-4{--batch-color:#FF9A8B}.batch-color-5{--batch-color:#72E3D1}.batch-color-6{--batch-color:#F08AC0}.batch-color-7{--batch-color:#A8C7FA}
+.batch-rail{position:sticky;top:94px;border-top:1px solid var(--line)}
+.batch-rail-head{padding:13px 0 12px;border-bottom:1px solid var(--line)}
+.batch-rail-title{font-size:12px;font-weight:800}.batch-rail-status{margin-top:5px;font-family:var(--font-mono);font-size:9px;color:var(--text-tertiary)}
+.batch-rail-list{display:flex;flex-direction:column}.batch-rail-item{width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;color:inherit;
+  padding:12px 4px 12px 14px;text-align:left;cursor:pointer;position:relative}
+.batch-rail-item::before{content:'';position:absolute;left:0;top:13px;width:5px;height:5px;border-radius:50%;background:var(--batch-color)}
+.batch-rail-item:hover,.batch-rail-item.active{background:rgba(255,255,255,.035)}
+.batch-rail-item strong{display:block;font-size:11px;line-height:1.35}.batch-rail-item span{display:block;margin-top:5px;font-family:var(--font-mono);font-size:9px;line-height:1.4;color:var(--text-tertiary)}
+.batch-rail-action{width:100%;margin-top:14px}
+.catalog-tools{display:grid;grid-template-columns:minmax(180px,1fr) 170px 150px auto;gap:8px;margin-bottom:18px}
+.catalog-tools input,.catalog-tools select{height:42px;border:1px solid var(--line);background:#292C33;color:var(--text-primary);
+  padding:0 12px;outline:none}
+.catalog-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
+.dish-card{padding:17px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(255,255,255,.025);min-width:0}
+.dish-card summary{cursor:pointer;list-style:none}.dish-card summary::-webkit-details-marker{display:none}
+.dish-source{font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--text-tertiary)}
+.dish-title{font-size:15px;font-weight:760;margin-top:7px}.dish-details{margin-top:13px;font-size:11px;color:var(--text-secondary);line-height:1.5}
+.import-status{min-height:20px;margin:-8px 0 12px;font-size:11px;color:var(--text-tertiary)}
+.week-tabs{display:flex;gap:4px;margin-bottom:18px}.week-tab{height:38px;padding:0 15px;border:1px solid var(--line);background:transparent;
+  color:var(--text-secondary);font-size:12px;font-weight:750;cursor:pointer}.week-tab.active{background:var(--surface-strong);color:var(--text-primary)}
+.shopping-groups{display:flex;flex-direction:column;gap:22px}.shopping-group-title,.cooking-week-context{font-size:10px;font-weight:850;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px}
+.shopping-list{border-top:1px solid var(--line)}.shopping-item{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;
+  align-items:center;padding:11px 4px;border-bottom:1px solid var(--line)}.shopping-item input{width:18px;height:18px;accent-color:var(--success)}
+.shopping-item.checked .shopping-name{text-decoration:line-through;color:var(--text-tertiary)}
+.shopping-name{font-size:13px}.shopping-amount{font-family:var(--font-mono);font-size:11px;color:var(--text-secondary)}
+.cooking-commandbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:18px}
+.cooking-week-context{margin:0}.cooking-status{display:inline-flex;align-items:center;gap:7px;margin-top:6px;font-family:var(--font-mono);font-size:9px;color:var(--text-tertiary)}
+.cooking-status::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}.cooking-status.ready{color:var(--success)}.cooking-status.generating{color:var(--accent)}
+.cooking-status.stale,.cooking-status.fallback{color:var(--warning)}.cooking-status.error{color:var(--danger)}
+.cooking-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.cooking-controls .field-control{width:auto;min-width:176px}
+.cooking-overview{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:16px;font-family:var(--font-mono);font-size:10px;color:var(--text-secondary)}
+.cooking-overview strong{font-size:16px;color:var(--text-primary)}
+.cooking-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:24px;align-items:start}
+.timeline-shell{min-width:0;border-top:1px solid var(--line)}
+.timeline-ruler{display:grid;grid-template-columns:112px minmax(0,1fr);min-height:42px;border-bottom:1px solid var(--line)}
+.timeline-ruler-label{display:flex;align-items:center;font-size:9px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;color:var(--text-tertiary)}
+.timeline-scale{position:relative}.timeline-tick{position:absolute;top:10px;transform:translateX(-50%);font-family:var(--font-mono);font-size:8px;color:var(--text-tertiary)}
+.timeline-lane{display:grid;grid-template-columns:112px minmax(0,1fr);min-height:64px;border-bottom:1px solid var(--line)}
+.timeline-lane-name{display:flex;align-items:center;padding-right:12px;font-size:10px;font-weight:750;color:var(--text-secondary)}
+.timeline-track{position:relative;min-width:0;background-image:linear-gradient(to right,var(--line) 1px,transparent 1px);background-size:25% 100%}
+.timeline-block{position:absolute;top:9px;height:46px;min-width:4px;border:1px solid color-mix(in srgb,var(--batch-color) 58%,transparent);border-left-width:3px;
+  background:color-mix(in srgb,var(--batch-color) 12%,#20232A);padding:7px 8px;overflow:hidden;color:var(--text-primary);cursor:pointer;text-align:left}
+.timeline-block.passive{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--batch-color) 10%,#20232A),color-mix(in srgb,var(--batch-color) 10%,#20232A) 5px,rgba(255,255,255,.025) 5px,rgba(255,255,255,.025) 10px)}
+.timeline-block strong{display:block;font-size:9px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.timeline-block span{display:block;margin-top:4px;font-family:var(--font-mono);font-size:7.5px;color:var(--text-secondary)}
+.timeline-block.batch-muted{opacity:.25}.timeline-block.batch-active{box-shadow:0 0 0 1px var(--batch-color)}
+.cooking-now{position:sticky;top:94px;border-top:2px solid var(--accent);background:rgba(255,255,255,.025);padding:15px 16px}
+.cooking-now-eyebrow{font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.cooking-now-title{margin-top:10px;font-size:17px;line-height:1.25}.cooking-now-meta{margin-top:10px;font-family:var(--font-mono);font-size:9.5px;line-height:1.55;color:var(--text-secondary)}
+.cooking-now-passive{margin-top:15px;padding-top:13px;border-top:1px solid var(--line)}.cooking-now-passive strong{display:block;font-size:10px}.cooking-now-passive span{display:block;margin-top:6px;font-size:10px;line-height:1.4;color:var(--text-tertiary)}
+.cooking-correction-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;margin-top:10px}.cooking-correction-tools .field-control{min-width:0;width:100%}
+.cooking-now-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:16px}.cooking-now-actions .primary-btn{grid-column:1/3}
+.cooking-batch-legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.cooking-batch-chip{border:1px solid var(--line);background:transparent;color:var(--text-secondary);padding:7px 9px;font-size:9px;cursor:pointer}.cooking-batch-chip::before{content:'';display:inline-block;width:6px;height:6px;margin-right:6px;border-radius:50%;background:var(--batch-color)}
+.cooking-empty{padding:30px 0;border-top:1px solid var(--line);color:var(--text-secondary);font-size:12px}
+.history-list{display:flex;flex-direction:column;border-top:1px solid var(--line)}.history-item{display:grid;grid-template-columns:1fr auto auto;
+  gap:18px;padding:16px 2px;border-bottom:1px solid var(--line);align-items:center}.history-date{font-weight:720;font-size:13px}
+.history-metric{font-family:var(--font-mono);font-size:11px;color:var(--text-secondary)}
+.empty-state{padding:46px 12px;text-align:center;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.empty-state strong{display:block;font-size:15px}.empty-state span{display:block;margin-top:7px;font-size:11px;color:var(--text-tertiary)}
+dialog{width:min(620px,calc(100vw - 28px));max-height:min(720px,calc(100vh - 40px));margin:auto;border:1px solid var(--line);
+  background:#20232A;color:var(--text-primary);padding:0;box-shadow:0 28px 90px rgba(0,0,0,.6)}
+dialog::backdrop{background:rgba(5,6,8,.76);backdrop-filter:blur(8px)}
+.dialog-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px;
+  border-bottom:1px solid var(--line);background:#20232A}.dialog-head h2{font-size:17px}
+.replace-list{padding:0 18px 18px}.replace-option{width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;color:inherit;
+  padding:14px 2px;text-align:left;cursor:pointer}.replace-option:hover{background:rgba(255,255,255,.035)}
+.replace-option strong{display:block;font-size:13px}.replace-option span{display:block;margin-top:5px;font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary)}
+button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:900px){
+  .nutrition-shell{grid-template-columns:160px minmax(0,1fr)}.nutrition-sidebar{padding-right:14px}.nutrition-main{padding-left:20px}
+  .catalog-tools{grid-template-columns:1fr 1fr}.day-summary{grid-template-columns:1fr 1fr}.summary-item:nth-child(2){border-right:0}
+  .summary-item:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  .cycle-workspace,.cooking-layout{grid-template-columns:1fr}.batch-rail,.cooking-now{position:static}.batch-rail-list{display:grid;grid-template-columns:1fr 1fr}
+}
+@media(max-width:760px){
+  .nutrition-page{padding-top:10px}.nutrition-page-head{align-items:center}.nutrition-title{font-size:27px}
+  .nutrition-shell{display:block;border-top:0;min-height:0}.nutrition-sidebar{display:none}.nutrition-main{padding:0}
+  .mobile-view-control{display:block}.panel-head{margin-bottom:16px}.catalog-list{grid-template-columns:1fr}
+  .cycle-calendar{display:block;border-left:0}.calendar-day{border-left:1px solid var(--line);margin-bottom:12px}.calendar-day-head{min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .calendar-meal{min-height:0;padding:13px 12px 13px 16px}.calendar-meal-title{font-size:13px}.calendar-meal-meta,.calendar-batch-label{font-size:9px}.batch-rail-list{display:block}
+  .cooking-commandbar{align-items:flex-start}.cooking-controls{justify-content:flex-start}.cooking-now{order:-1}.timeline-ruler,.timeline-lane{grid-template-columns:82px minmax(0,1fr)}
+}
+@media(max-width:520px){
+  .nutrition-page-head{margin-bottom:14px}.nutrition-cycle-mark{font-size:10px}.panel-head{display:block}.panel-actions{justify-content:flex-start;margin-top:13px}
+  .date-control{width:100%}.date-control input{flex:1;min-width:0}.switch-row{width:100%}.day-summary{grid-template-columns:1fr 1fr}
+  .summary-item{padding:13px 10px}.summary-value{font-size:15px}.meal-row{grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:15px 0}
+  .meal-slot{grid-column:1/3}.meal-actions{grid-column:2;grid-row:2}.meal-details{grid-column:1/3}.meal-row.expanded .meal-details{grid-template-columns:1fr}
+  .meal-title{font-size:15px}.quick-links{grid-template-columns:1fr}.catalog-tools{grid-template-columns:1fr}.catalog-tools .primary-btn{height:42px}
+  .history-item{grid-template-columns:1fr 1fr}.history-date{grid-column:1/3}.cooking-commandbar{display:block}.cooking-controls{margin-top:12px}.cooking-controls .field-control{width:100%}
+  .timeline-shell{overflow:hidden}.timeline-block{padding:6px 5px}.timeline-block strong{font-size:8px}.cooking-now-actions{grid-template-columns:1fr}.cooking-now-actions .primary-btn{grid-column:auto}
+  .cooking-correction-tools{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="nutrition-page">
+  <header class="nutrition-page-head">
+    <h1 class="nutrition-title">Меню</h1>
+    <div class="nutrition-cycle-mark" id="cycleMark">цикл 1 / 14</div>
+  </header>
+
+  <div class="nutrition-shell">
+    <aside class="nutrition-sidebar" aria-label="Разделы меню">
+      <nav class="nutrition-nav" id="menuNav">
+        <button class="nutrition-nav-item active" type="button" data-menu-view="today" aria-current="page">Сегодня</button>
+        <button class="nutrition-nav-item" type="button" data-menu-view="cycle">14 дней</button>
+        <button class="nutrition-nav-item" type="button" data-menu-view="dishes">Блюда</button>
+        <button class="nutrition-nav-item" type="button" data-menu-view="shopping">Закупка</button>
+        <button class="nutrition-nav-item" type="button" data-menu-view="cooking">Готовка</button>
+        <button class="nutrition-nav-item" type="button" data-menu-view="history">История</button>
+      </nav>
+    </aside>
+
+    <main class="nutrition-main">
+      <div class="mobile-view-control">
+        <label for="menuViewSelect">раздел</label>
+        <select id="menuViewSelect">
+          <option value="today">Сегодня</option>
+          <option value="cycle">14 дней</option>
+          <option value="dishes">Блюда</option>
+          <option value="shopping">Закупка</option>
+          <option value="cooking">Готовка</option>
+          <option value="history">История</option>
+        </select>
+      </div>
+
+      <section class="menu-panel active" data-menu-panel="today" aria-labelledby="todayTitle">
+        <div class="panel-head">
+          <div><h2 class="panel-title" id="todayTitle">Сегодня</h2><div class="panel-meta" id="todayMeta"></div></div>
+          <div class="panel-actions">
+            <div class="date-control"><label for="cycleStartDate">старт цикла</label><input id="cycleStartDate" type="date"></div>
+            <label class="switch-row"><input id="trainingToggle" type="checkbox"> тренировочный день</label>
+          </div>
+        </div>
+        <div class="panel-actions" style="justify-content:flex-start;margin-bottom:14px">
+          <button class="icon-btn" id="previousDayBtn" type="button" aria-label="Предыдущий день">←</button>
+          <button class="icon-btn" id="nextDayBtn" type="button" aria-label="Следующий день">→</button>
+        </div>
+        <div class="health-context" id="healthContext"></div>
+        <div class="day-summary" id="daySummary"></div>
+        <div class="meal-list" id="todayMeals"></div>
+        <div class="training-extra" id="trainingExtra" hidden></div>
+        <div class="quick-links">
+          <a href="#shopping" class="quick-link" data-open-view="shopping">Закупка недели <span id="shoppingQuickMeta"></span></a>
+          <a href="#cooking" class="quick-link" data-open-view="cooking">Готовка недели <span id="cookingQuickMeta"></span></a>
+        </div>
+        <div id="cycleCompleteActions"></div>
+      </section>
+
+      <section class="menu-panel" data-menu-panel="cycle" aria-labelledby="cycleTitle">
+        <div class="panel-head"><div><h2 class="panel-title" id="cycleTitle">14 дней</h2><div class="panel-meta">рацион и партии готовки</div></div></div>
+        <div class="week-tabs" id="cycleWeekTabs" data-week-tabs="cycle"><button class="week-tab active" type="button" data-week="1">Неделя 1</button><button class="week-tab" type="button" data-week="2">Неделя 2</button></div>
+        <div class="cycle-workspace">
+          <div class="cycle-calendar" id="cycleGrid"></div>
+          <aside class="batch-rail" id="cycleBatchRail" aria-label="Партии этой недели"></aside>
+        </div>
+      </section>
+
+      <section class="menu-panel" data-menu-panel="dishes" aria-labelledby="dishesTitle">
+        <div class="panel-head"><div><h2 class="panel-title" id="dishesTitle">Блюда</h2><div class="panel-meta" id="catalogMeta"></div></div></div>
+        <div class="catalog-tools">
+          <input id="dishSearch" type="search" placeholder="Найти блюдо" aria-label="Найти блюдо">
+          <select id="dishTypeFilter" aria-label="Тип блюда"><option value="all">Все приёмы</option><option value="breakfast">Завтраки</option><option value="lunch">Обеды</option><option value="dinner">Ужины</option><option value="extra">Дополнения</option></select>
+          <select id="dishSourceFilter" aria-label="Источник блюда"><option value="all">Все источники</option><option value="seed">Встроенные</option><option value="imported">Загруженные</option><option value="outside">Вне дома</option></select>
+          <button class="primary-btn" id="importMealsBtn" type="button">Загрузить json</button>
+          <input id="importMealsFile" type="file" accept="application/json,.json" hidden>
+        </div>
+        <div class="import-status" id="importStatus" role="status"></div>
+        <div class="catalog-list" id="catalogList"></div>
+      </section>
+
+      <section class="menu-panel" data-menu-panel="shopping" aria-labelledby="shoppingTitle">
+        <div class="panel-head"><div><h2 class="panel-title" id="shoppingTitle">Закупка</h2><div class="panel-meta">≈4000–4500 ₽ на неделю</div></div></div>
+        <div class="week-tabs" data-week-tabs="shopping"><button class="week-tab active" type="button" data-week="1">Неделя 1</button><button class="week-tab" type="button" data-week="2">Неделя 2</button></div>
+        <div class="shopping-groups" id="shoppingGroups"></div>
+      </section>
+
+      <section class="menu-panel" data-menu-panel="cooking" aria-labelledby="cookingTitle">
+        <div class="panel-head"><div><h2 class="panel-title" id="cookingTitle">Готовка</h2><div class="panel-meta">параллельный план под твою кухню</div></div></div>
+        <div class="week-tabs" data-week-tabs="cooking"><button class="week-tab active" type="button" data-week="1">Неделя 1</button><button class="week-tab" type="button" data-week="2">Неделя 2</button></div>
+        <div class="cooking-commandbar">
+          <div><div class="cooking-week-context" id="cookingWeekContext">неделя 1</div><div class="cooking-status fallback" id="cookingStatus" role="status">резервный план</div></div>
+          <div class="cooking-controls">
+            <select class="field-control" id="kitchenModeSelect" aria-label="Режим розеток"><option value="extended">До зимы · 4 розетки</option><option value="winter">Зима · 2 розетки</option></select>
+            <button class="quiet-btn" id="regenerateCookingBtn" type="button">Пересобрать</button>
+            <button class="quiet-btn" id="resetCookingCalibrationBtn" type="button">Сбросить темп</button>
+            <button class="danger-btn" id="clearCookingCacheBtn" type="button">Очистить кеш</button>
+          </div>
+        </div>
+        <div class="cooking-overview" id="cookingOverview"></div>
+        <div class="cooking-layout">
+          <div><div class="timeline-shell" id="cookingTimeline"></div><div class="cooking-batch-legend" id="cookingBatchLegend"></div></div>
+          <aside class="cooking-now" id="cookingNow" aria-live="polite"></aside>
+        </div>
+      </section>
+
+      <section class="menu-panel" data-menu-panel="history" aria-labelledby="historyTitle">
+        <div class="panel-head"><div><h2 class="panel-title" id="historyTitle">История</h2><div class="panel-meta">завершённые циклы</div></div></div>
+        <div class="history-list" id="historyList"></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<dialog id="replaceDialog" aria-labelledby="replaceDialogTitle">
+  <div class="dialog-head"><h2 id="replaceDialogTitle">Заменить блюдо</h2><button class="icon-btn" id="replaceDialogClose" type="button" aria-label="Закрыть">×</button></div>
+  <div class="replace-list" id="replaceList"></div>
+</dialog>
+
+<script src="nutrition-data.js?v=1"></script>
+<script src="nutrition-core.js?v=1"></script>
+<script src="nutrition-cooking-core.js?v=403"></script>
+<script src="nutrition-scheduler.js?v=403"></script>
+<script src="nutrition-openrouter.js?v=403"></script>
+<script src="nutrition.js?v=403"></script>
+</body>
+</html>
