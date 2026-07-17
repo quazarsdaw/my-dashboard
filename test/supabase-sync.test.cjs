@@ -193,6 +193,8 @@ test('initial push does not sync sensitive OpenRouter settings', async () => {
   const app = await loadSupabaseSync({
     initialStorage: {
       openrouter_settings_v1: JSON.stringify({ key: 'sk-secret', model: 'x' }),
+      nutrition_kitchen_profile_v1: JSON.stringify({ activeMode: 'extended' }),
+      nutrition_cooking_plans_v1: JSON.stringify({ version: 1 }),
       store_v2: JSON.stringify({ rewards: [] }),
     },
   });
@@ -201,6 +203,8 @@ test('initial push does not sync sensitive OpenRouter settings', async () => {
 
   const pushedKeys = app.writes.upserts.flat().map((row) => row.key);
   assert.ok(pushedKeys.includes('store_v2'));
+  assert.ok(pushedKeys.includes('nutrition_kitchen_profile_v1'));
+  assert.ok(pushedKeys.includes('nutrition_cooking_plans_v1'));
   assert.ok(!pushedKeys.includes('openrouter_settings_v1'));
 });
 
