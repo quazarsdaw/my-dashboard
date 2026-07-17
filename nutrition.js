@@ -866,6 +866,8 @@
       cookingStore.lastSessionId = session.id;
       if (!cookingStore.lastSessionIdsByWeek) cookingStore.lastSessionIdsByWeek = {};
       cookingStore.lastSessionIdsByWeek[session.cycleId + ':' + session.week] = session.id;
+      if (!Array.isArray(cookingStore.calibrationSessionIds)) cookingStore.calibrationSessionIds = [];
+      if (cookingStore.calibrationSessionIds.indexOf(session.id) === -1) cookingStore.calibrationSessionIds.push(session.id);
     }
     saveCookingStore();
   }
@@ -916,9 +918,15 @@
       return;
     }
     if (corrected.session.status === 'completed' && corrected.session.calibrationBase) {
-      var recalculated = NutritionCookingCore.applySessionCalibration(kitchenProfile, corrected.session, true);
-      corrected.session = recalculated.session;
-      kitchenProfile = recalculated.profile;
+      var calibrationIds = Array.isArray(cookingStore.calibrationSessionIds) ? cookingStore.calibrationSessionIds.slice() : [];
+      if (calibrationIds.indexOf(corrected.session.id) === -1) calibrationIds.push(corrected.session.id);
+      var calibrationSessions = calibrationIds.map(function (sessionId) {
+        return sessionId === corrected.session.id ? corrected.session : cookingStore.sessionsById[sessionId];
+      }).filter(Boolean);
+      var replayed = NutritionCookingCore.replaySessionCalibrations(kitchenProfile, calibrationSessions);
+      replayed.sessions.forEach(function (session) { cookingStore.sessionsById[session.id] = session; });
+      corrected.session = cookingStore.sessionsById[corrected.session.id] || corrected.session;
+      kitchenProfile = replayed.profile;
       saveKitchenProfile();
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, corrected.session.week);
       scheduleCookingGeneration(corrected.session.week, 250);
@@ -1303,6 +1311,7 @@
       kitchenProfile = NutritionCookingCore.resetCalibration(kitchenProfile);
       cookingStore.lastSessionId = null;
       cookingStore.lastSessionIdsByWeek = {};
+      cookingStore.calibrationSessionIds = [];
       saveKitchenProfile();
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);

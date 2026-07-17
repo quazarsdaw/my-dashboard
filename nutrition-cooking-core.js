@@ -234,7 +234,15 @@
   }
 
   function createEmptyCookingStore() {
-    return { version: 1, plansByHash: {}, sessionsById: {}, activeSessionId: null, lastSessionId: null, lastSessionIdsByWeek: {} };
+    return {
+      version: 1,
+      plansByHash: {},
+      sessionsById: {},
+      activeSessionId: null,
+      lastSessionId: null,
+      lastSessionIdsByWeek: {},
+      calibrationSessionIds: []
+    };
   }
 
   function normalizeCookingStore(raw) {
@@ -245,6 +253,7 @@
     empty.activeSessionId = typeof raw.activeSessionId === 'string' ? raw.activeSessionId : null;
     empty.lastSessionId = typeof raw.lastSessionId === 'string' ? raw.lastSessionId : null;
     empty.lastSessionIdsByWeek = isRecord(raw.lastSessionIdsByWeek) ? clone(raw.lastSessionIdsByWeek) : {};
+    empty.calibrationSessionIds = cleanStringArray(raw.calibrationSessionIds);
     return empty;
   }
 
@@ -826,6 +835,22 @@
     return { profile: calibrated, session: session };
   }
 
+  function replaySessionCalibrations(profile, inputSessions) {
+    var sessions = Array.isArray(inputSessions) ? clone(inputSessions) : [];
+    var current = normalizeKitchenProfile(profile);
+    if (!sessions.length) return { profile: current, sessions: [] };
+    if (isRecord(sessions[0].calibrationBase)) {
+      current.calibration = clone(sessions[0].calibrationBase);
+      current = normalizeKitchenProfile(current);
+    }
+    sessions = sessions.map(function (session) {
+      var applied = applySessionCalibration(current, session, false);
+      current = applied.profile;
+      return applied.session;
+    });
+    return { profile: current, sessions: sessions };
+  }
+
   function applyCalibrationToActions(actions, profile) {
     var safe = normalizeKitchenProfile(profile);
     return (Array.isArray(actions) ? actions : []).map(function (action) {
@@ -870,6 +895,7 @@
     setStepActualMinutes: setStepActualMinutes,
     updateCalibration: updateCalibration,
     applySessionCalibration: applySessionCalibration,
+    replaySessionCalibrations: replaySessionCalibrations,
     applyCalibrationToActions: applyCalibrationToActions,
     resetCalibration: resetCalibration
   };

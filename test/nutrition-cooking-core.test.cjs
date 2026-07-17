@@ -167,6 +167,7 @@ test('clears cached plans without deleting the active session or its plan', () =
   store.activeSessionId = 'session-active';
   store.lastSessionId = 'session-complete';
   store.lastSessionIdsByWeek = { 'cycle-test:2': 'session-complete' };
+  store.calibrationSessionIds = ['session-complete'];
   store.sessionsById['session-complete'] = { id: 'session-complete', planHash: 'old-plan', status: 'completed' };
 
   const cleared = CookingCore.clearCachedPlans(store);
@@ -176,6 +177,7 @@ test('clears cached plans without deleting the active session or its plan', () =
   assert.equal(cleared.activeSessionId, 'session-active');
   assert.equal(cleared.lastSessionId, 'session-complete');
   assert.equal(cleared.lastSessionIdsByWeek['cycle-test:2'], 'session-complete');
+  assert.deepEqual(cleared.calibrationSessionIds, ['session-complete']);
   assert.equal(cleared.sessionsById['session-complete'].status, 'completed');
   assert.equal(CookingCore.activeSessionForPlan(cleared, 'active-plan'), true);
 
@@ -466,4 +468,25 @@ test('recalculates a completed session from its original calibration baseline af
   assert.equal(recalculated.profile.calibration.factors.prep, 1.5);
   assert.equal(recalculated.profile.calibration.observations.prep, 1);
   assert.equal(recalculated.session.calibrationResult.factors.prep, 1.5);
+});
+
+test('replays later calibration sessions after correcting an older observation', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+  let firstSession = CookingCore.startSession(sessionPlan(), 0);
+  firstSession = CookingCore.startStep(firstSession, 'prepare', 0).session;
+  firstSession = CookingCore.completeStep(firstSession, 'prepare', 20 * 60 * 1000).session;
+  const firstApplied = CookingCore.applySessionCalibration(profile, firstSession);
+
+  let secondSession = CookingCore.startSession({ ...sessionPlan(), planHash: 'plan-session-2' }, 30 * 60 * 1000);
+  secondSession = CookingCore.startStep(secondSession, 'prepare', 30 * 60 * 1000).session;
+  secondSession = CookingCore.completeStep(secondSession, 'prepare', 40 * 60 * 1000).session;
+  const secondApplied = CookingCore.applySessionCalibration(firstApplied.profile, secondSession);
+  const correctedFirst = CookingCore.setStepActualMinutes(firstApplied.session, 'prepare', 10).session;
+
+  const replayed = CookingCore.replaySessionCalibrations(secondApplied.profile, [correctedFirst, secondApplied.session]);
+
+  assert.equal(replayed.profile.calibration.factors.prep, 1.5);
+  assert.equal(replayed.profile.calibration.observations.prep, 2);
+  assert.equal(replayed.sessions[0].calibrationResult.factors.prep, 1.5);
+  assert.equal(replayed.sessions[1].calibrationBase.factors.prep, 1.5);
 });
