@@ -258,4 +258,6 @@ test('starts a new cycle with a snapshot and clean active collections', () => {
   assert.equal(next.history.length, 1);
   assert.equal(next.history[0].completedMeals, 1);
   assert.equal(next.history[0].trainingDays, 1);
+  assert.equal(next.history[0].completions[`${state.activeCycle.id}:1:breakfast`], true);
+  assert.equal(next.history[0].trainingDayMap[`${state.activeCycle.id}:1`], true);
 });

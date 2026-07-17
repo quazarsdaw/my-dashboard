@@ -23,7 +23,7 @@ test('topbar uses a lighter grouped layout for balance, water and add controls',
 test('main page uses the shared polished topbar implementation', () => {
   const html = read('index.html');
 
-  assert.ok(html.includes('<script src="topbar.js?v=401" defer></script>'));
+  assert.ok(html.includes('<script src="topbar.js?v=402" defer></script>'));
   assert.ok(!html.includes('topbar_v405.js'));
 });
 
@@ -96,6 +96,7 @@ test('nutrition page provides clickable desktop and mobile section navigation', 
   assert.ok(html.includes('id="menuViewSelect"'));
   assert.ok(html.includes('class="nutrition-sidebar"'));
   assert.ok(html.includes('class="nutrition-main"'));
+  assert.ok(html.includes('id="healthContext"'));
   assert.ok(html.includes('class="cooking-week-context"'));
   assert.ok(html.includes('готовка на неделю'));
 });
@@ -206,12 +207,13 @@ test('all primary pages load the soft profile theme before topbar', () => {
     'health.html',
     'gym.html',
     'finance.html',
+    'menu.html',
   ];
 
   pages.forEach((file) => {
     const html = read(file);
     const themeScript = '<script src="profile-theme.js?v=401"></script>';
-    const topbarScript = '<script src="topbar.js?v=401" defer></script>';
+    const topbarScript = '<script src="topbar.js?v=402" defer></script>';
     const themeIndex = html.indexOf(themeScript);
     const topbarIndex = html.indexOf(topbarScript);
 

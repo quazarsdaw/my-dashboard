@@ -84,6 +84,12 @@ button{color:inherit}
 .summary-label{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--text-tertiary)}
 .summary-value{margin-top:6px;font-family:var(--font-mono);font-size:17px;font-weight:750;font-variant-numeric:tabular-nums}
 .summary-note{font-size:10px;color:var(--text-tertiary);margin-top:4px}
+.health-context{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:38px;margin-bottom:12px;
+  padding:8px 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-family:var(--font-mono);
+  font-size:10.5px;color:var(--text-secondary)}
+.health-context-label{font-family:var(--font-sans);font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--text-tertiary)}
+.health-context-link{margin-left:auto;color:var(--accent);text-decoration:none;font-family:var(--font-sans);font-weight:750}
+.health-context-link:hover{text-decoration:underline}
 .meal-list{display:flex;flex-direction:column;border-top:1px solid var(--line)}
 .meal-row{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:16px;align-items:center;
   padding:18px 2px;border-bottom:1px solid var(--line)}
@@ -214,6 +220,7 @@ dialog::backdrop{background:rgba(5,6,8,.76);backdrop-filter:blur(8px)}
           <button class="icon-btn" id="previousDayBtn" type="button" aria-label="Предыдущий день">←</button>
           <button class="icon-btn" id="nextDayBtn" type="button" aria-label="Следующий день">→</button>
         </div>
+        <div class="health-context" id="healthContext"></div>
         <div class="day-summary" id="daySummary"></div>
         <div class="meal-list" id="todayMeals"></div>
         <div class="training-extra" id="trainingExtra" hidden></div>

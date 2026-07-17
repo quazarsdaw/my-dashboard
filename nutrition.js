@@ -110,6 +110,26 @@
     return catalog.find(function (item) { return item.id === mealId; }) || null;
   }
 
+  function getHealthContext() {
+    var water = getStored('po_water_v1') || {};
+    var weight = getStored('weight_v1') || {};
+    var calories = getStored('calories_v1') || {};
+    var entries = Array.isArray(weight.entries) ? weight.entries : [];
+    var latestWeight = entries.length && Number(entries[entries.length - 1].kg);
+    var profile = water.profile || {};
+    var weightKg = Number.isFinite(latestWeight) && latestWeight > 0 ? latestWeight : Number(profile.weightKg) || 75;
+    var activity = Number(profile.activityHrsPerWeek) || 0;
+    var bottleMl = Number(water.bottleMl) || 500;
+    var targetMl = weightKg * 35 + activity / 7 * 500;
+    var todayKey = NutritionCore.getLocalDateKey();
+    return {
+      weightKg: weightKg,
+      calorieTarget: Number(calories.target) || 2000,
+      waterDone: Number(water.logs && water.logs[todayKey]) || 0,
+      waterTarget: Math.max(1, Math.ceil(targetMl / bottleMl))
+    };
+  }
+
   function isTrainingDay(dayNumber) {
     return state.trainingDays[cycleKey(dayNumber)] === true;
   }
@@ -175,6 +195,22 @@
       summaryItem('бюджет', formatRange(summary.estimatedCostRub, '₽')),
       summaryItem('соблюдение', completed + ' / 3', 'ориентир, не медрекомендация')
     ]);
+  }
+
+  function renderHealthContext() {
+    var container = document.getElementById('healthContext');
+    if (!container) return;
+    clearElement(container);
+    var context = getHealthContext();
+    appendChildren(container, [
+      createElement('span', 'health-context-label', 'из здоровья'),
+      createElement('span', '', 'цель ' + Math.round(context.calorieTarget) + ' ккал'),
+      createElement('span', '', 'вес ' + (Math.round(context.weightKg * 10) / 10) + ' кг'),
+      createElement('span', '', 'вода ' + context.waterDone + ' / ' + context.waterTarget)
+    ]);
+    var link = createElement('a', 'health-context-link', 'открыть');
+    link.href = 'health.html';
+    container.appendChild(link);
   }
 
   function ingredientText(item) {
@@ -337,6 +373,7 @@
     if (startInput) startInput.value = state.activeCycle.startDate;
     if (trainingToggle) trainingToggle.checked = isTrainingDay(selectedDay);
 
+    renderHealthContext();
     renderDaySummary(dayPlan, trainingExtra);
     var list = document.getElementById('todayMeals');
     clearElement(list);

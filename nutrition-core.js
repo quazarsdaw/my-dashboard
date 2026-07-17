@@ -346,7 +346,11 @@
       plannedMeals: plannedMeals,
       adherencePercent: plannedMeals ? Math.round(completedMeals / plannedMeals * 100) : 0,
       trainingDays: trainingDays,
-      overrides: clone(state && state.overrides || {})
+      overrides: clone(state && state.overrides || {}),
+      completions: clone(state && state.completions || {}),
+      notes: clone(state && state.notes || {}),
+      trainingDayMap: clone(state && state.trainingDays || {}),
+      trainingExtras: clone(state && state.trainingExtras || {})
     };
   }
 

@@ -73,3 +73,15 @@ test('nutrition controller reloads synced state from storage events', () => {
   assert.ok(js.includes('event.key === STATE_KEY'));
   assert.ok(js.includes('event.key === MEALS_KEY'));
 });
+
+test('nutrition reads health targets without writing meal data back to health storage', () => {
+  const js = read('nutrition.js');
+
+  assert.ok(js.includes('function getHealthContext('));
+  assert.ok(js.includes("getStored('po_water_v1')"));
+  assert.ok(js.includes("getStored('weight_v1')"));
+  assert.ok(js.includes("getStored('calories_v1')"));
+  assert.ok(!js.includes("storeSet('po_water_v1'"));
+  assert.ok(!js.includes("storeSet('weight_v1'"));
+  assert.ok(!js.includes("storeSet('calories_v1'"));
+});
