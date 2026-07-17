@@ -112,7 +112,8 @@ button{color:inherit}
   background:rgba(255,255,255,.035);color:var(--text-primary);text-decoration:none;font-size:13px;font-weight:750}
 .quick-link span{color:var(--text-tertiary);font-family:var(--font-mono);font-size:10px}
 .cycle-workspace{display:grid;grid-template-columns:minmax(0,1fr) 272px;gap:32px;align-items:start}
-.cycle-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
+.cycle-scroll{min-width:0;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-gutter:stable;padding-bottom:8px}
+.cycle-calendar{display:grid;grid-template-columns:repeat(7,260px);min-width:1820px;border-top:1px solid var(--line);border-left:1px solid var(--line)}
 .calendar-day{min-width:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(255,255,255,.018)}
 .calendar-day.current{background:rgba(125,211,252,.035);box-shadow:inset 0 2px 0 var(--accent)}
 .calendar-day-head{min-height:72px;padding:15px 12px;border-bottom:1px solid var(--line)}
@@ -165,12 +166,12 @@ button{color:inherit}
 .cooking-overview{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:22px;font-family:var(--font-mono);font-size:10px;color:var(--text-secondary)}
 .cooking-overview strong{font-size:16px;color:var(--text-primary)}
 .cooking-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:32px;align-items:start}
-.timeline-shell{min-width:0;border-top:1px solid var(--line)}
-.timeline-ruler{display:grid;grid-template-columns:124px minmax(0,1fr);min-height:48px;border-bottom:1px solid var(--line)}
-.timeline-ruler-label{display:flex;align-items:center;font-size:9px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;color:var(--text-tertiary)}
+.timeline-shell{min-width:0;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-gutter:stable;border-top:1px solid var(--line);padding-bottom:8px}
+.timeline-ruler{display:grid;grid-template-columns:140px minmax(0,1fr);width:var(--timeline-width,2870px);min-height:48px;border-bottom:1px solid var(--line)}
+.timeline-ruler-label{position:sticky;left:0;z-index:3;display:flex;align-items:center;padding-right:16px;background:#1C1E24;border-right:1px solid var(--line);font-size:9px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;color:var(--text-tertiary)}
 .timeline-scale{position:relative}.timeline-tick{position:absolute;top:10px;transform:translateX(-50%);font-family:var(--font-mono);font-size:8px;color:var(--text-tertiary)}
-.timeline-lane{display:grid;grid-template-columns:124px minmax(0,1fr);min-height:76px;border-bottom:1px solid var(--line)}
-.timeline-lane-name{display:flex;align-items:center;padding-right:16px;font-size:10.5px;font-weight:750;color:var(--text-secondary)}
+.timeline-lane{display:grid;grid-template-columns:140px minmax(0,1fr);width:var(--timeline-width,2870px);min-height:76px;border-bottom:1px solid var(--line)}
+.timeline-lane-name{position:sticky;left:0;z-index:2;display:flex;align-items:center;padding-right:16px;background:#1C1E24;border-right:1px solid var(--line);font-size:10.5px;font-weight:750;color:var(--text-secondary)}
 .timeline-track{position:relative;min-width:0;background-image:linear-gradient(to right,var(--line) 1px,transparent 1px);background-size:25% 100%}
 .timeline-block{position:absolute;top:10px;height:56px;min-width:4px;border:1px solid color-mix(in srgb,var(--batch-color) 58%,transparent);border-left-width:3px;
   background:color-mix(in srgb,var(--batch-color) 12%,#20232A);padding:9px 10px;overflow:hidden;color:var(--text-primary);cursor:pointer;text-align:left}
@@ -211,7 +212,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
   .nutrition-page{padding-top:10px}.nutrition-page-head{align-items:center}.nutrition-title{font-size:27px}
   .nutrition-shell{display:block;border-top:0;min-height:0}.nutrition-sidebar{display:none}.nutrition-main{padding:0}
   .mobile-view-control{display:block}.panel-head{margin-bottom:16px}.catalog-list{grid-template-columns:1fr}
-  .cycle-calendar{display:block;border-left:0}.calendar-day{border-left:1px solid var(--line);margin-bottom:12px}.calendar-day-head{min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .cycle-scroll{overflow:visible;padding-bottom:0}.cycle-calendar{display:block;min-width:0;border-left:0}.calendar-day{border-left:1px solid var(--line);margin-bottom:12px}.calendar-day-head{min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px}
   .calendar-meal{min-height:0;padding:13px 12px 13px 16px}.calendar-meal-title{font-size:13px}.calendar-meal-meta,.calendar-batch-label{font-size:9px}.batch-rail-list{display:block}
   .cooking-commandbar{align-items:flex-start}.cooking-controls{justify-content:flex-start}.cooking-now{order:-1}.timeline-ruler,.timeline-lane{grid-template-columns:82px minmax(0,1fr)}
 }
@@ -222,7 +223,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
   .meal-slot{grid-column:1/3}.meal-actions{grid-column:2;grid-row:2}.meal-details{grid-column:1/3}.meal-row.expanded .meal-details{grid-template-columns:1fr}
   .meal-title{font-size:15px}.quick-links{grid-template-columns:1fr}.catalog-tools{grid-template-columns:1fr}.catalog-tools .primary-btn{height:42px}
   .history-item{grid-template-columns:1fr 1fr}.history-date{grid-column:1/3}.cooking-commandbar{display:block}.cooking-controls{margin-top:12px}.cooking-controls .field-control{width:100%}
-  .timeline-shell{overflow:hidden}.timeline-block{padding:6px 5px}.timeline-block strong{font-size:8px}.cooking-now-actions{grid-template-columns:1fr}.cooking-now-actions .primary-btn{grid-column:auto}
+  .timeline-block{padding:6px 5px}.timeline-block strong{font-size:8px}.cooking-now-actions{grid-template-columns:1fr}.cooking-now-actions .primary-btn{grid-column:auto}
   .cooking-correction-tools{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
@@ -287,7 +288,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
         <div class="panel-head"><div><h2 class="panel-title" id="cycleTitle">14 дней</h2><div class="panel-meta">рацион и партии готовки</div></div></div>
         <div class="week-tabs" id="cycleWeekTabs" data-week-tabs="cycle"><button class="week-tab active" type="button" data-week="1">Неделя 1</button><button class="week-tab" type="button" data-week="2">Неделя 2</button></div>
         <div class="cycle-workspace">
-          <div class="cycle-calendar" id="cycleGrid"></div>
+          <div class="cycle-scroll" tabindex="0" aria-label="Календарь питания на неделю"><div class="cycle-calendar" id="cycleGrid"></div></div>
           <aside class="batch-rail" id="cycleBatchRail" aria-label="Партии этой недели"></aside>
         </div>
       </section>

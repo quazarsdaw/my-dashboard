@@ -78,13 +78,20 @@ test('nutrition controller exposes all cooking plan states and resource timeline
 
 test('nutrition desktop layout keeps calendar and cooking timeline readable at full zoom', () => {
   const html = read('menu.html');
+  const js = read('nutrition.js');
 
   assert.ok(html.includes('max-width:1760px'));
   assert.ok(html.includes('grid-template-columns:164px minmax(0,1fr)'));
   assert.ok(html.includes('grid-template-columns:minmax(0,1fr) 272px;gap:32px'));
+  assert.ok(html.includes('class="cycle-scroll"'));
+  assert.ok(html.includes('min-width:1820px'));
   assert.ok(html.includes('min-height:128px'));
   assert.ok(html.includes('grid-template-columns:minmax(0,1fr) 320px;gap:32px'));
+  assert.ok(html.includes('.timeline-shell{min-width:0;overflow-x:auto'));
+  assert.ok(html.includes('position:sticky;left:0'));
   assert.ok(html.includes('min-height:76px'));
+  assert.ok(js.includes('TIMELINE_PIXELS_PER_MINUTE = 7'));
+  assert.ok(js.includes("setProperty('--timeline-width'"));
   assert.ok(html.includes('@media(max-width:1480px)'));
   assert.ok(html.includes('@media(max-width:820px)'));
 });

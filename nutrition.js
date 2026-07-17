@@ -992,6 +992,9 @@
     return lanes;
   }
 
+  var TIMELINE_PIXELS_PER_MINUTE = 7;
+  var TIMELINE_RESOURCE_WIDTH = 140;
+
   function renderCookingTimeline(plan, container) {
     clearElement(container);
     if (!plan.schedule.length) {
@@ -999,6 +1002,8 @@
       return;
     }
     var duration = Math.max(1, plan.estimate.minMinutes);
+    var timelineWidth = TIMELINE_RESOURCE_WIDTH + Math.ceil(duration * TIMELINE_PIXELS_PER_MINUTE);
+    container.style.setProperty('--timeline-width', timelineWidth + 'px');
     var ruler = createElement('div', 'timeline-ruler');
     ruler.appendChild(createElement('div', 'timeline-ruler-label', 'ресурс'));
     var scale = createElement('div', 'timeline-scale');
