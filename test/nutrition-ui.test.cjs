@@ -87,9 +87,14 @@ test('nutrition controller persists cooking sessions and calibrates completed ac
   assert.ok(js.includes('NutritionCookingCore.completeStep'));
   assert.ok(js.includes('NutritionCookingCore.skipStep'));
   assert.ok(js.includes('NutritionCookingCore.setStepActualMinutes'));
-  assert.ok(js.includes('NutritionCookingCore.updateCalibration'));
+  assert.ok(js.includes('NutritionCookingCore.applySessionCalibration'));
   assert.ok(js.includes('NutritionCookingCore.resetCalibration'));
   assert.ok(js.includes('cookingStore.activeSessionId'));
+  assert.ok(js.includes('cookingStore.lastSessionId'));
+  assert.ok(js.includes('NutritionCookingCore.nextSessionActionId'));
+  assert.ok(js.includes('NutritionCookingCore.clearCachedPlans'));
+  assert.ok(js.includes('NutritionCookingCore.activeSessionForPlan'));
+  assert.ok(js.includes("if (!settings.key && cookingUiState[week] !== 'generating')"));
 });
 
 test('nutrition controller supports completion, notes, replacement and training extras', () => {

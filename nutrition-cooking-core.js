@@ -234,7 +234,7 @@
   }
 
   function createEmptyCookingStore() {
-    return { version: 1, plansByHash: {}, sessionsById: {}, activeSessionId: null };
+    return { version: 1, plansByHash: {}, sessionsById: {}, activeSessionId: null, lastSessionId: null };
   }
 
   function normalizeCookingStore(raw) {
@@ -243,6 +243,7 @@
     empty.plansByHash = isRecord(raw.plansByHash) ? clone(raw.plansByHash) : {};
     empty.sessionsById = isRecord(raw.sessionsById) ? clone(raw.sessionsById) : {};
     empty.activeSessionId = typeof raw.activeSessionId === 'string' ? raw.activeSessionId : null;
+    empty.lastSessionId = typeof raw.lastSessionId === 'string' ? raw.lastSessionId : null;
     return empty;
   }
 
@@ -258,15 +259,48 @@
     return safe;
   }
 
+  function activeSessionForPlan(store, planHash) {
+    var safe = normalizeCookingStore(store);
+    var session = safe.activeSessionId && safe.sessionsById[safe.activeSessionId];
+    return Boolean(session && session.status !== 'completed' && session.planHash === planHash);
+  }
+
+  function clearCachedPlans(store) {
+    var safe = normalizeCookingStore(store);
+    var active = safe.activeSessionId && safe.sessionsById[safe.activeSessionId];
+    var activePlan = active && safe.plansByHash[active.planHash];
+    safe.plansByHash = {};
+    if (activePlan) safe.plansByHash[active.planHash] = clone(activePlan);
+    return safe;
+  }
+
   function invalidateWeek(store, cycleId, week) {
     var safe = normalizeCookingStore(store);
+    var active = safe.activeSessionId && safe.sessionsById[safe.activeSessionId];
+    var protectedHash = active && active.status !== 'completed' ? active.planHash : '';
     Object.keys(safe.plansByHash).forEach(function (hash) {
       var plan = safe.plansByHash[hash];
-      if (plan && plan.cycleId === cycleId && Number(plan.week) === Number(week)) {
+      if (hash !== protectedHash && plan && plan.cycleId === cycleId && Number(plan.week) === Number(week)) {
         delete safe.plansByHash[hash];
       }
     });
     return safe;
+  }
+
+  function sameStringSet(left, right) {
+    var first = Array.from(new Set(left)).sort();
+    var second = Array.from(new Set(right)).sort();
+    return first.length === second.length && first.every(function (value, index) { return value === second[index]; });
+  }
+
+  function planCoversDemand(plan, demand) {
+    if (!isRecord(plan) || !Array.isArray(plan.batches) || !Array.isArray(plan.actions)) return false;
+    var expected = (demand && Array.isArray(demand.batches) ? demand.batches : []).filter(function (batch) {
+      return batch && batch.strategy !== 'outside';
+    }).map(function (batch) { return batch.id; }).filter(Boolean);
+    var declared = plan.batches.map(function (batch) { return batch && batch.id; }).filter(Boolean);
+    var covered = plan.actions.map(function (action) { return action && action.batchId; }).filter(Boolean);
+    return sameStringSet(declared, expected) && sameStringSet(covered, expected);
   }
 
   function validationError(code, message, actionId) {
@@ -376,6 +410,9 @@
       var duration = Number(value.durationMinutes);
       var mode = value.mode === 'passive' ? 'passive' : value.mode === 'active' ? 'active' : '';
       var category = typeof value.category === 'string' ? value.category.trim() : '';
+      var normalizedCategory = mode === 'active'
+        ? (ACTIVE_CATEGORIES.indexOf(category) !== -1 ? category : 'other')
+        : 'physical';
       var requires = isRecord(value.requires) ? value.requires : {};
       var equipmentTypes = cleanStringArray(requires.equipmentTypes);
       var cookwareTypes = cleanStringArray(requires.cookwareTypes);
@@ -409,7 +446,7 @@
         title: title,
         durationMinutes: Number.isFinite(duration) ? Math.round(duration * 10) / 10 : 0,
         mode: mode,
-        category: category,
+        category: normalizedCategory,
         dependsOn: cleanStringArray(value.dependsOn),
         interruptible: value.interruptible === true,
         readiness: typeof value.readiness === 'string' ? value.readiness.trim() : '',
@@ -599,6 +636,32 @@
     });
   }
 
+  function nextSessionActionId(orderedActions, session) {
+    var actions = Array.isArray(orderedActions) ? orderedActions : [];
+    if (!session || !isRecord(session.steps)) return actions[0] && (actions[0].actionId || actions[0].id) || null;
+
+    var active = actions.find(function (action) {
+      var id = action.actionId || action.id;
+      var step = session.steps[id];
+      return step && step.mode === 'active' && (step.status === 'running' || step.status === 'paused');
+    });
+    if (active) return active.actionId || active.id;
+
+    var available = actions.find(function (action) {
+      var id = action.actionId || action.id;
+      var step = session.steps[id];
+      return step && step.status === 'pending' && dependenciesResolved(session, action);
+    });
+    if (available) return available.actionId || available.id;
+
+    var passive = actions.find(function (action) {
+      var id = action.actionId || action.id;
+      var step = session.steps[id];
+      return step && step.mode === 'passive' && (step.status === 'running' || step.status === 'paused');
+    });
+    return passive ? passive.actionId || passive.id : null;
+  }
+
   function accumulateRunningTime(step, timestamp) {
     if (Number.isFinite(step.lastStartedAt)) {
       step.actualMs += Math.max(0, timestamp - step.lastStartedAt);
@@ -716,6 +779,19 @@
     return result;
   }
 
+  function applySessionCalibration(profile, inputSession, reuseBase) {
+    var session = clone(inputSession);
+    var current = normalizeKitchenProfile(profile);
+    if (!reuseBase || !isRecord(session.calibrationBase)) {
+      session.calibrationBase = clone(current.calibration);
+    }
+    current.calibration = clone(session.calibrationBase);
+    current = normalizeKitchenProfile(current);
+    var calibrated = updateCalibration(current, session);
+    session.calibrationResult = clone(calibrated.calibration);
+    return { profile: calibrated, session: session };
+  }
+
   function applyCalibrationToActions(actions, profile) {
     var safe = normalizeKitchenProfile(profile);
     return (Array.isArray(actions) ? actions : []).map(function (action) {
@@ -744,7 +820,10 @@
     normalizeCookingStore: normalizeCookingStore,
     getCachedPlan: getCachedPlan,
     putCachedPlan: putCachedPlan,
+    activeSessionForPlan: activeSessionForPlan,
+    clearCachedPlans: clearCachedPlans,
     invalidateWeek: invalidateWeek,
+    planCoversDemand: planCoversDemand,
     stableStringify: stableStringify,
     validateGeneratedPlan: validateGeneratedPlan,
     buildFallbackActions: buildFallbackActions,
@@ -753,8 +832,10 @@
     pauseStep: pauseStep,
     completeStep: completeStep,
     skipStep: skipStep,
+    nextSessionActionId: nextSessionActionId,
     setStepActualMinutes: setStepActualMinutes,
     updateCalibration: updateCalibration,
+    applySessionCalibration: applySessionCalibration,
     applyCalibrationToActions: applyCalibrationToActions,
     resetCalibration: resetCalibration
   };

@@ -46,7 +46,7 @@
               title: { type: 'string', minLength: 1 },
               durationMinutes: { type: 'number', exclusiveMinimum: 0, maximum: 720 },
               mode: { type: 'string', enum: ['active', 'passive'] },
-              category: { type: 'string', minLength: 1 },
+              category: { type: 'string', enum: ['cutting', 'prep', 'portioning', 'washing', 'other', 'physical'] },
               dependsOn: { type: 'array', items: { type: 'string' } },
               requires: {
                 type: 'object',
@@ -69,7 +69,9 @@
   function sanitizedDemand(demand) {
     return {
       week: Number(demand && demand.week) || 1,
-      batches: (demand && Array.isArray(demand.batches) ? demand.batches : []).map(function (batch) {
+      batches: (demand && Array.isArray(demand.batches) ? demand.batches : []).filter(function (batch) {
+        return batch && batch.strategy !== 'outside';
+      }).map(function (batch) {
         var meal = batch.meal || {};
         return {
           id: batch.id,

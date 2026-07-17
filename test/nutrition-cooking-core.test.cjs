@@ -159,6 +159,51 @@ test('stores plans by hash and invalidates one cycle week', () => {
   assert.equal(CookingCore.getCachedPlan(store, 'hash-1').week, 1, 'исходное хранилище не мутируется');
 });
 
+test('clears cached plans without deleting the active session or its plan', () => {
+  let store = CookingCore.createEmptyCookingStore();
+  store = CookingCore.putCachedPlan(store, { planHash: 'active-plan', cycleId: 'cycle-test', week: 1 });
+  store = CookingCore.putCachedPlan(store, { planHash: 'old-plan', cycleId: 'cycle-test', week: 2 });
+  store.sessionsById['session-active'] = { id: 'session-active', planHash: 'active-plan', status: 'running' };
+  store.activeSessionId = 'session-active';
+  store.lastSessionId = 'session-complete';
+  store.sessionsById['session-complete'] = { id: 'session-complete', planHash: 'old-plan', status: 'completed' };
+
+  const cleared = CookingCore.clearCachedPlans(store);
+
+  assert.equal(CookingCore.getCachedPlan(cleared, 'old-plan'), null);
+  assert.equal(CookingCore.getCachedPlan(cleared, 'active-plan').week, 1);
+  assert.equal(cleared.activeSessionId, 'session-active');
+  assert.equal(cleared.lastSessionId, 'session-complete');
+  assert.equal(cleared.sessionsById['session-complete'].status, 'completed');
+  assert.equal(CookingCore.activeSessionForPlan(cleared, 'active-plan'), true);
+
+  const invalidated = CookingCore.invalidateWeek(cleared, 'cycle-test', 1);
+  assert.equal(CookingCore.getCachedPlan(invalidated, 'active-plan').week, 1);
+});
+
+test('requires an ai plan to cover every cooking batch exactly', () => {
+  const demand = {
+    batches: [
+      { id: 'batch-a', strategy: 'batch' },
+      { id: 'batch-b', strategy: 'serve-day' },
+      { id: 'outside', strategy: 'outside' }
+    ]
+  };
+
+  assert.equal(CookingCore.planCoversDemand({
+    batches: [{ id: 'batch-a' }, { id: 'batch-b' }],
+    actions: [{ batchId: 'batch-a' }, { batchId: 'batch-b' }]
+  }, demand), true);
+  assert.equal(CookingCore.planCoversDemand({
+    batches: [{ id: 'batch-a' }, { id: 'batch-b' }],
+    actions: [{ batchId: 'batch-a' }]
+  }, demand), false);
+  assert.equal(CookingCore.planCoversDemand({
+    batches: [{ id: 'batch-a' }, { id: 'batch-b' }, { id: 'extra' }],
+    actions: [{ batchId: 'batch-a' }, { batchId: 'batch-b' }, { batchId: 'extra' }]
+  }, demand), false);
+});
+
 function action(overrides = {}) {
   return {
     id: 'rice:wash',
@@ -187,6 +232,16 @@ test('accepts a strict generated action contract', () => {
   assert.equal(result.ok, true);
   assert.equal(result.value.actions[0].title, 'промыть рис');
   assert.deepEqual(result.errors, []);
+});
+
+test('normalizes unknown model categories to a calibrated fallback category', () => {
+  const result = CookingCore.validateGeneratedPlan({
+    batches: [{ id: 'batch-meal-rice', mealId: 'meal-rice', title: 'рис', portions: 3 }],
+    actions: [action({ category: 'chopping' })]
+  }, CookingCore.createDefaultKitchenProfile());
+
+  assert.equal(result.ok, true);
+  assert.equal(result.value.actions[0].category, 'other');
 });
 
 test('rejects duplicate ids, unknown resources and missing dependencies', () => {
@@ -317,6 +372,21 @@ test('skipped prerequisites resolve dependencies but remain visible in the journ
   assert.equal(next.session.steps.cook.status, 'running');
 });
 
+test('offers an independent active step while a passive process is running', () => {
+  const parallelPlan = {
+    planHash: 'parallel-plan', cycleId: 'cycle-test', week: 1,
+    actions: [
+      action({ id: 'passive', mode: 'passive', category: 'physical', dependsOn: [] }),
+      action({ id: 'independent', mode: 'active', category: 'prep', dependsOn: [] }),
+      action({ id: 'after-passive', mode: 'active', category: 'prep', dependsOn: ['passive'] })
+    ]
+  };
+  let session = CookingCore.startSession(parallelPlan, 0);
+  session = CookingCore.startStep(session, 'passive', 0).session;
+
+  assert.equal(CookingCore.nextSessionActionId(parallelPlan.actions, session), 'independent');
+});
+
 test('calibrates active categories with bounded smoothing and ignores passive time', () => {
   const profile = CookingCore.createDefaultKitchenProfile();
   let session = CookingCore.startSession(sessionPlan(), 0);
@@ -356,4 +426,19 @@ test('allows correction of an accidentally recorded actual time', () => {
   assert.equal(corrected.ok, true);
   assert.equal(corrected.session.steps.prepare.actualMs, 14 * 60 * 1000);
   assert.equal(corrected.session.steps.prepare.manualActualMinutes, 14);
+});
+
+test('recalculates a completed session from its original calibration baseline after correction', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+  let session = CookingCore.startSession(sessionPlan(), 0);
+  session = CookingCore.startStep(session, 'prepare', 0).session;
+  session = CookingCore.completeStep(session, 'prepare', 20 * 60 * 1000).session;
+  const first = CookingCore.applySessionCalibration(profile, session);
+  const corrected = CookingCore.setStepActualMinutes(first.session, 'prepare', 10).session;
+  const recalculated = CookingCore.applySessionCalibration(first.profile, corrected, true);
+
+  assert.equal(first.profile.calibration.factors.prep, 1.875);
+  assert.equal(recalculated.profile.calibration.factors.prep, 1.5);
+  assert.equal(recalculated.profile.calibration.observations.prep, 1);
+  assert.equal(recalculated.session.calibrationResult.factors.prep, 1.5);
 });

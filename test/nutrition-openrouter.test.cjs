@@ -85,6 +85,10 @@ test('sends a strict schema request without leaking the api key or notes', async
   assert.equal(result.ok, true);
   assert.equal(body.response_format.type, 'json_schema');
   assert.equal(body.response_format.json_schema.strict, true);
+  assert.deepEqual(
+    body.response_format.json_schema.schema.properties.actions.items.properties.category.enum,
+    ['cutting', 'prep', 'portioning', 'washing', 'other', 'physical']
+  );
   assert.equal(body.provider.require_parameters, true);
   assert.equal(bodyText.includes('private-key'), false);
   assert.equal(bodyText.includes('секретная заметка'), false);
