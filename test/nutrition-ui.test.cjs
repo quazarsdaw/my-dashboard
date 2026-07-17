@@ -76,6 +76,22 @@ test('nutrition controller exposes all cooking plan states and resource timeline
   assert.ok(js.includes('function ensureCookingPlan('));
 });
 
+test('nutrition controller persists cooking sessions and calibrates completed active work', () => {
+  const html = read('menu.html');
+  const js = read('nutrition.js');
+
+  assert.ok(html.includes('id="resetCookingCalibrationBtn"'));
+  assert.ok(js.includes('NutritionCookingCore.startSession'));
+  assert.ok(js.includes('NutritionCookingCore.startStep'));
+  assert.ok(js.includes('NutritionCookingCore.pauseStep'));
+  assert.ok(js.includes('NutritionCookingCore.completeStep'));
+  assert.ok(js.includes('NutritionCookingCore.skipStep'));
+  assert.ok(js.includes('NutritionCookingCore.setStepActualMinutes'));
+  assert.ok(js.includes('NutritionCookingCore.updateCalibration'));
+  assert.ok(js.includes('NutritionCookingCore.resetCalibration'));
+  assert.ok(js.includes('cookingStore.activeSessionId'));
+});
+
 test('nutrition controller supports completion, notes, replacement and training extras', () => {
   const js = read('nutrition.js');
 

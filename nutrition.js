@@ -215,7 +215,8 @@
 
   function createAiPlan(demand, planHash, result) {
     if (!result.ok || !planMatchesDemand(result.value, demand)) return null;
-    var scheduled = NutritionScheduler.scheduleActions(result.value.actions, kitchenProfile);
+    var adjustedActions = NutritionCookingCore.applyCalibrationToActions(result.value.actions, kitchenProfile);
+    var scheduled = NutritionScheduler.scheduleActions(adjustedActions, kitchenProfile);
     if (!scheduled.ok) return null;
     return {
       version: 1,
@@ -227,7 +228,7 @@
       status: 'ready',
       source: 'ai',
       batches: demand.batches,
-      actions: result.value.actions,
+      actions: adjustedActions,
       schedule: scheduled.schedule,
       estimate: scheduled.estimate,
       peakOutlets: scheduled.peakOutlets,
@@ -819,6 +820,75 @@
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
 
+  function getActiveCookingSession(plan) {
+    var id = cookingStore.activeSessionId;
+    var session = id && cookingStore.sessionsById[id];
+    return session && session.planHash === plan.planHash ? session : null;
+  }
+
+  function persistCookingSession(session) {
+    cookingStore.sessionsById[session.id] = session;
+    cookingStore.activeSessionId = session.status === 'completed' ? null : session.id;
+    saveCookingStore();
+  }
+
+  function entryForAction(plan, actionId) {
+    return plan.schedule.find(function (entry) { return entry.actionId === actionId; }) || null;
+  }
+
+  function nextSessionEntry(plan, session) {
+    if (!session) return plan.schedule.find(function (entry) { return entry.userOccupied; }) || plan.schedule[0] || null;
+    var activeStepId = Object.keys(session.steps).find(function (id) {
+      return session.steps[id].status === 'running' || session.steps[id].status === 'paused';
+    });
+    if (activeStepId) return entryForAction(plan, activeStepId);
+    return plan.schedule.find(function (entry) {
+      var step = session.steps[entry.actionId];
+      if (!step || step.status !== 'pending') return false;
+      return entry.dependsOn.every(function (dependencyId) {
+        var dependency = session.steps[dependencyId];
+        return dependency && (dependency.status === 'done' || dependency.status === 'skipped');
+      });
+    }) || null;
+  }
+
+  function runSessionTransition(plan, transition, actionId) {
+    var session = getActiveCookingSession(plan);
+    if (!session) session = NutritionCookingCore.startSession(plan, Date.now());
+    var result = transition(session, actionId, Date.now());
+    if (!result.ok) {
+      cookingUiError[cookingWeek] = result.error.message;
+      renderCooking();
+      return;
+    }
+    persistCookingSession(result.session);
+    cookingUiError[cookingWeek] = '';
+    if (result.session.status === 'completed') {
+      kitchenProfile = NutritionCookingCore.updateCalibration(kitchenProfile, result.session);
+      saveKitchenProfile();
+      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
+      saveCookingStore();
+      scheduleCookingGeneration(cookingWeek, 250);
+    }
+    renderCooking();
+  }
+
+  function correctStepTime(plan, session, actionId) {
+    var step = session.steps[actionId];
+    var current = Math.max(1, Math.round(Number(step.actualMs) / 60000));
+    var answer = window.prompt('фактическое время шага в минутах', String(current));
+    if (answer === null) return;
+    var corrected = NutritionCookingCore.setStepActualMinutes(session, actionId, Number(answer));
+    if (!corrected.ok) {
+      cookingUiError[cookingWeek] = corrected.error.message;
+      renderCooking();
+      return;
+    }
+    persistCookingSession(corrected.session);
+    cookingUiError[cookingWeek] = '';
+    renderCookingNow(plan, document.getElementById('cookingNow'));
+  }
+
   function renderCooking() {
     var context = document.getElementById('cookingWeekContext');
     var status = document.getElementById('cookingStatus');
@@ -931,11 +1001,14 @@
 
   function renderCookingNow(plan, container) {
     clearElement(container);
-    var current = plan.schedule.find(function (entry) { return entry.userOccupied; }) || plan.schedule[0];
+    var session = getActiveCookingSession(plan);
+    var current = nextSessionEntry(plan, session);
     if (!current) {
-      container.appendChild(createElement('div', 'cooking-empty', 'готовить нечего'));
+      container.appendChild(createElement('div', 'cooking-empty', session ? 'все шаги сессии завершены' : 'готовить нечего'));
       return;
     }
+    var currentStep = session && session.steps[current.actionId];
+    var currentStatus = currentStep ? currentStep.status : 'pending';
     var passive = plan.schedule.filter(function (entry) {
       return !entry.userOccupied && entry.startMinute <= current.startMinute && entry.endMinute > current.startMinute;
     });
@@ -943,7 +1016,7 @@
       return entry.userOccupied && entry.startMinute >= current.endMinute && entry.actionId !== current.actionId;
     });
     appendChildren(container, [
-      createElement('div', 'cooking-now-eyebrow', 'делай сейчас'),
+      createElement('div', 'cooking-now-eyebrow', currentStatus === 'running' ? 'в работе' : currentStatus === 'paused' ? 'на паузе' : 'делай сейчас'),
       createElement('h3', 'cooking-now-title', current.title),
       createElement('div', 'cooking-now-meta', formatMinutes(current.durationMinutes) + ' · ' + actionMeta(current)),
       next ? createElement('div', 'cooking-now-meta', 'дальше: ' + next.title) : null
@@ -964,8 +1037,47 @@
     pause.id = 'cookingPauseStepBtn';
     done.id = 'cookingCompleteStepBtn';
     skip.id = 'cookingSkipStepBtn';
+    start.textContent = currentStatus === 'paused' ? 'продолжить' : 'начать';
+    start.disabled = currentStatus === 'running';
+    pause.disabled = currentStatus !== 'running';
+    done.disabled = currentStatus !== 'running' && currentStatus !== 'paused';
+    start.addEventListener('click', function () {
+      runSessionTransition(plan, NutritionCookingCore.startStep, current.actionId);
+    });
+    pause.addEventListener('click', function () {
+      runSessionTransition(plan, NutritionCookingCore.pauseStep, current.actionId);
+    });
+    done.addEventListener('click', function () {
+      runSessionTransition(plan, NutritionCookingCore.completeStep, current.actionId);
+    });
+    skip.addEventListener('click', function () {
+      var hasDependents = plan.actions.some(function (action) {
+        return Array.isArray(action.dependsOn) && action.dependsOn.indexOf(current.actionId) !== -1;
+      });
+      if (hasDependents && !window.confirm('пропустить шаг? зависящие от него действия будут разблокированы без проверки результата.')) return;
+      runSessionTransition(plan, NutritionCookingCore.skipStep, current.actionId);
+    });
     appendChildren(actions, [start, pause, done, skip]);
     container.appendChild(actions);
+
+    if (session) {
+      var completedIds = plan.schedule.map(function (entry) { return entry.actionId; }).filter(function (actionId) {
+        return session.steps[actionId] && session.steps[actionId].status === 'done';
+      });
+      if (completedIds.length) {
+        var completed = createElement('div', 'cooking-now-passive');
+        completed.appendChild(createElement('strong', '', 'последний завершённый'));
+        var lastId = completedIds[completedIds.length - 1];
+        var lastAction = plan.actions.find(function (action) { return action.id === lastId; });
+        var lastStep = session.steps[lastId];
+        completed.appendChild(createElement('span', '', (lastAction ? lastAction.title : lastId) + ' · ' + formatMinutes(lastStep.actualMs / 60000)));
+        var correct = createElement('button', 'quiet-btn', 'исправить время');
+        correct.type = 'button';
+        correct.addEventListener('click', function () { correctStepTime(plan, session, lastId); });
+        completed.appendChild(correct);
+        container.appendChild(completed);
+      }
+    }
   }
 
   function renderCookingLegend(plan, container) {
@@ -1102,6 +1214,16 @@
     });
     document.getElementById('regenerateCookingBtn').addEventListener('click', function () {
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
+      saveCookingStore();
+      scheduleCookingGeneration(cookingWeek, 10);
+      renderCooking();
+    });
+    document.getElementById('resetCookingCalibrationBtn').addEventListener('click', function () {
+      if (!window.confirm('сбросить накопленный темп готовки? журнал сессий останется.')) return;
+      kitchenProfile = NutritionCookingCore.resetCalibration(kitchenProfile);
+      saveKitchenProfile();
+      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
+      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);
       saveCookingStore();
       scheduleCookingGeneration(cookingWeek, 10);
       renderCooking();

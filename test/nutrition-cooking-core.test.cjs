@@ -251,3 +251,83 @@ test('builds a conservative sequential fallback from meal instructions', () => {
   assert.deepEqual(actions[2].dependsOn, [actions[1].id]);
   assert.equal(CookingCore.validateGeneratedPlan({ batches: demand.batches, actions }, CookingCore.createDefaultKitchenProfile()).ok, true);
 });
+
+function sessionPlan() {
+  return {
+    planHash: 'plan-session',
+    cycleId: 'cycle-test',
+    week: 1,
+    actions: [
+      action({ id: 'prepare', durationMinutes: 10, category: 'prep' }),
+      action({ id: 'cook', mode: 'passive', durationMinutes: 20, category: 'physical', dependsOn: ['prepare'] })
+    ]
+  };
+}
+
+test('tracks start, pause, resume and completion without counting pauses', () => {
+  let session = CookingCore.startSession(sessionPlan(), 0);
+  const blocked = CookingCore.startStep(session, 'cook', 0);
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.error.code, 'blocked-dependency');
+
+  session = CookingCore.startStep(session, 'prepare', 0).session;
+  session = CookingCore.pauseStep(session, 'prepare', 5 * 60 * 1000).session;
+  session = CookingCore.startStep(session, 'prepare', 7 * 60 * 1000).session;
+  session = CookingCore.completeStep(session, 'prepare', 12 * 60 * 1000).session;
+
+  assert.equal(session.steps.prepare.status, 'done');
+  assert.equal(session.steps.prepare.actualMs, 10 * 60 * 1000);
+  assert.equal(session.steps.prepare.pauses.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(session)), session);
+});
+
+test('skipped prerequisites resolve dependencies but remain visible in the journal', () => {
+  let session = CookingCore.startSession(sessionPlan(), 1000);
+  session = CookingCore.skipStep(session, 'prepare', 2000).session;
+  const next = CookingCore.startStep(session, 'cook', 3000);
+
+  assert.equal(session.steps.prepare.status, 'skipped');
+  assert.equal(next.ok, true);
+  assert.equal(next.session.steps.cook.status, 'running');
+});
+
+test('calibrates active categories with bounded smoothing and ignores passive time', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+  let session = CookingCore.startSession(sessionPlan(), 0);
+  session = CookingCore.startStep(session, 'prepare', 0).session;
+  session = CookingCore.completeStep(session, 'prepare', 20 * 60 * 1000).session;
+  session = CookingCore.startStep(session, 'cook', 20 * 60 * 1000).session;
+  session = CookingCore.completeStep(session, 'cook', 80 * 60 * 1000).session;
+
+  const calibrated = CookingCore.updateCalibration(profile, session);
+
+  assert.equal(calibrated.calibration.factors.prep, 1.875);
+  assert.equal(calibrated.calibration.factors.physical, undefined);
+  assert.equal(calibrated.calibration.observations.prep, 1);
+  assert.deepEqual(profile.calibration.factors, {}, 'исходный профиль не мутируется');
+});
+
+test('applies pace factors only to active work and supports reset', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+  profile.calibration.factors.prep = 2;
+  const adjusted = CookingCore.applyCalibrationToActions(sessionPlan().actions, profile);
+
+  assert.equal(adjusted[0].durationMinutes, 20);
+  assert.equal(adjusted[1].durationMinutes, 20);
+  assert.equal(adjusted[1].mode, 'passive');
+
+  const reset = CookingCore.resetCalibration(profile);
+  assert.deepEqual(reset.calibration.factors, {});
+  assert.deepEqual(reset.calibration.observations, {});
+});
+
+test('allows correction of an accidentally recorded actual time', () => {
+  let session = CookingCore.startSession(sessionPlan(), 0);
+  session = CookingCore.startStep(session, 'prepare', 0).session;
+  session = CookingCore.completeStep(session, 'prepare', 3 * 60 * 1000).session;
+  const corrected = CookingCore.setStepActualMinutes(session, 'prepare', 14);
+
+  assert.equal(corrected.ok, true);
+  assert.equal(corrected.session.steps.prepare.actualMs, 14 * 60 * 1000);
+  assert.equal(corrected.session.steps.prepare.manualActualMinutes, 14);
+});

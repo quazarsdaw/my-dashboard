@@ -538,6 +538,195 @@
     return actions;
   }
 
+  function numericTimestamp(value) {
+    var number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : Date.now();
+  }
+
+  function startSession(plan, now) {
+    var timestamp = numericTimestamp(now);
+    var actions = plan && Array.isArray(plan.actions) ? clone(plan.actions) : [];
+    var steps = {};
+    actions.forEach(function (action) {
+      steps[action.id] = {
+        actionId: action.id,
+        status: 'pending',
+        plannedMinutes: Number(action.durationMinutes) || 0,
+        mode: action.mode,
+        category: action.category || 'other',
+        actualMs: 0,
+        lastStartedAt: null,
+        completedAt: null,
+        pauses: []
+      };
+    });
+    return {
+      version: 1,
+      id: 'session-' + String(plan && plan.planHash || 'plan') + '-' + timestamp,
+      planHash: String(plan && plan.planHash || ''),
+      cycleId: String(plan && plan.cycleId || ''),
+      week: Number(plan && plan.week) || 1,
+      status: 'ready',
+      createdAt: timestamp,
+      startedAt: null,
+      completedAt: null,
+      actions: actions,
+      steps: steps
+    };
+  }
+
+  function sessionResult(ok, session, code, message) {
+    var result = { ok: ok, session: session };
+    if (!ok) result.error = { code: code, message: message };
+    return result;
+  }
+
+  function sessionAction(session, actionId) {
+    return (session.actions || []).find(function (action) { return action.id === actionId; }) || null;
+  }
+
+  function dependenciesResolved(session, action) {
+    return (action.dependsOn || []).every(function (dependencyId) {
+      var dependency = session.steps[dependencyId];
+      return dependency && (dependency.status === 'done' || dependency.status === 'skipped');
+    });
+  }
+
+  function accumulateRunningTime(step, timestamp) {
+    if (Number.isFinite(step.lastStartedAt)) {
+      step.actualMs += Math.max(0, timestamp - step.lastStartedAt);
+      step.lastStartedAt = null;
+    }
+  }
+
+  function startStep(inputSession, actionId, now) {
+    var session = clone(inputSession);
+    var action = sessionAction(session, actionId);
+    var step = session.steps && session.steps[actionId];
+    var timestamp = numericTimestamp(now);
+    if (!action || !step) return sessionResult(false, session, 'unknown-step', 'шаг не найден');
+    if (!dependenciesResolved(session, action)) {
+      return sessionResult(false, session, 'blocked-dependency', 'сначала заверши зависимые шаги');
+    }
+    var anotherRunning = Object.keys(session.steps).some(function (id) {
+      return id !== actionId && session.steps[id].status === 'running' && session.steps[id].mode === 'active';
+    });
+    if (action.mode === 'active' && anotherRunning) {
+      return sessionResult(false, session, 'active-step-running', 'другое активное действие уже запущено');
+    }
+    if (step.status === 'done' || step.status === 'skipped') {
+      return sessionResult(false, session, 'step-resolved', 'шаг уже завершён');
+    }
+    step.status = 'running';
+    step.lastStartedAt = timestamp;
+    if (session.startedAt === null) session.startedAt = timestamp;
+    session.status = 'running';
+    return sessionResult(true, session);
+  }
+
+  function pauseStep(inputSession, actionId, now) {
+    var session = clone(inputSession);
+    var step = session.steps && session.steps[actionId];
+    var timestamp = numericTimestamp(now);
+    if (!step || step.status !== 'running') return sessionResult(false, session, 'step-not-running', 'шаг не запущен');
+    var startedAt = step.lastStartedAt;
+    accumulateRunningTime(step, timestamp);
+    step.pauses.push({ startedAt: startedAt, pausedAt: timestamp });
+    step.status = 'paused';
+    session.status = 'paused';
+    return sessionResult(true, session);
+  }
+
+  function completeStep(inputSession, actionId, now) {
+    var session = clone(inputSession);
+    var step = session.steps && session.steps[actionId];
+    var timestamp = numericTimestamp(now);
+    if (!step || ['running', 'paused'].indexOf(step.status) === -1) {
+      return sessionResult(false, session, 'step-not-started', 'сначала запусти шаг');
+    }
+    accumulateRunningTime(step, timestamp);
+    step.status = 'done';
+    step.completedAt = timestamp;
+    var complete = Object.keys(session.steps).every(function (id) {
+      return session.steps[id].status === 'done' || session.steps[id].status === 'skipped';
+    });
+    session.status = complete ? 'completed' : 'running';
+    if (complete) session.completedAt = timestamp;
+    return sessionResult(true, session);
+  }
+
+  function skipStep(inputSession, actionId, now) {
+    var session = clone(inputSession);
+    var step = session.steps && session.steps[actionId];
+    var timestamp = numericTimestamp(now);
+    if (!step || step.status === 'done' || step.status === 'skipped') {
+      return sessionResult(false, session, 'step-resolved', 'шаг уже завершён');
+    }
+    accumulateRunningTime(step, timestamp);
+    step.status = 'skipped';
+    step.completedAt = timestamp;
+    var complete = Object.keys(session.steps).every(function (id) {
+      return session.steps[id].status === 'done' || session.steps[id].status === 'skipped';
+    });
+    session.status = complete ? 'completed' : session.status;
+    if (complete) session.completedAt = timestamp;
+    return sessionResult(true, session);
+  }
+
+  function setStepActualMinutes(inputSession, actionId, minutes) {
+    var session = clone(inputSession);
+    var step = session.steps && session.steps[actionId];
+    var value = Number(minutes);
+    if (!step || step.status !== 'done') return sessionResult(false, session, 'step-not-complete', 'можно исправить только завершённый шаг');
+    if (!Number.isFinite(value) || value < 1 || value > 720) {
+      return sessionResult(false, session, 'invalid-actual-time', 'фактическое время должно быть от 1 до 720 минут');
+    }
+    step.actualMs = Math.round(value * 60 * 1000);
+    step.manualActualMinutes = value;
+    return sessionResult(true, session);
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function updateCalibration(profile, session) {
+    var result = normalizeKitchenProfile(profile);
+    if (!session || !isRecord(session.steps)) return result;
+    Object.keys(session.steps).forEach(function (actionId) {
+      var step = session.steps[actionId];
+      if (!step || step.status !== 'done' || step.mode !== 'active') return;
+      if (ACTIVE_CATEGORIES.indexOf(step.category) === -1) return;
+      var actualMinutes = Number(step.actualMs) / 60000;
+      var plannedMinutes = Number(step.plannedMinutes);
+      if (!Number.isFinite(actualMinutes) || actualMinutes < 1 || actualMinutes > 720 || plannedMinutes <= 0) return;
+      var current = result.calibration.factors[step.category] || result.calibration.defaultActiveFactor;
+      var observed = clamp(current * actualMinutes / plannedMinutes, 0.75, 3);
+      var next = clamp(current + (observed - current) * 0.25, 0.75, 3);
+      result.calibration.factors[step.category] = Math.round(next * 1000) / 1000;
+      result.calibration.observations[step.category] = (result.calibration.observations[step.category] || 0) + 1;
+    });
+    return result;
+  }
+
+  function applyCalibrationToActions(actions, profile) {
+    var safe = normalizeKitchenProfile(profile);
+    return (Array.isArray(actions) ? actions : []).map(function (action) {
+      var copy = clone(action);
+      if (copy.mode !== 'active') return copy;
+      var factor = safe.calibration.factors[copy.category] || safe.calibration.defaultActiveFactor;
+      copy.durationMinutes = Math.max(1, Math.ceil(Number(copy.durationMinutes) * factor));
+      return copy;
+    });
+  }
+
+  function resetCalibration(profile) {
+    var result = normalizeKitchenProfile(profile);
+    result.calibration.factors = {};
+    result.calibration.observations = {};
+    return result;
+  }
+
   return {
     createDefaultKitchenProfile: createDefaultKitchenProfile,
     normalizeKitchenProfile: normalizeKitchenProfile,
@@ -551,6 +740,15 @@
     invalidateWeek: invalidateWeek,
     stableStringify: stableStringify,
     validateGeneratedPlan: validateGeneratedPlan,
-    buildFallbackActions: buildFallbackActions
+    buildFallbackActions: buildFallbackActions,
+    startSession: startSession,
+    startStep: startStep,
+    pauseStep: pauseStep,
+    completeStep: completeStep,
+    skipStep: skipStep,
+    setStepActualMinutes: setStepActualMinutes,
+    updateCalibration: updateCalibration,
+    applyCalibrationToActions: applyCalibrationToActions,
+    resetCalibration: resetCalibration
   };
 });
