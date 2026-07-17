@@ -247,6 +247,23 @@ test('uses defaults only when a saved ingredient price is absent', () => {
   assert.equal(priced[0].hasPrice, true);
 });
 
+test('keeps a separate price book authoritative over legacy nutrition state', () => {
+  const legacyPrices = { 'oats::г': 180 };
+
+  assert.deepEqual(
+    NutritionCore.resolvePriceBook(legacyPrices, {
+      version: 1,
+      prices: { 'oats::г': 321, 'milk::мл': 120 }
+    }),
+    { 'oats::г': 321, 'milk::мл': 120 }
+  );
+  assert.deepEqual(NutritionCore.resolvePriceBook(legacyPrices, null), legacyPrices);
+  assert.deepEqual(
+    NutritionCore.resolvePriceBook(legacyPrices, { version: 1, prices: {} }),
+    {}
+  );
+});
+
 test('normalizes damaged state while preserving supported cycle data', () => {
   const normalized = NutritionCore.normalizeState({
     version: 1,

@@ -210,6 +210,13 @@
     return result;
   }
 
+  function resolvePriceBook(legacyPrices, storedPriceBook) {
+    if (!isRecord(storedPriceBook) || storedPriceBook.version !== 1 || !isRecord(storedPriceBook.prices)) {
+      return normalizePriceBook(legacyPrices);
+    }
+    return normalizePriceBook(storedPriceBook.prices);
+  }
+
   function normalizeState(rawState, todayKey) {
     var fallback = createDefaultState(todayKey);
     if (!isRecord(rawState)) return fallback;
@@ -459,6 +466,7 @@
     buildShoppingList: buildShoppingList,
     priceKey: priceKey,
     priceBasis: priceBasis,
+    resolvePriceBook: resolvePriceBook,
     priceShoppingItems: priceShoppingItems,
     calculateShoppingTotal: calculateShoppingTotal,
     createCycleSnapshot: createCycleSnapshot,

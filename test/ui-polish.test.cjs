@@ -131,6 +131,7 @@ test('profile backup includes nutrition state and imported meals', () => {
 
   assert.ok(html.includes("'nutrition_meals_v1'"));
   assert.ok(html.includes("'nutrition_state_v1'"));
+  assert.ok(html.includes("'nutrition_prices_v1'"));
   assert.ok(html.includes("'nutrition_kitchen_profile_v1'"));
   assert.ok(html.includes("'nutrition_cooking_plans_v1'"));
 });

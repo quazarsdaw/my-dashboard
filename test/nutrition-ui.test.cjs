@@ -12,10 +12,12 @@ test('nutrition controller persists menu, kitchen and cooking state through gami
   const profile = read('profile.html');
 
   assert.ok(js.includes("STATE_KEY = 'nutrition_state_v1'"));
+  assert.ok(js.includes("PRICES_KEY = 'nutrition_prices_v1'"));
   assert.ok(js.includes("MEALS_KEY = 'nutrition_meals_v1'"));
   assert.ok(js.includes("KITCHEN_PROFILE_KEY = 'nutrition_kitchen_profile_v1'"));
   assert.ok(js.includes("COOKING_PLANS_KEY = 'nutrition_cooking_plans_v1'"));
   assert.ok(js.includes('Gamification.storeSet(STATE_KEY'));
+  assert.ok(js.includes('Gamification.storeSet(PRICES_KEY'));
   assert.ok(js.includes('Gamification.storeSet(MEALS_KEY'));
   assert.ok(js.includes('Gamification.storeSet(KITCHEN_PROFILE_KEY'));
   assert.ok(js.includes('Gamification.storeSet(COOKING_PLANS_KEY'));
@@ -171,8 +173,18 @@ test('nutrition controller reloads synced state from storage events', () => {
   const js = read('nutrition.js');
 
   assert.ok(js.includes("addEventListener('storage'"));
-  assert.ok(js.includes('event.key === STATE_KEY'));
-  assert.ok(js.includes('event.key === MEALS_KEY'));
+  assert.ok(js.includes("addEventListener('dashboard-sync-applied'"));
+  assert.ok(js.includes('reloadStoredData(event ? [event.key] : [])'));
+  assert.ok(js.includes('changedKeys'));
+  assert.ok(js.includes('PRICES_KEY'));
+});
+
+test('nutrition scripts use one fresh cache version for the changed controller contract', () => {
+  const html = read('menu.html');
+
+  assert.ok(html.includes('nutrition-data.js?v=404'));
+  assert.ok(html.includes('nutrition-core.js?v=404'));
+  assert.ok(html.includes('nutrition.js?v=404'));
 });
 
 test('nutrition reads health targets without writing meal data back to health storage', () => {

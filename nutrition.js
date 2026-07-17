@@ -2,6 +2,7 @@
   'use strict';
 
   var STATE_KEY = 'nutrition_state_v1';
+  var PRICES_KEY = 'nutrition_prices_v1';
   var MEALS_KEY = 'nutrition_meals_v1';
   var KITCHEN_PROFILE_KEY = 'nutrition_kitchen_profile_v1';
   var COOKING_PLANS_KEY = 'nutrition_cooking_plans_v1';
@@ -40,7 +41,13 @@
   }
 
   function saveState() {
-    Gamification.storeSet(STATE_KEY, state);
+    var persistedState = Object.assign({}, state);
+    delete persistedState.ingredientPrices;
+    Gamification.storeSet(STATE_KEY, persistedState);
+  }
+
+  function savePriceBook() {
+    Gamification.storeSet(PRICES_KEY, { version: 1, prices: state.ingredientPrices });
   }
 
   function saveImportedMeals() {
@@ -71,8 +78,12 @@
 
   function loadState() {
     var todayKey = NutritionCore.getLocalDateKey();
-    state = NutritionCore.normalizeState(getStored(STATE_KEY), todayKey);
-    if (!getStored(STATE_KEY)) saveState();
+    var storedState = getStored(STATE_KEY);
+    var storedPriceBook = getStored(PRICES_KEY);
+    state = NutritionCore.normalizeState(storedState, todayKey);
+    state.ingredientPrices = NutritionCore.resolvePriceBook(state.ingredientPrices, storedPriceBook);
+    if (!storedState) saveState();
+    if (!storedPriceBook && Object.keys(state.ingredientPrices).length) savePriceBook();
     var current = NutritionCore.getCycleDay(state.activeCycle.startDate, todayKey);
     selectedDay = current ? current.dayNumber : 1;
   }
@@ -851,7 +862,7 @@
           } else {
             delete state.ingredientPrices[priceKey];
           }
-          saveState();
+          savePriceBook();
           renderShopping();
         });
         appendChildren(priceField, [priceInput, createElement('span', 'shopping-price-unit', item.priceLabel)]);
@@ -1431,12 +1442,21 @@
     window.addEventListener('hashchange', function () {
       switchView(window.location.hash.slice(1), false);
     });
-    window.addEventListener('storage', function (event) {
-      if (!event || [STATE_KEY, MEALS_KEY, KITCHEN_PROFILE_KEY, COOKING_PLANS_KEY].indexOf(event.key) === -1) return;
-      if (event.key === MEALS_KEY) loadImportedMeals();
-      if (event.key === STATE_KEY) loadState();
-      if (event.key === KITCHEN_PROFILE_KEY || event.key === COOKING_PLANS_KEY) loadCookingData();
+    function reloadStoredData(changedKeys) {
+      var keys = Array.isArray(changedKeys) ? changedKeys : [];
+      var supportedKeys = [STATE_KEY, PRICES_KEY, MEALS_KEY, KITCHEN_PROFILE_KEY, COOKING_PLANS_KEY];
+      if (!keys.some(function (key) { return supportedKeys.indexOf(key) !== -1; })) return;
+      if (keys.indexOf(MEALS_KEY) !== -1) loadImportedMeals();
+      if (keys.indexOf(STATE_KEY) !== -1 || keys.indexOf(PRICES_KEY) !== -1) loadState();
+      if (keys.indexOf(KITCHEN_PROFILE_KEY) !== -1 || keys.indexOf(COOKING_PLANS_KEY) !== -1) loadCookingData();
       renderAll();
+    }
+    window.addEventListener('storage', function (event) {
+      reloadStoredData(event ? [event.key] : []);
+    });
+    window.addEventListener('dashboard-sync-applied', function (event) {
+      var changedKeys = event && event.detail ? event.detail.changedKeys : [];
+      reloadStoredData(changedKeys);
     });
   }
 
