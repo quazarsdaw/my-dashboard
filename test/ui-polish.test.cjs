@@ -101,7 +101,7 @@ test('nutrition page provides clickable desktop and mobile section navigation', 
   assert.ok(html.includes('id="cycleBatchRail"'));
   assert.ok(html.includes('id="cookingTimeline"'));
   assert.ok(html.includes('id="cookingNow"'));
-  assert.ok(html.includes('@media(max-width:760px)'));
+  assert.ok(html.includes('@media(max-width:820px)'));
   assert.ok(html.includes('.cycle-calendar{display:block;'));
   assert.ok(html.includes('@media(prefers-reduced-motion:reduce)'));
 });
