@@ -837,7 +837,7 @@
   }
 
   function nextSessionEntry(plan, session) {
-    if (!session) return plan.schedule.find(function (entry) { return entry.userOccupied; }) || plan.schedule[0] || null;
+    if (!session) return plan.schedule[0] || null;
     var activeStepId = Object.keys(session.steps).find(function (id) {
       return session.steps[id].status === 'running' || session.steps[id].status === 'paused';
     });

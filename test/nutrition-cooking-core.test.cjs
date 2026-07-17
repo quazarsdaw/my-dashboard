@@ -252,6 +252,32 @@ test('builds a conservative sequential fallback from meal instructions', () => {
   assert.equal(CookingCore.validateGeneratedPlan({ batches: demand.batches, actions }, CookingCore.createDefaultKitchenProfile()).ok, true);
 });
 
+test('recognizes imperative cooking verbs from the built-in meal catalog', () => {
+  const demand = {
+    version: 1,
+    cycleId: 'cycle-test',
+    week: 1,
+    batches: [{
+      id: 'batch-real-phrases', mealId: 'real-phrases', title: 'реальные формулировки',
+      portions: 2, strategy: 'batch', servingDays: [1, 2],
+      meal: {
+        id: 'real-phrases', title: 'реальные формулировки', prepMinutes: range(30, 40),
+        instructions: ['свари овсянку', 'запеки рыбу', 'потуши курицу', 'разогрей картофель']
+      }
+    }]
+  };
+
+  const actions = CookingCore.buildFallbackActions(demand, CookingCore.createDefaultKitchenProfile());
+
+  assert.deepEqual(actions[0].requires.equipmentTypes, ['burner']);
+  assert.deepEqual(actions[0].requires.cookwareTypes, ['pot']);
+  assert.equal(actions[0].mode, 'passive');
+  assert.deepEqual(actions[1].requires.equipmentTypes, ['airFryer']);
+  assert.deepEqual(actions[2].requires.equipmentTypes, ['burner']);
+  assert.deepEqual(actions[2].requires.cookwareTypes, ['deepPan']);
+  assert.deepEqual(actions[3].requires.equipmentTypes, ['microwave']);
+});
+
 function sessionPlan() {
   return {
     planHash: 'plan-session',

@@ -447,7 +447,7 @@
   }
 
   function instructionMode(text) {
-    return /(варить|отварить|запечь|запекать|тушить|остудить|выпекать|кипятить|настаивать)/i.test(text)
+    return /(свар|отвар|вар[иь]|запек|запеч|потуш|туши|остуд|выпек|кипят|наста|разогре|довед.*готовност)/i.test(text)
       ? 'passive'
       : 'active';
   }
@@ -456,14 +456,21 @@
     var source = String(text || '').toLowerCase();
     var equipment = [];
     var cookware = [];
-    if (/(варить|отварить|кипятить)/.test(source)) {
+    if (/(свар|отвар|вар[иь]|кипят|довед.*готовност)/.test(source)) {
       equipment.push('burner');
       cookware.push('pot');
-    } else if (/(запечь|запекать|выпекать)/.test(source)) {
+    } else if (/(запек|запеч|выпек)/.test(source)) {
       equipment.push('airFryer');
-    } else if (/(обжарить|жарить|сковород)/.test(source)) {
+    } else if (/(потуш|туши)/.test(source)) {
+      equipment.push('burner');
+      cookware.push('deepPan');
+    } else if (/(обжар|жар[иь]|сковород|приготов.*(?:яйц|куриц|индейк|говядин))/.test(source)) {
       equipment.push('burner');
       cookware.push('pan');
+    } else if (/разогре/.test(source)) {
+      equipment.push('microwave');
+    } else if (/(измельч|взбей|смешай.*блендер)/.test(source)) {
+      equipment.push('blender');
     }
     return {
       equipmentTypes: equipment,
