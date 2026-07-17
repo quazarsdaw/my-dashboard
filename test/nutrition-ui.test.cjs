@@ -76,6 +76,19 @@ test('nutrition controller exposes all cooking plan states and resource timeline
   assert.ok(js.includes('function ensureCookingPlan('));
 });
 
+test('nutrition desktop layout keeps calendar and cooking timeline readable at full zoom', () => {
+  const html = read('menu.html');
+
+  assert.ok(html.includes('max-width:1760px'));
+  assert.ok(html.includes('grid-template-columns:164px minmax(0,1fr)'));
+  assert.ok(html.includes('grid-template-columns:minmax(0,1fr) 272px;gap:32px'));
+  assert.ok(html.includes('min-height:128px'));
+  assert.ok(html.includes('grid-template-columns:minmax(0,1fr) 320px;gap:32px'));
+  assert.ok(html.includes('min-height:76px'));
+  assert.ok(html.includes('@media(max-width:1480px)'));
+  assert.ok(html.includes('@media(max-width:820px)'));
+});
+
 test('nutrition controller persists cooking sessions and calibrates completed active work', () => {
   const html = read('menu.html');
   const js = read('nutrition.js');
