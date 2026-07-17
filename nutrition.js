@@ -845,7 +845,8 @@
   }
 
   function getLastCookingSession(plan) {
-    var id = cookingStore.lastSessionId;
+    var weekKey = plan.cycleId + ':' + plan.week;
+    var id = cookingStore.lastSessionIdsByWeek && cookingStore.lastSessionIdsByWeek[weekKey] || cookingStore.lastSessionId;
     var session = id && cookingStore.sessionsById[id];
     return session && session.status === 'completed' && session.cycleId === plan.cycleId && Number(session.week) === Number(plan.week)
       ? session
@@ -861,7 +862,11 @@
   function persistCookingSession(session) {
     cookingStore.sessionsById[session.id] = session;
     cookingStore.activeSessionId = session.status === 'completed' ? null : session.id;
-    if (session.status === 'completed') cookingStore.lastSessionId = session.id;
+    if (session.status === 'completed') {
+      cookingStore.lastSessionId = session.id;
+      if (!cookingStore.lastSessionIdsByWeek) cookingStore.lastSessionIdsByWeek = {};
+      cookingStore.lastSessionIdsByWeek[session.cycleId + ':' + session.week] = session.id;
+    }
     saveCookingStore();
   }
 
@@ -1112,10 +1117,28 @@
         var summary = (lastAction ? lastAction.title : lastId) + ' · ' + formatMinutes(lastStep.actualMs / 60000);
         if (Number.isFinite(factor)) summary += ' · коэффициент ×' + factor.toFixed(2);
         completed.appendChild(createElement('span', '', summary));
-        var correct = createElement('button', 'quiet-btn', 'исправить время');
-        correct.type = 'button';
-        correct.addEventListener('click', function () { correctStepTime(plan, journalSession, lastId); });
-        completed.appendChild(correct);
+        var correctionIds = completedIds.filter(function (actionId) {
+          return journalSession.steps[actionId].mode === 'active';
+        });
+        if (correctionIds.length) {
+          var correctionTools = createElement('div', 'cooking-correction-tools');
+          var correctionSelect = createElement('select', 'field-control cooking-correction-select');
+          correctionSelect.setAttribute('aria-label', 'завершённый шаг для исправления времени');
+          correctionIds.forEach(function (actionId) {
+            var action = journalSession.actions.find(function (item) { return item.id === actionId; });
+            var step = journalSession.steps[actionId];
+            var option = document.createElement('option');
+            option.value = actionId;
+            option.textContent = (action ? action.title : actionId) + ' · ' + formatMinutes(step.actualMs / 60000);
+            correctionSelect.appendChild(option);
+          });
+          correctionSelect.value = correctionIds.indexOf(lastId) !== -1 ? lastId : correctionIds[correctionIds.length - 1];
+          var correct = createElement('button', 'quiet-btn', 'исправить время');
+          correct.type = 'button';
+          correct.addEventListener('click', function () { correctStepTime(plan, journalSession, correctionSelect.value); });
+          appendChildren(correctionTools, [correctionSelect, correct]);
+          completed.appendChild(correctionTools);
+        }
         container.appendChild(completed);
       }
     }
@@ -1279,6 +1302,7 @@
       if (!window.confirm('сбросить накопленный темп готовки? журнал сессий останется.')) return;
       kitchenProfile = NutritionCookingCore.resetCalibration(kitchenProfile);
       cookingStore.lastSessionId = null;
+      cookingStore.lastSessionIdsByWeek = {};
       saveKitchenProfile();
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);

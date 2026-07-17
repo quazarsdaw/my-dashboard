@@ -91,6 +91,8 @@ test('nutrition controller persists cooking sessions and calibrates completed ac
   assert.ok(js.includes('NutritionCookingCore.resetCalibration'));
   assert.ok(js.includes('cookingStore.activeSessionId'));
   assert.ok(js.includes('cookingStore.lastSessionId'));
+  assert.ok(js.includes('cookingStore.lastSessionIdsByWeek'));
+  assert.ok(js.includes('cooking-correction-select'));
   assert.ok(js.includes('NutritionCookingCore.nextSessionActionId'));
   assert.ok(js.includes('NutritionCookingCore.clearCachedPlans'));
   assert.ok(js.includes('NutritionCookingCore.activeSessionForPlan'));

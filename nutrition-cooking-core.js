@@ -234,7 +234,7 @@
   }
 
   function createEmptyCookingStore() {
-    return { version: 1, plansByHash: {}, sessionsById: {}, activeSessionId: null, lastSessionId: null };
+    return { version: 1, plansByHash: {}, sessionsById: {}, activeSessionId: null, lastSessionId: null, lastSessionIdsByWeek: {} };
   }
 
   function normalizeCookingStore(raw) {
@@ -244,6 +244,7 @@
     empty.sessionsById = isRecord(raw.sessionsById) ? clone(raw.sessionsById) : {};
     empty.activeSessionId = typeof raw.activeSessionId === 'string' ? raw.activeSessionId : null;
     empty.lastSessionId = typeof raw.lastSessionId === 'string' ? raw.lastSessionId : null;
+    empty.lastSessionIdsByWeek = isRecord(raw.lastSessionIdsByWeek) ? clone(raw.lastSessionIdsByWeek) : {};
     return empty;
   }
 
@@ -589,7 +590,17 @@
 
   function startSession(plan, now) {
     var timestamp = numericTimestamp(now);
+    var schedule = plan && Array.isArray(plan.schedule) ? plan.schedule : [];
     var actions = plan && Array.isArray(plan.actions) ? clone(plan.actions) : [];
+    actions.forEach(function (action) {
+      var entry = schedule.find(function (item) { return item.actionId === action.id; });
+      if (!entry) return;
+      action.assignedResources = {
+        equipmentIds: cleanStringArray(entry.equipmentIds),
+        cookwareIds: cleanStringArray(entry.cookwareIds),
+        outletIds: cleanStringArray(entry.outletIds)
+      };
+    });
     var steps = {};
     actions.forEach(function (action) {
       steps[action.id] = {
@@ -636,6 +647,26 @@
     });
   }
 
+  function actionResourceKeys(action) {
+    var source = isRecord(action && action.assignedResources) ? action.assignedResources : action || {};
+    return cleanStringArray(source.equipmentIds).map(function (id) { return 'equipment:' + id; })
+      .concat(cleanStringArray(source.cookwareIds).map(function (id) { return 'cookware:' + id; }))
+      .concat(cleanStringArray(source.outletIds).map(function (id) { return 'outlet:' + id; }));
+  }
+
+  function resourcesAvailable(session, action, orderedActions) {
+    var requested = actionResourceKeys(action);
+    if (!requested.length) return true;
+    return !orderedActions.some(function (other) {
+      var otherId = other.actionId || other.id;
+      var step = session.steps[otherId];
+      if (!step || (step.status !== 'running' && step.status !== 'paused')) return false;
+      var actionId = action.actionId || action.id;
+      if (otherId === actionId) return false;
+      return actionResourceKeys(other).some(function (key) { return requested.indexOf(key) !== -1; });
+    });
+  }
+
   function nextSessionActionId(orderedActions, session) {
     var actions = Array.isArray(orderedActions) ? orderedActions : [];
     if (!session || !isRecord(session.steps)) return actions[0] && (actions[0].actionId || actions[0].id) || null;
@@ -650,7 +681,7 @@
     var available = actions.find(function (action) {
       var id = action.actionId || action.id;
       var step = session.steps[id];
-      return step && step.status === 'pending' && dependenciesResolved(session, action);
+      return step && step.status === 'pending' && dependenciesResolved(session, action) && resourcesAvailable(session, action, actions);
     });
     if (available) return available.actionId || available.id;
 
@@ -679,10 +710,13 @@
       return sessionResult(false, session, 'blocked-dependency', 'сначала заверши зависимые шаги');
     }
     var anotherRunning = Object.keys(session.steps).some(function (id) {
-      return id !== actionId && session.steps[id].status === 'running' && session.steps[id].mode === 'active';
+      return id !== actionId && (session.steps[id].status === 'running' || session.steps[id].status === 'paused') && session.steps[id].mode === 'active';
     });
     if (action.mode === 'active' && anotherRunning) {
       return sessionResult(false, session, 'active-step-running', 'другое активное действие уже запущено');
+    }
+    if (!resourcesAvailable(session, action, session.actions || [])) {
+      return sessionResult(false, session, 'resource-in-use', 'нужный прибор, посуда или розетка уже заняты');
     }
     if (step.status === 'done' || step.status === 'skipped') {
       return sessionResult(false, session, 'step-resolved', 'шаг уже завершён');

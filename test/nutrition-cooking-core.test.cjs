@@ -166,6 +166,7 @@ test('clears cached plans without deleting the active session or its plan', () =
   store.sessionsById['session-active'] = { id: 'session-active', planHash: 'active-plan', status: 'running' };
   store.activeSessionId = 'session-active';
   store.lastSessionId = 'session-complete';
+  store.lastSessionIdsByWeek = { 'cycle-test:2': 'session-complete' };
   store.sessionsById['session-complete'] = { id: 'session-complete', planHash: 'old-plan', status: 'completed' };
 
   const cleared = CookingCore.clearCachedPlans(store);
@@ -174,6 +175,7 @@ test('clears cached plans without deleting the active session or its plan', () =
   assert.equal(CookingCore.getCachedPlan(cleared, 'active-plan').week, 1);
   assert.equal(cleared.activeSessionId, 'session-active');
   assert.equal(cleared.lastSessionId, 'session-complete');
+  assert.equal(cleared.lastSessionIdsByWeek['cycle-test:2'], 'session-complete');
   assert.equal(cleared.sessionsById['session-complete'].status, 'completed');
   assert.equal(CookingCore.activeSessionForPlan(cleared, 'active-plan'), true);
 
@@ -385,6 +387,29 @@ test('offers an independent active step while a passive process is running', () 
   session = CookingCore.startStep(session, 'passive', 0).session;
 
   assert.equal(CookingCore.nextSessionActionId(parallelPlan.actions, session), 'independent');
+});
+
+test('does not offer or start a step that reuses resources held by a running process', () => {
+  const resourcePlan = {
+    planHash: 'resource-plan', cycleId: 'cycle-test', week: 1,
+    actions: [
+      action({
+        id: 'first-pot', mode: 'passive', category: 'physical', dependsOn: [],
+        assignedResources: { equipmentIds: ['burner-1'], cookwareIds: ['pot-1'], outletIds: ['kitchen-outlet-1'] }
+      }),
+      action({
+        id: 'second-pot', mode: 'passive', category: 'physical', dependsOn: [],
+        assignedResources: { equipmentIds: ['burner-1'], cookwareIds: ['pot-1'], outletIds: ['kitchen-outlet-1'] }
+      })
+    ]
+  };
+  let session = CookingCore.startSession(resourcePlan, 0);
+  session = CookingCore.startStep(session, 'first-pot', 0).session;
+
+  assert.equal(CookingCore.nextSessionActionId(resourcePlan.actions, session), 'first-pot');
+  const blocked = CookingCore.startStep(session, 'second-pot', 1000);
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.error.code, 'resource-in-use');
 });
 
 test('calibrates active categories with bounded smoothing and ignores passive time', () => {
