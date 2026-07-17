@@ -197,6 +197,30 @@ test('updates shopping for the affected week after a meal replacement', () => {
   assert.equal(secondWeek.find((item) => item.id === 'rice').amount, 100);
 });
 
+test('does not add outside meals to the grocery shopping list', () => {
+  const outside = meal({
+    id: 'seed-breakfast-outside',
+    tags: ['вне дома'],
+    ingredients: [ingredient('cafe-breakfast', 'завтрак в кафе', 1, 'порция', 'other')]
+  });
+  const outsideTemplate = {
+    id: 'outside-plan',
+    days: [
+      { day: 1, meals: { breakfast: outside.id, lunch: 'seed-lunch-a', dinner: 'seed-dinner-a' } }
+    ]
+  };
+
+  const shopping = NutritionCore.buildShoppingList(
+    outsideTemplate,
+    NutritionCore.createDefaultState('2026-07-17'),
+    seedMeals.concat(outside),
+    1
+  );
+
+  assert.equal(shopping.some((item) => item.id === 'cafe-breakfast'), false);
+  assert.equal(shopping.some((item) => item.id === 'chicken'), true);
+});
+
 test('normalizes damaged state while preserving supported cycle data', () => {
   const normalized = NutritionCore.normalizeState({
     version: 1,

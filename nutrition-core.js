@@ -299,6 +299,7 @@
       MAIN_SLOTS.forEach(function (slot) {
         var selected = plan.meals[slot];
         if (!selected || !Array.isArray(selected.ingredients)) return;
+        if (Array.isArray(selected.tags) && selected.tags.indexOf('вне дома') !== -1) return;
         selected.ingredients.forEach(function (item) {
           var key = item.id + '::' + item.unit;
           if (!grouped[key]) {
