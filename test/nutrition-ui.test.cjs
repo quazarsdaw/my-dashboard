@@ -2,9 +2,149 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 
 function read(file) {
   return fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+}
+
+function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function loadNutritionController(options = {}) {
+  const values = new Map(Object.entries(options.storage || {}).map(([key, value]) => [key, clone(value)]));
+  if (!values.has('openrouter_settings_v1')) values.set('openrouter_settings_v1', { key: 'test-key' });
+  const writes = [];
+  const timers = [];
+  const requests = [];
+  const cookingCore = Object.assign({
+    normalizeKitchenProfile(value) {
+      return clone(value || { revision: 1, calibration: { durationOverrides: {} } });
+    },
+    normalizeCookingStore(value) {
+      return clone(value || { plansByHash: {}, sessionsById: {}, activeSessionId: null });
+    },
+    buildCookingDemand(template, state, catalog, week) {
+      return { cycleId: state.activeCycle.id, week, batches: [] };
+    },
+    selectCookingSessionDemand(demand, sessionKind) {
+      return Object.assign({}, demand, { sessionKind });
+    },
+    createPlanFingerprint(demand, profile) {
+      return 'hash-' + profile.revision;
+    },
+    getCachedPlan(store, hash) {
+      return store.plansByHash[hash] ? clone(store.plansByHash[hash]) : null;
+    },
+    putCachedPlan(store, plan) {
+      const next = clone(store);
+      next.plansByHash[plan.planHash] = clone(plan);
+      return next;
+    },
+    activeSessionForPlan() {
+      return false;
+    },
+    planCoversDemand() {
+      return true;
+    },
+    buildFallbackActions() {
+      return [];
+    },
+    applyCalibrationToActions(actions) {
+      return clone(actions);
+    },
+    invalidateWeek(store) {
+      return clone(store);
+    }
+  }, options.cookingCore || {});
+  const document = {
+    readyState: 'loading',
+    addEventListener() {},
+    getElementById() { return null; },
+    querySelector() { return null; },
+    querySelectorAll() { return []; }
+  };
+  const window = {
+    location: { hash: '' },
+    addEventListener() {},
+    confirm() { return true; },
+    NutritionCore: {
+      getLocalDateKey() { return '2026-07-18'; },
+      normalizeState() { return { activeCycle: { id: 'cycle-1', startDate: '2026-07-18' } }; }
+    },
+    NutritionData: { plan14: [], meals: [] },
+    NutritionCookingCore: cookingCore,
+    NutritionScheduler: {
+      scheduleActions() {
+        return { ok: true, schedule: [], estimate: { minMinutes: 0, maxMinutes: 0 }, peakOutlets: 0, warnings: [] };
+      }
+    },
+    NutritionOpenRouter: {
+      createOpenRouterCookingClient() {
+        return {
+          decompose() {
+            return new Promise((resolve) => requests.push(resolve));
+          },
+          abort() {}
+        };
+      }
+    },
+    Gamification: {
+      storeGet(key) {
+        return clone(values.get(key));
+      },
+      storeSet(key, value) {
+        writes.push({ key, value: clone(value) });
+        if (options.failWrite && options.failWrite(key, writes.length)) throw new Error('storage failed for ' + key);
+        values.set(key, clone(value));
+      }
+    }
+  };
+  const context = {
+    window,
+    document,
+    console,
+    setTimeout(callback) {
+      const timer = { callback, active: true };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimeout(timer) {
+      if (timer) timer.active = false;
+    },
+    Date,
+    JSON,
+    Object,
+    Array,
+    Number,
+    Boolean,
+    String,
+    Math
+  };
+  window.setTimeout = context.setTimeout;
+  window.clearTimeout = context.clearTimeout;
+  const source = read('nutrition.js').replace(
+    "if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);",
+    "window.__nutritionTestApi = { ensureCookingPlan: ensureCookingPlan, scheduleCookingGeneration: scheduleCookingGeneration, saveCookingData: typeof saveCookingData === 'function' ? saveCookingData : null, loadCookingData: loadCookingData, getUiState: function () { return cookingUiState; }, setRuntime: function (next) { state = next.state; kitchenProfile = next.kitchenProfile; cookingStore = next.cookingStore; } };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);"
+  );
+  vm.createContext(context);
+  vm.runInContext(source, context);
+  return { api: window.__nutritionTestApi, values, writes, timers, requests };
+}
+
+async function flushPromises() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
+function setCookingRuntime(harness, revision) {
+  harness.api.setRuntime({
+    state: { activeCycle: { id: 'cycle-1', startDate: '2026-07-18' } },
+    kitchenProfile: { revision, calibration: { durationOverrides: {} } },
+    cookingStore: { plansByHash: {}, sessionsById: {}, activeSessionId: null }
+  });
 }
 
 test('nutrition controller persists menu, kitchen and cooking state through gamification storage', () => {
@@ -163,6 +303,83 @@ test('nutrition controller edits and persists planned cooking durations', () => 
   assert.ok(js.includes('function resetCookingActionDuration('));
   assert.ok(js.includes('NutritionCookingCore.invalidateWeek'));
   assert.ok(js.includes('applyCalibrationToActions(result.value.actions, kitchenProfile, demand.batches)'));
+});
+
+test('nutrition controller replaces an obsolete ai request after a cooking rebuild', async () => {
+  const harness = loadNutritionController();
+  setCookingRuntime(harness, 1);
+
+  harness.api.ensureCookingPlan(1, 'main');
+  assert.equal(harness.requests.length, 1);
+
+  harness.api.setRuntime({
+    state: { activeCycle: { id: 'cycle-1', startDate: '2026-07-18' } },
+    kitchenProfile: { revision: 2, calibration: { durationOverrides: {} } },
+    cookingStore: { plansByHash: {}, sessionsById: {}, activeSessionId: null }
+  });
+  harness.api.scheduleCookingGeneration(1, 'main', 450);
+  const delayedGeneration = harness.timers[0];
+  harness.api.ensureCookingPlan(1, 'main', { forceAi: true });
+
+  assert.equal(delayedGeneration.active, false);
+  assert.equal(harness.requests.length, 2);
+
+  harness.requests[0]({ ok: true, value: { actions: [] } });
+  await flushPromises();
+  assert.equal(harness.api.getUiState()['1:main'], 'generating');
+
+  harness.requests[1]({ ok: true, value: { actions: [] } });
+  await flushPromises();
+  assert.equal(harness.api.getUiState()['1:main'], 'ready');
+});
+
+test('nutrition controller rolls back both cooking records when the second storage write fails', () => {
+  const originalProfile = { revision: 1, calibration: { durationOverrides: {} } };
+  const originalStore = { plansByHash: { before: { planHash: 'before' } }, sessionsById: {}, activeSessionId: null };
+  let cookingStoreFailures = 0;
+  const harness = loadNutritionController({
+    storage: {
+      nutrition_kitchen_profile_v1: originalProfile,
+      nutrition_cooking_plans_v1: originalStore
+    },
+    failWrite(key) {
+      if (key !== 'nutrition_cooking_plans_v1') return false;
+      cookingStoreFailures += 1;
+      return cookingStoreFailures === 1;
+    }
+  });
+  setCookingRuntime(harness, 2);
+
+  assert.throws(() => harness.api.saveCookingData(), /storage failed/);
+  assert.deepEqual(harness.values.get('nutrition_kitchen_profile_v1'), originalProfile);
+  assert.deepEqual(harness.values.get('nutrition_cooking_plans_v1'), originalStore);
+  assert.equal(harness.values.get('nutrition_cooking_transaction_v1'), null);
+});
+
+test('nutrition controller recovers a failed cooking transaction on the next load', () => {
+  const originalProfile = { revision: 1, calibration: { durationOverrides: {} } };
+  const originalStore = { plansByHash: { before: { planHash: 'before' } }, sessionsById: {}, activeSessionId: null };
+  let fail = true;
+  const harness = loadNutritionController({
+    storage: {
+      nutrition_kitchen_profile_v1: originalProfile,
+      nutrition_cooking_plans_v1: originalStore
+    },
+    failWrite(key) {
+      return fail && key === 'nutrition_cooking_plans_v1';
+    }
+  });
+  setCookingRuntime(harness, 2);
+
+  assert.throws(() => harness.api.saveCookingData(), /storage failed/);
+  assert.ok(harness.values.get('nutrition_cooking_transaction_v1'));
+
+  fail = false;
+  harness.api.loadCookingData();
+
+  assert.deepEqual(harness.values.get('nutrition_kitchen_profile_v1'), originalProfile);
+  assert.deepEqual(harness.values.get('nutrition_cooking_plans_v1'), originalStore);
+  assert.equal(harness.values.get('nutrition_cooking_transaction_v1'), null);
 });
 
 test('nutrition controller supports completion, notes, replacement and training extras', () => {

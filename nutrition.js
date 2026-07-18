@@ -6,6 +6,7 @@
   var MEALS_KEY = 'nutrition_meals_v1';
   var KITCHEN_PROFILE_KEY = 'nutrition_kitchen_profile_v1';
   var COOKING_PLANS_KEY = 'nutrition_cooking_plans_v1';
+  var COOKING_TRANSACTION_KEY = 'nutrition_cooking_transaction_v1';
   var DEFAULT_VIEW = 'today';
   var VIEWS = ['today', 'cycle', 'dishes', 'shopping', 'cooking', 'history'];
   var MAIN_SLOTS = ['breakfast', 'lunch', 'dinner'];
@@ -37,6 +38,8 @@
   var cookingUiState = {};
   var cookingUiError = {};
   var generationTimers = {};
+  var generationRequests = {};
+  var generationRequestToken = 0;
 
   function getStored(key) {
     return Gamification.storeGet(key);
@@ -64,7 +67,48 @@
     Gamification.storeSet(COOKING_PLANS_KEY, cookingStore);
   }
 
+  function clearCookingTransaction() {
+    Gamification.storeSet(COOKING_TRANSACTION_KEY, null);
+  }
+
+  function restoreCookingTransaction(transaction) {
+    Gamification.storeSet(KITCHEN_PROFILE_KEY, transaction.kitchenProfile);
+    Gamification.storeSet(COOKING_PLANS_KEY, transaction.cookingStore);
+  }
+
+  function recoverCookingTransaction() {
+    var transaction = getStored(COOKING_TRANSACTION_KEY);
+    var hasProfile = transaction && Object.prototype.hasOwnProperty.call(transaction, 'kitchenProfile');
+    var hasStore = transaction && Object.prototype.hasOwnProperty.call(transaction, 'cookingStore');
+    if (!transaction || transaction.version !== 1 || !hasProfile || !hasStore) return;
+    restoreCookingTransaction(transaction);
+    clearCookingTransaction();
+  }
+
+  function saveCookingData() {
+    var transaction = {
+      version: 1,
+      kitchenProfile: getStored(KITCHEN_PROFILE_KEY),
+      cookingStore: getStored(COOKING_PLANS_KEY)
+    };
+    Gamification.storeSet(COOKING_TRANSACTION_KEY, transaction);
+    try {
+      saveKitchenProfile();
+      saveCookingStore();
+      clearCookingTransaction();
+    } catch (error) {
+      try {
+        restoreCookingTransaction(transaction);
+        clearCookingTransaction();
+      } catch (_) {
+        // A retained journal makes the next load restore both records before use.
+      }
+      throw error;
+    }
+  }
+
   function loadCookingData() {
+    recoverCookingTransaction();
     kitchenProfile = NutritionCookingCore.normalizeKitchenProfile(getStored(KITCHEN_PROFILE_KEY));
     cookingStore = NutritionCookingCore.normalizeCookingStore(getStored(COOKING_PLANS_KEY));
     if (!getStored(KITCHEN_PROFILE_KEY)) saveKitchenProfile();
@@ -280,6 +324,12 @@
       cookingUiError[key] = '';
       return;
     }
+    if (generationTimers[key]) {
+      clearTimeout(generationTimers[key]);
+      delete generationTimers[key];
+    }
+    var request = { token: ++generationRequestToken, planHash: planHash };
+    generationRequests[key] = request;
     cookingUiState[key] = 'generating';
     cookingUiError[key] = '';
     if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
@@ -293,6 +343,8 @@
       demand: demand,
       profile: kitchenProfile
     }).then(function (result) {
+      var currentRequest = generationRequests[key];
+      if (!currentRequest || currentRequest.token !== request.token || currentRequest.planHash !== request.planHash) return;
       var currentDemand = getCookingDemand(week, sessionKind);
       var currentHash = NutritionCookingCore.createPlanFingerprint(currentDemand, kitchenProfile);
       if (currentHash !== planHash) return;
@@ -302,6 +354,7 @@
           var activePlan = NutritionCookingCore.getCachedPlan(cookingStore, planHash);
           cookingUiState[key] = activePlan && activePlan.source === 'ai' ? 'ready' : 'fallback';
           cookingUiError[key] = '';
+          delete generationRequests[key];
           if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) renderCycle();
           if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
           return;
@@ -314,6 +367,15 @@
         cookingUiState[key] = 'error';
         cookingUiError[key] = result && result.error ? result.error.message : 'план не прошёл локальную проверку';
       }
+      delete generationRequests[key];
+      if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) renderCycle();
+      if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
+    }).catch(function (error) {
+      var currentRequest = generationRequests[key];
+      if (!currentRequest || currentRequest.token !== request.token || currentRequest.planHash !== request.planHash) return;
+      cookingUiState[key] = 'error';
+      cookingUiError[key] = error && error.message ? error.message : 'не удалось пересобрать план';
+      delete generationRequests[key];
       if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) renderCycle();
       if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
     });
@@ -334,6 +396,11 @@
     }
     var demand = getCookingDemand(week, kind);
     var planHash = NutritionCookingCore.createPlanFingerprint(demand, kitchenProfile);
+    var forceAi = options && (options.force || options.forceAi);
+    if (forceAi && generationTimers[key]) {
+      clearTimeout(generationTimers[key]);
+      delete generationTimers[key];
+    }
     var cached = NutritionCookingCore.getCachedPlan(cookingStore, planHash);
     if (!cached) {
       cached = buildFallbackPlan(demand, planHash);
@@ -348,9 +415,7 @@
       cookingUiState[key] = cached.status === 'ready' ? 'ready' : 'fallback';
       cookingUiError[key] = '';
     }
-    if (settings.key && cookingUiState[key] !== 'generating' && (
-      (options && (options.force || options.forceAi)) || (cookingUiState[key] !== 'stale' && cached.source !== 'ai')
-    )) {
+    if (settings.key && (forceAi || (cookingUiState[key] !== 'generating' && cookingUiState[key] !== 'stale' && cached.source !== 'ai'))) {
       requestAiCookingPlan(week, kind, demand, planHash);
     }
     return cached;
@@ -982,7 +1047,6 @@
 
   function rebuildCookingPlanAfterDurationChange(plan) {
     cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, plan.cycleId, plan.week);
-    saveCookingStore();
     var rebuiltPlan = ensureCookingPlan(cookingWeek, cookingSessionKind, { force: true });
     if (!getSelectedCookingEntry(rebuiltPlan)) selectedCookingActionId = null;
     renderCooking();
@@ -1002,18 +1066,22 @@
     if (!updated.ok) return updated;
     var previousKitchenProfile = kitchenProfile;
     var previousCookingStore = cookingStore;
+    var persisted = false;
     try {
       kitchenProfile = updated.profile;
-      saveKitchenProfile();
+      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, plan.cycleId, plan.week);
+      saveCookingData();
+      persisted = true;
       var rebuiltPlan = rebuildCookingPlanAfterDurationChange(plan);
       return { ok: true, key: updated.key, plan: rebuiltPlan };
     } catch (error) {
       kitchenProfile = previousKitchenProfile;
       cookingStore = previousCookingStore;
-      try {
-        saveKitchenProfile();
-        saveCookingStore();
-      } catch (_) {}
+      if (persisted) {
+        try {
+          saveCookingData();
+        } catch (_) {}
+      }
       return { ok: false, error: error.message || 'не удалось сохранить длительность шага' };
     }
   }
