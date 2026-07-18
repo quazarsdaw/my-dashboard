@@ -626,6 +626,7 @@ test('calibrates active categories with bounded smoothing and ignores passive ti
 test('applies pace factors only to active work and supports reset', () => {
   const profile = CookingCore.createDefaultKitchenProfile();
   profile.calibration.factors.prep = 2;
+  profile.calibration.durationOverrides['meal-rice::prep::отвари рис'] = 18;
   const adjusted = CookingCore.applyCalibrationToActions(sessionPlan().actions, profile);
 
   assert.equal(adjusted[0].durationMinutes, 20);
@@ -635,6 +636,9 @@ test('applies pace factors only to active work and supports reset', () => {
   const reset = CookingCore.resetCalibration(profile);
   assert.deepEqual(reset.calibration.factors, {});
   assert.deepEqual(reset.calibration.observations, {});
+  assert.deepEqual(reset.calibration.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
 });
 
 test('allows correction of an accidentally recorded actual time', () => {
