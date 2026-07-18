@@ -1210,7 +1210,8 @@ test('nutrition scripts use one fresh cache version for the changed controller c
 
   assert.ok(html.includes('nutrition-data.js?v=405'));
   assert.ok(html.includes('nutrition-core.js?v=406'));
-  assert.ok(html.includes('nutrition-cooking-core.js?v=405'));
+  assert.ok(html.includes('nutrition-cooking-core.js?v=406'));
+  assert.ok(html.includes('nutrition-scheduler.js?v=406'));
   assert.ok(html.includes('nutrition.js?v=407'));
 });
 

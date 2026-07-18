@@ -245,7 +245,7 @@ test('versions cooking fingerprints and distinguishes preparation sessions', () 
     profile
   );
 
-  assert.match(mainHash, /^cook-v2-/);
+  assert.match(mainHash, /^cook-v3-/);
   assert.notEqual(mainHash, refreshHash);
 });
 
@@ -475,6 +475,39 @@ test('builds a conservative sequential fallback from meal instructions', () => {
   assert.match(actions[2].title, /разложить 3 порции/);
   assert.deepEqual(actions[2].dependsOn, [actions[1].id]);
   assert.equal(CookingCore.validateGeneratedPlan({ batches: demand.batches, actions }, CookingCore.createDefaultKitchenProfile()).ok, true);
+});
+
+test('runs independent cooking branches in parallel before finalizing the batch', () => {
+  const demand = {
+    version: 1,
+    cycleId: 'cycle-test',
+    week: 1,
+    batches: [{
+      id: 'batch-dinner',
+      mealId: 'dinner',
+      title: 'курица с гречкой',
+      portions: 3,
+      strategy: 'batch',
+      servingDays: [1, 2, 3],
+      meal: {
+        id: 'dinner',
+        title: 'курица с гречкой',
+        prepMinutes: range(35, 45),
+        instructions: [
+          'отвари гречку до готовности',
+          'запеки курицу и овощи',
+          'разложи по контейнерам'
+        ]
+      }
+    }]
+  };
+
+  const actions = CookingCore.buildFallbackActions(demand, CookingCore.createDefaultKitchenProfile());
+
+  assert.deepEqual(actions[0].dependsOn, []);
+  assert.deepEqual(actions[1].dependsOn, []);
+  assert.deepEqual(actions[2].dependsOn, [actions[0].id, actions[1].id]);
+  assert.deepEqual(actions[3].dependsOn, [actions[2].id]);
 });
 
 test('keeps fallback dependencies inside each batch without chaining separate meals', () => {

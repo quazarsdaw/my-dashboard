@@ -291,7 +291,7 @@
   }
 
   function createPlanFingerprint(demand, profile) {
-    return 'cook-v2-' + hashString(stableStringify({ demand: demand, profile: profileFingerprint(profile) }));
+    return 'cook-v3-' + hashString(stableStringify({ demand: demand, profile: profileFingerprint(profile) }));
   }
 
   function createEmptyCookingStore() {
@@ -602,13 +602,18 @@
     };
   }
 
+  function instructionJoinsBranches(text) {
+    return /(разлож|смеш|подай|подач|добав|собер|остуд|перелож|порци)/i.test(String(text || ''));
+  }
+
   function buildFallbackActions(demand, profile) {
     var safeProfile = normalizeKitchenProfile(profile);
     var actions = [];
 
     (demand && Array.isArray(demand.batches) ? demand.batches : []).forEach(function (batch) {
       if (!batch || batch.strategy === 'outside' || !batch.meal) return;
-      var previousId = null;
+      var branchEnds = [];
+      var preparationIds = [];
       var instructions = Array.isArray(batch.meal.instructions) && batch.meal.instructions.length
         ? batch.meal.instructions
         : ['приготовить ' + batch.title];
@@ -623,6 +628,25 @@
           : 1;
         var duration = instructionDuration(instruction, activeBase);
         var id = batch.id + ':fallback-' + (index + 1);
+        var requirements = instructionRequirements(instruction);
+        var dependsOn = [];
+
+        if (instructionJoinsBranches(instruction)) {
+          dependsOn = branchEnds.slice();
+          branchEnds = [id];
+          preparationIds = [];
+        } else if (requirements.equipmentTypes.length) {
+          dependsOn = preparationIds.slice();
+          branchEnds = branchEnds.filter(function (branchId) {
+            return preparationIds.indexOf(branchId) === -1;
+          });
+          branchEnds.push(id);
+          preparationIds = [];
+        } else {
+          branchEnds.push(id);
+          preparationIds.push(id);
+        }
+
         actions.push({
           id: id,
           batchId: batch.id,
@@ -630,13 +654,12 @@
           durationMinutes: Math.max(1, Math.ceil(duration * factor)),
           mode: mode,
           category: category,
-          dependsOn: previousId ? [previousId] : [],
+          dependsOn: dependsOn,
           interruptible: mode === 'active',
           readiness: '',
           warning: '',
-          requires: instructionRequirements(instruction)
+          requires: requirements
         });
-        previousId = id;
       });
 
       if (batch.strategy === 'batch' && Number(batch.portions) > 1) {
@@ -650,7 +673,7 @@
           )),
           mode: 'active',
           category: 'portioning',
-          dependsOn: previousId ? [previousId] : [],
+          dependsOn: branchEnds.slice(),
           interruptible: true,
           readiness: '',
           warning: '',
@@ -661,7 +684,7 @@
             locationPreference: 'kitchen'
           }
         });
-        previousId = portionId;
+        branchEnds = [portionId];
       }
     });
     return applyDurationOverridesToActions(actions, safeProfile, demand && demand.batches);
