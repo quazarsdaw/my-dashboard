@@ -1175,9 +1175,7 @@
           (error.message || 'ошибка хранилища')
       };
     }
-    var activeSessionId = cookingStore.activeSessionId;
-    var activeSession = activeSessionId && cookingStore.sessionsById[activeSessionId];
-    if (hasActiveCookingSession() || !NutritionCookingCore.canEditActionDuration(activeSession, actionId)) {
+    if (hasActiveCookingSession()) {
       return { ok: false, error: 'сначала заверши активную сессию готовки' };
     }
     var updated = updateProfile(kitchenProfile, action, plan.batches);

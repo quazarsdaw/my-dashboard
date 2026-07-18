@@ -897,7 +897,6 @@ test('nutrition controller edits and persists planned cooking durations', () => 
   assert.ok(js.includes('selectedCookingActionId'));
   assert.ok(js.includes('NutritionCookingCore.setActionDurationOverride'));
   assert.ok(js.includes('NutritionCookingCore.clearActionDurationOverride'));
-  assert.ok(js.includes('NutritionCookingCore.canEditActionDuration'));
   assert.ok(js.includes('function saveCookingActionDuration('));
   assert.ok(js.includes('function resetCookingActionDuration('));
   assert.ok(js.includes('NutritionCookingCore.invalidateWeek'));
@@ -1155,6 +1154,33 @@ test('nutrition controller blocks duration edits while any cooking session is ac
   assert.deepEqual(harness.api.getRuntime().cookingStore, original.store);
 });
 
+test('nutrition controller allows duration edits when active session id points to a completed session', () => {
+  const original = createStoredCookingState();
+  original.store.activeSessionId = 'completed-session';
+  original.store.sessionsById['completed-session'] = {
+    id: 'completed-session',
+    status: 'completed',
+    planHash: 'old-plan',
+    steps: { 'old-action': { status: 'completed' } }
+  };
+  const harness = loadNutritionController({
+    storage: {
+      openrouter_settings_v1: {},
+      nutrition_kitchen_profile_v1: original.profile,
+      nutrition_cooking_plans_v1: original.store
+    }
+  });
+  setDurationRuntime(harness, original);
+
+  const result = harness.api.saveCookingActionDuration(original.plan, 'action-1', 25);
+
+  assert.equal(result.ok, true);
+  assert.equal(
+    harness.values.get('nutrition_kitchen_profile_v1').calibration.durationOverrides['meal-1::prep::подготовить блюдо'],
+    25
+  );
+});
+
 test('nutrition controller restores the original pair when the first cooking store persist fails', () => {
   const original = createStoredCookingState();
   let cookingStoreWrites = 0;
@@ -1298,7 +1324,7 @@ test('nutrition scripts use one fresh cache version for the changed controller c
   assert.ok(html.includes('nutrition-core.js?v=406'));
   assert.ok(html.includes('nutrition-cooking-core.js?v=406'));
   assert.ok(html.includes('nutrition-scheduler.js?v=406'));
-  assert.ok(html.includes('nutrition.js?v=408'));
+  assert.ok(html.includes('nutrition.js?v=409'));
 });
 
 test('nutrition reads health targets without writing meal data back to health storage', () => {
