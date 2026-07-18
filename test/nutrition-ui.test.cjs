@@ -106,10 +106,15 @@ test('nutrition desktop layout keeps calendar and cooking timeline readable at f
   assert.ok(html.includes('min-width:1820px'));
   assert.ok(html.includes('min-height:128px'));
   assert.ok(html.includes('grid-template-columns:minmax(0,1fr) 320px;gap:32px'));
-  assert.ok(html.includes('.timeline-shell{min-width:0;overflow-x:auto'));
+  assert.ok(html.includes('.cooking-timeline-column{min-width:0;'));
+  assert.ok(html.includes('.timeline-shell{width:100%;max-width:100%;min-width:0;overflow-x:auto'));
   assert.ok(html.includes('position:sticky;left:0'));
-  assert.ok(html.includes('min-height:76px'));
+  assert.ok(html.includes('min-height:96px'));
+  assert.ok(html.includes('-webkit-line-clamp:2'));
+  assert.ok(html.includes('.cycle-workspace,.cooking-layout{grid-template-columns:minmax(0,1fr)}'));
   assert.ok(js.includes('TIMELINE_PIXELS_PER_MINUTE = 7'));
+  assert.ok(js.includes('TIMELINE_MIN_SEGMENT_WIDTH = 220'));
+  assert.ok(js.includes('NutritionCore.buildTimelineScale'));
   assert.ok(js.includes("setProperty('--timeline-width'"));
   assert.ok(html.includes('@media(max-width:1480px)'));
   assert.ok(html.includes('@media(max-width:820px)'));

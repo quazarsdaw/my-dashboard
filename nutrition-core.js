@@ -217,6 +217,56 @@
     return normalizePriceBook(storedPriceBook.prices);
   }
 
+  function buildTimelineScale(schedule, durationMinutes, pixelsPerMinute, minSegmentWidth) {
+    var entries = Array.isArray(schedule) ? schedule : [];
+    var duration = Number.isFinite(Number(durationMinutes)) ? Math.max(1, Number(durationMinutes)) : 1;
+    entries.forEach(function (entry) {
+      var end = entry && Number(entry.endMinute);
+      if (Number.isFinite(end)) duration = Math.max(duration, end);
+    });
+    var pixels = Number.isFinite(Number(pixelsPerMinute)) ? Math.max(1, Number(pixelsPerMinute)) : 1;
+    var minimum = Number.isFinite(Number(minSegmentWidth)) ? Math.max(1, Number(minSegmentWidth)) : 1;
+    var boundaries = [0, duration];
+    entries.forEach(function (entry) {
+      var start = entry && Number(entry.startMinute);
+      var end = entry && Number(entry.endMinute);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+      boundaries.push(Math.max(0, Math.min(duration, start)));
+      boundaries.push(Math.max(0, Math.min(duration, end)));
+    });
+    boundaries.sort(function (a, b) { return a - b; });
+    boundaries = boundaries.filter(function (minute, index) {
+      return index === 0 || minute !== boundaries[index - 1];
+    });
+
+    var offset = 0;
+    var segments = [];
+    for (var index = 0; index < boundaries.length - 1; index += 1) {
+      var startMinute = boundaries[index];
+      var endMinute = boundaries[index + 1];
+      var width = Math.max((endMinute - startMinute) * pixels, minimum);
+      segments.push({ start: startMinute, end: endMinute, offset: offset, width: width });
+      offset += width;
+    }
+
+    return {
+      duration: duration,
+      width: offset,
+      positionAt: function (minuteValue) {
+        var minute = Math.max(0, Math.min(duration, Number(minuteValue) || 0));
+        if (minute >= duration) return offset;
+        for (var segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+          var segment = segments[segmentIndex];
+          if (minute <= segment.end) {
+            var ratio = (minute - segment.start) / Math.max(1, segment.end - segment.start);
+            return segment.offset + segment.width * Math.max(0, Math.min(1, ratio));
+          }
+        }
+        return offset;
+      }
+    };
+  }
+
   function normalizeState(rawState, todayKey) {
     var fallback = createDefaultState(todayKey);
     if (!isRecord(rawState)) return fallback;
@@ -467,6 +517,7 @@
     priceKey: priceKey,
     priceBasis: priceBasis,
     resolvePriceBook: resolvePriceBook,
+    buildTimelineScale: buildTimelineScale,
     priceShoppingItems: priceShoppingItems,
     calculateShoppingTotal: calculateShoppingTotal,
     createCycleSnapshot: createCycleSnapshot,

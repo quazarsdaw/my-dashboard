@@ -167,18 +167,19 @@ button{color:inherit}
 .cooking-controls{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}.cooking-controls .field-control{width:auto;min-width:190px}
 .cooking-overview{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:22px;font-family:var(--font-mono);font-size:10px;color:var(--text-secondary)}
 .cooking-overview strong{font-size:16px;color:var(--text-primary)}
-.cooking-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:32px;align-items:start}
-.timeline-shell{min-width:0;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-gutter:stable;border-top:1px solid var(--line);padding-bottom:8px}
+.cooking-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:32px;align-items:start;min-width:0}
+.cooking-timeline-column{min-width:0;max-width:100%}
+.timeline-shell{width:100%;max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-gutter:stable;border-top:1px solid var(--line);padding-bottom:8px}
 .timeline-ruler{display:grid;grid-template-columns:140px minmax(0,1fr);width:var(--timeline-width,2870px);min-height:48px;border-bottom:1px solid var(--line)}
 .timeline-ruler-label{position:sticky;left:0;z-index:3;display:flex;align-items:center;padding-right:16px;background:#1C1E24;border-right:1px solid var(--line);font-size:9px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;color:var(--text-tertiary)}
 .timeline-scale{position:relative}.timeline-tick{position:absolute;top:10px;transform:translateX(-50%);font-family:var(--font-mono);font-size:8px;color:var(--text-tertiary)}
-.timeline-lane{display:grid;grid-template-columns:140px minmax(0,1fr);width:var(--timeline-width,2870px);min-height:76px;border-bottom:1px solid var(--line)}
+.timeline-lane{display:grid;grid-template-columns:140px minmax(0,1fr);width:var(--timeline-width,2870px);min-height:96px;border-bottom:1px solid var(--line)}
 .timeline-lane-name{position:sticky;left:0;z-index:2;display:flex;align-items:center;padding-right:16px;background:#1C1E24;border-right:1px solid var(--line);font-size:10.5px;font-weight:750;color:var(--text-secondary)}
-.timeline-track{position:relative;min-width:0;background-image:linear-gradient(to right,var(--line) 1px,transparent 1px);background-size:25% 100%}
-.timeline-block{position:absolute;top:10px;height:56px;min-width:4px;border:1px solid color-mix(in srgb,var(--batch-color) 58%,transparent);border-left-width:3px;
-  background:color-mix(in srgb,var(--batch-color) 12%,#20232A);padding:9px 10px;overflow:hidden;color:var(--text-primary);cursor:pointer;text-align:left}
+.timeline-track{position:relative;min-width:0}.timeline-guide{position:absolute;top:0;bottom:0;width:1px;background:var(--line);pointer-events:none}
+.timeline-block{position:absolute;z-index:1;top:10px;height:76px;min-width:4px;border:1px solid color-mix(in srgb,var(--batch-color) 58%,transparent);border-left-width:3px;
+  background:color-mix(in srgb,var(--batch-color) 12%,#20232A);padding:10px 12px;overflow:hidden;color:var(--text-primary);cursor:pointer;text-align:left}
 .timeline-block.passive{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--batch-color) 10%,#20232A),color-mix(in srgb,var(--batch-color) 10%,#20232A) 5px,rgba(255,255,255,.025) 5px,rgba(255,255,255,.025) 10px)}
-.timeline-block strong{display:block;font-size:10px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.timeline-block span{display:block;margin-top:5px;font-family:var(--font-mono);font-size:8.5px;color:var(--text-secondary)}
+.timeline-block strong{display:-webkit-box;font-size:10.5px;line-height:1.3;white-space:normal;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}.timeline-block span{display:block;margin-top:7px;font-family:var(--font-mono);font-size:8.5px;color:var(--text-secondary)}
 .timeline-block.batch-muted{opacity:.42}.timeline-block.batch-active{box-shadow:0 0 0 1px var(--batch-color)}
 .cooking-now{position:sticky;top:94px;border-top:2px solid var(--accent);background:rgba(255,255,255,.025);padding:20px}
 .cooking-now-eyebrow{font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
@@ -205,7 +206,7 @@ dialog::backdrop{background:rgba(5,6,8,.76);backdrop-filter:blur(8px)}
 .replace-option strong{display:block;font-size:13px}.replace-option span{display:block;margin-top:5px;font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary)}
 button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media(max-width:1480px){
-  .cycle-workspace,.cooking-layout{grid-template-columns:1fr}.batch-rail,.cooking-now{position:static;margin-top:24px}.batch-rail-list{display:grid;grid-template-columns:1fr 1fr}
+  .cycle-workspace,.cooking-layout{grid-template-columns:minmax(0,1fr)}.batch-rail,.cooking-now{position:static;margin-top:24px}.batch-rail-list{display:grid;grid-template-columns:1fr 1fr}
 }
 @media(max-width:900px){
   .nutrition-shell{grid-template-columns:148px minmax(0,1fr)}.nutrition-sidebar{padding-right:14px}.nutrition-main{padding-left:20px}
@@ -228,7 +229,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
   .meal-slot{grid-column:1/3}.meal-actions{grid-column:2;grid-row:2}.meal-details{grid-column:1/3}.meal-row.expanded .meal-details{grid-template-columns:1fr}
   .meal-title{font-size:15px}.quick-links{grid-template-columns:1fr}.catalog-tools{grid-template-columns:1fr}.catalog-tools .primary-btn{height:42px}
   .history-summary{grid-template-columns:1fr}.history-stat{border-right:0;border-bottom:1px solid var(--line)}.history-stat:last-child{border-bottom:0}.history-item{grid-template-columns:1fr 1fr}.history-date{grid-column:1/3}.cooking-commandbar{display:block}.cooking-controls{margin-top:12px}.cooking-controls .field-control{width:100%}
-  .timeline-block{padding:6px 5px}.timeline-block strong{font-size:8px}.cooking-now-actions{grid-template-columns:1fr}.cooking-now-actions .primary-btn{grid-column:auto}
+  .timeline-block{padding:9px 10px}.cooking-now-actions{grid-template-columns:1fr}.cooking-now-actions .primary-btn{grid-column:auto}
   .cooking-correction-tools{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
@@ -331,7 +332,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
         </div>
         <div class="cooking-overview" id="cookingOverview"></div>
         <div class="cooking-layout">
-          <div><div class="timeline-shell" id="cookingTimeline"></div><div class="cooking-batch-legend" id="cookingBatchLegend"></div></div>
+          <div class="cooking-timeline-column"><div class="timeline-shell" id="cookingTimeline"></div><div class="cooking-batch-legend" id="cookingBatchLegend"></div></div>
           <aside class="cooking-now" id="cookingNow" aria-live="polite"></aside>
         </div>
       </section>

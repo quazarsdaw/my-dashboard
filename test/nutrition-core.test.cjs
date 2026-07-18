@@ -264,6 +264,40 @@ test('keeps a separate price book authoritative over legacy nutrition state', ()
   );
 });
 
+test('builds one readable warped timeline scale for every resource lane', () => {
+  const scale = NutritionCore.buildTimelineScale([
+    { startMinute: 0, endMinute: 10 },
+    { startMinute: 4, endMinute: 6 }
+  ], 10, 7, 220);
+
+  assert.equal(scale.width, 660);
+  assert.equal(scale.positionAt(0), 0);
+  assert.equal(scale.positionAt(4), 220);
+  assert.equal(scale.positionAt(6), 440);
+  assert.equal(scale.positionAt(10), 660);
+  assert.equal(scale.positionAt(6) - scale.positionAt(4), 220);
+});
+
+test('keeps a regular time scale when one interval is already wide enough', () => {
+  const scale = NutritionCore.buildTimelineScale([], 100, 7, 220);
+
+  assert.equal(scale.width, 700);
+  assert.equal(scale.positionAt(50), 350);
+});
+
+test('keeps partially overlapping resource actions on one shared scale', () => {
+  const scale = NutritionCore.buildTimelineScale([
+    { resource: 'user', startMinute: 0, endMinute: 10 },
+    { resource: 'air_fryer', startMinute: 5, endMinute: 15 }
+  ], 15, 7, 220);
+
+  assert.equal(scale.width, 660);
+  assert.equal(scale.positionAt(5), 220);
+  assert.equal(scale.positionAt(10), 440);
+  assert.equal(scale.positionAt(15), 660);
+  assert.equal(scale.positionAt(10) - scale.positionAt(5), 220);
+});
+
 test('normalizes damaged state while preserving supported cycle data', () => {
   const normalized = NutritionCore.normalizeState({
     version: 1,

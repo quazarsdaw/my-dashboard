@@ -1041,6 +1041,7 @@
 
   var TIMELINE_PIXELS_PER_MINUTE = 7;
   var TIMELINE_RESOURCE_WIDTH = 140;
+  var TIMELINE_MIN_SEGMENT_WIDTH = 220;
 
   function renderCookingTimeline(plan, container) {
     clearElement(container);
@@ -1048,15 +1049,21 @@
       container.appendChild(createElement('div', 'cooking-empty', 'для этой недели нет действий готовки'));
       return;
     }
-    var duration = Math.max(1, plan.estimate.minMinutes);
-    var timelineWidth = TIMELINE_RESOURCE_WIDTH + Math.ceil(duration * TIMELINE_PIXELS_PER_MINUTE);
+    var timelineScale = NutritionCore.buildTimelineScale(
+      plan.schedule,
+      plan.estimate.minMinutes,
+      TIMELINE_PIXELS_PER_MINUTE,
+      TIMELINE_MIN_SEGMENT_WIDTH
+    );
+    var duration = timelineScale.duration;
+    var timelineWidth = TIMELINE_RESOURCE_WIDTH + Math.ceil(timelineScale.width);
     container.style.setProperty('--timeline-width', timelineWidth + 'px');
     var ruler = createElement('div', 'timeline-ruler');
     ruler.appendChild(createElement('div', 'timeline-ruler-label', 'ресурс'));
     var scale = createElement('div', 'timeline-scale');
     [0, 25, 50, 75, 100].forEach(function (percent) {
       var tick = createElement('span', 'timeline-tick', formatMinutes(duration * percent / 100));
-      tick.style.left = percent + '%';
+      tick.style.left = timelineScale.positionAt(duration * percent / 100) + 'px';
       scale.appendChild(tick);
     });
     ruler.appendChild(scale);
@@ -1066,13 +1073,19 @@
       var row = createElement('div', 'timeline-lane');
       row.appendChild(createElement('div', 'timeline-lane-name', lane.title));
       var track = createElement('div', 'timeline-track');
+      [0, 25, 50, 75, 100].forEach(function (percent) {
+        var guide = createElement('span', 'timeline-guide');
+        guide.style.left = timelineScale.positionAt(duration * percent / 100) + 'px';
+        track.appendChild(guide);
+      });
       lane.entries.forEach(function (entry) {
         var batch = plan.batches.find(function (item) { return item.id === entry.batchId; });
         var block = createElement('button', 'timeline-block ' + entry.mode + ' batch-color-' + (batch ? batch.colorIndex : 0));
         block.type = 'button';
         block.setAttribute('data-batch-id', entry.batchId);
-        block.style.left = Math.min(100, entry.startMinute / duration * 100) + '%';
-        block.style.width = Math.max(2, (entry.endMinute - entry.startMinute) / duration * 100) + '%';
+        var blockStart = timelineScale.positionAt(entry.startMinute);
+        block.style.left = blockStart + 'px';
+        block.style.width = Math.max(2, timelineScale.positionAt(entry.endMinute) - blockStart) + 'px';
         block.title = entry.title + ' · ' + entry.location + ' · ' + formatMinutes(entry.durationMinutes);
         appendChildren(block, [
           createElement('strong', '', entry.title),
