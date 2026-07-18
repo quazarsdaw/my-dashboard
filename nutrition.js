@@ -30,6 +30,7 @@
   var activeView = DEFAULT_VIEW;
   var replacementTarget = null;
   var activeBatchId = null;
+  var selectedCookingActionId = null;
   var kitchenProfile;
   var cookingStore;
   var cookingClient = NutritionOpenRouter.createOpenRouterCookingClient({});
@@ -249,7 +250,7 @@
 
   function createAiPlan(demand, planHash, result) {
     if (!result.ok || !planMatchesDemand(result.value, demand)) return null;
-    var adjustedActions = NutritionCookingCore.applyCalibrationToActions(result.value.actions, kitchenProfile);
+    var adjustedActions = NutritionCookingCore.applyCalibrationToActions(result.value.actions, kitchenProfile, demand.batches);
     var scheduled = NutritionScheduler.scheduleActions(adjustedActions, kitchenProfile);
     if (!scheduled.ok) return null;
     return {
@@ -348,7 +349,7 @@
       cookingUiError[key] = '';
     }
     if (settings.key && cookingUiState[key] !== 'generating' && (
-      options && options.forceAi || cookingUiState[key] !== 'stale' && cached.source !== 'ai'
+      (options && (options.force || options.forceAi)) || (cookingUiState[key] !== 'stale' && cached.source !== 'ai')
     )) {
       requestAiCookingPlan(week, kind, demand, planHash);
     }
@@ -972,6 +973,61 @@
 
   function entryForAction(plan, actionId) {
     return plan.schedule.find(function (entry) { return entry.actionId === actionId; }) || null;
+  }
+
+  function getSelectedCookingEntry(plan) {
+    if (!selectedCookingActionId || !plan || !Array.isArray(plan.schedule)) return null;
+    return entryForAction(plan, selectedCookingActionId);
+  }
+
+  function rebuildCookingPlanAfterDurationChange(plan) {
+    cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, plan.cycleId, plan.week);
+    saveCookingStore();
+    var rebuiltPlan = ensureCookingPlan(cookingWeek, cookingSessionKind, { force: true });
+    if (!getSelectedCookingEntry(rebuiltPlan)) selectedCookingActionId = null;
+    renderCooking();
+    return rebuiltPlan;
+  }
+
+  function updateCookingActionDuration(plan, actionId, updateProfile) {
+    var actions = plan && Array.isArray(plan.actions) ? plan.actions : [];
+    var action = actions.find(function (item) { return item && item.id === actionId; });
+    var activeSessionId = cookingStore.activeSessionId;
+    var activeSession = activeSessionId && cookingStore.sessionsById[activeSessionId];
+    if (!action) return { ok: false, error: 'шаг готовки не найден' };
+    if (hasActiveCookingSession() || !NutritionCookingCore.canEditActionDuration(activeSession, actionId)) {
+      return { ok: false, error: 'сначала заверши активную сессию готовки' };
+    }
+    var updated = updateProfile(kitchenProfile, action, plan.batches);
+    if (!updated.ok) return updated;
+    var previousKitchenProfile = kitchenProfile;
+    var previousCookingStore = cookingStore;
+    try {
+      kitchenProfile = updated.profile;
+      saveKitchenProfile();
+      var rebuiltPlan = rebuildCookingPlanAfterDurationChange(plan);
+      return { ok: true, key: updated.key, plan: rebuiltPlan };
+    } catch (error) {
+      kitchenProfile = previousKitchenProfile;
+      cookingStore = previousCookingStore;
+      try {
+        saveKitchenProfile();
+        saveCookingStore();
+      } catch (_) {}
+      return { ok: false, error: error.message || 'не удалось сохранить длительность шага' };
+    }
+  }
+
+  function saveCookingActionDuration(plan, actionId, minutes) {
+    return updateCookingActionDuration(plan, actionId, function (profile, action, batches) {
+      return NutritionCookingCore.setActionDurationOverride(profile, action, batches, minutes);
+    });
+  }
+
+  function resetCookingActionDuration(plan, actionId) {
+    return updateCookingActionDuration(plan, actionId, function (profile, action, batches) {
+      return NutritionCookingCore.clearActionDurationOverride(profile, action, batches);
+    });
   }
 
   function nextSessionEntry(plan, session) {

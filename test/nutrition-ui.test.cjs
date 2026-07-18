@@ -152,6 +152,19 @@ test('nutrition controller persists cooking sessions and calibrates completed ac
   assert.ok(js.includes('activeSession.planHash !== plan.planHash'));
 });
 
+test('nutrition controller edits and persists planned cooking durations', () => {
+  const js = read('nutrition.js');
+
+  assert.ok(js.includes('selectedCookingActionId'));
+  assert.ok(js.includes('NutritionCookingCore.setActionDurationOverride'));
+  assert.ok(js.includes('NutritionCookingCore.clearActionDurationOverride'));
+  assert.ok(js.includes('NutritionCookingCore.canEditActionDuration'));
+  assert.ok(js.includes('function saveCookingActionDuration('));
+  assert.ok(js.includes('function resetCookingActionDuration('));
+  assert.ok(js.includes('NutritionCookingCore.invalidateWeek'));
+  assert.ok(js.includes('applyCalibrationToActions(result.value.actions, kitchenProfile, demand.batches)'));
+});
+
 test('nutrition controller supports completion, notes, replacement and training extras', () => {
   const js = read('nutrition.js');
 
