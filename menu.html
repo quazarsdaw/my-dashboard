@@ -118,7 +118,7 @@ button{color:inherit}
 .cycle-scroll::-webkit-scrollbar,.timeline-shell::-webkit-scrollbar,.internal-scroll::-webkit-scrollbar{height:9px}
 .cycle-scroll::-webkit-scrollbar-track,.timeline-shell::-webkit-scrollbar-track,.internal-scroll::-webkit-scrollbar-track{background:transparent}
 .cycle-scroll::-webkit-scrollbar-thumb,.timeline-shell::-webkit-scrollbar-thumb,.internal-scroll::-webkit-scrollbar-thumb{min-width:48px;border:2px solid transparent;border-radius:999px;background:#555B66;background-clip:padding-box}
-.cycle-scroll::-webkit-scrollbar-thumb:hover,.timeline-shell::-webkit-scrollbar-thumb:hover,.internal-scroll::-webkit-scrollbar-thumb:hover{background:#6A7280;background-clip:padding-box}
+.cycle-scroll::-webkit-scrollbar-thumb:hover,.timeline-shell::-webkit-scrollbar-thumb:hover,.internal-scroll::-webkit-scrollbar-thumb:hover,.cycle-scroll:focus-within::-webkit-scrollbar-thumb,.timeline-shell:focus-within::-webkit-scrollbar-thumb,.internal-scroll:focus-within::-webkit-scrollbar-thumb{background:#6A7280;background-clip:padding-box}
 .cycle-calendar{display:grid;grid-template-columns:repeat(7,260px);min-width:1820px;border-top:1px solid var(--line);border-left:1px solid var(--line)}
 .calendar-day{min-width:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(255,255,255,.018)}
 .calendar-day.current{background:rgba(125,211,252,.035);box-shadow:inset 0 2px 0 var(--accent)}
@@ -184,12 +184,13 @@ button{color:inherit}
 .timeline-lane-name{position:sticky;left:0;z-index:2;display:flex;align-items:center;padding-right:16px;background:#1C1E24;border-right:1px solid var(--line);font-size:10.5px;font-weight:750;color:var(--text-secondary)}
 .timeline-track{position:relative;min-width:0}.timeline-guide{position:absolute;top:0;bottom:0;width:1px;background:var(--line);pointer-events:none}
 .timeline-block{position:absolute;z-index:1;top:10px;height:116px;min-width:4px;border:1px solid color-mix(in srgb,var(--batch-color) 58%,transparent);border-left-width:3px;
-  background:color-mix(in srgb,var(--batch-color) 12%,#20232A);padding:10px 18px;overflow:hidden;color:var(--text-primary);cursor:pointer;text-align:left;user-select:none}
+  background:color-mix(in srgb,var(--batch-color) 12%,#20232A);overflow:hidden;color:var(--text-primary);user-select:none}
 .timeline-block.passive{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--batch-color) 10%,#20232A),color-mix(in srgb,var(--batch-color) 10%,#20232A) 5px,rgba(255,255,255,.025) 5px,rgba(255,255,255,.025) 10px)}
+.timeline-block-select{position:absolute;inset:0;z-index:1;width:100%;height:100%;border:0;background:transparent;padding:10px 18px;color:inherit;cursor:pointer;text-align:left}
 .timeline-block-copy{min-width:0;overflow:hidden;pointer-events:none}.timeline-block strong{display:block;overflow:hidden;text-overflow:ellipsis;font-size:10.5px;line-height:1.3;white-space:nowrap}.timeline-block span{display:block;margin-top:7px;overflow:hidden;text-overflow:ellipsis;font-family:var(--font-mono);font-size:8.5px;white-space:nowrap;color:var(--text-secondary)}
 .timeline-block.batch-muted{opacity:.42}.timeline-block.batch-active{box-shadow:0 0 0 1px var(--batch-color)}
 .timeline-block-selected{z-index:2;opacity:1!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--batch-color) 78%,#FAFAFA)}
-.timeline-block:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.timeline-block-select:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .timeline-resize-handle{position:absolute;top:0;bottom:0;z-index:2;width:12px;opacity:0;cursor:ew-resize;touch-action:none;transition:opacity 120ms ease}
 .timeline-resize-handle.start{left:0}.timeline-resize-handle.end{right:0}
 .timeline-resize-handle::after{content:'';position:absolute;top:50%;left:50%;width:2px;height:28px;border-radius:2px;background:color-mix(in srgb,var(--batch-color) 72%,#FAFAFA);transform:translate(-50%,-50%)}
@@ -201,7 +202,8 @@ button{color:inherit}
 .cooking-duration-eyebrow{font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
 .cooking-duration-meal{margin-top:10px;font-family:var(--font-mono);font-size:9px;line-height:1.5;color:var(--text-tertiary)}
 .cooking-duration-title{margin-top:7px;font-size:14px;line-height:1.45;overflow-wrap:anywhere}
-.cooking-duration-current{margin-top:9px;font-family:var(--font-mono);font-size:9px;line-height:1.5;color:var(--text-secondary)}
+.cooking-duration-current,.cooking-duration-saved{margin-top:9px;font-family:var(--font-mono);font-size:9px;line-height:1.5;color:var(--text-secondary)}
+.cooking-duration-saved{margin-top:3px;color:var(--text-tertiary)}
 .cooking-duration-form{margin-top:14px}.cooking-duration-field{display:block;font-size:9px;font-weight:750;color:var(--text-tertiary)}
 .cooking-duration-input{width:100%;min-width:0;margin-top:7px}.cooking-duration-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .cooking-duration-actions button{min-width:0;padding-left:9px;padding-right:9px}.cooking-duration-note,.cooking-duration-error{margin-top:10px;font-size:10px;line-height:1.5}
@@ -253,7 +255,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
   .meal-slot{grid-column:1/3}.meal-actions{grid-column:2;grid-row:2}.meal-details{grid-column:1/3}.meal-row.expanded .meal-details{grid-template-columns:1fr}
   .meal-title{font-size:15px}.quick-links{grid-template-columns:1fr}.catalog-tools{grid-template-columns:1fr}.catalog-tools .primary-btn{height:42px}
   .history-summary{grid-template-columns:1fr}.history-stat{border-right:0;border-bottom:1px solid var(--line)}.history-stat:last-child{border-bottom:0}.history-item{grid-template-columns:1fr 1fr}.history-date{grid-column:1/3}.cooking-commandbar{display:block}.cooking-controls{margin-top:12px}.cooking-controls .field-control{width:100%}
-  .timeline-block{padding:9px 18px}.cooking-duration-actions,.cooking-now-actions{grid-template-columns:1fr}.cooking-now-actions .primary-btn{grid-column:auto}
+  .timeline-block-select{padding:9px 18px}.cooking-duration-actions,.cooking-now-actions{grid-template-columns:1fr}.cooking-now-actions .primary-btn{grid-column:auto}
   .cooking-correction-tools{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
@@ -381,6 +383,6 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 <script src="nutrition-cooking-core.js?v=405"></script>
 <script src="nutrition-scheduler.js?v=405"></script>
 <script src="nutrition-openrouter.js?v=405"></script>
-<script src="nutrition.js?v=406"></script>
+<script src="nutrition.js?v=407"></script>
 </body>
 </html>

@@ -20,6 +20,185 @@ function durationOverrideKey(action, batches) {
   return mealId && title && category ? [mealId, category, title].join('::') : '';
 }
 
+class FakeClassList {
+  constructor(element) {
+    this.element = element;
+  }
+
+  values() {
+    return this.element.className.split(/\s+/).filter(Boolean);
+  }
+
+  write(values) {
+    this.element.className = Array.from(new Set(values)).join(' ');
+  }
+
+  add(...names) {
+    this.write(this.values().concat(names));
+  }
+
+  contains(name) {
+    return this.values().includes(name);
+  }
+
+  toggle(name, force) {
+    const values = this.values().filter((value) => value !== name);
+    const enabled = force === undefined ? !this.contains(name) : Boolean(force);
+    if (enabled) values.push(name);
+    this.write(values);
+    return enabled;
+  }
+}
+
+function matchesSelector(element, selector) {
+  if (selector.startsWith('.')) {
+    return selector.slice(1).split('.').every((className) => element.classList.contains(className));
+  }
+  const attribute = selector.match(/^\[([^\]=]+)(?:="([^"]*)")?\]$/);
+  if (attribute) {
+    const value = element.getAttribute(attribute[1]);
+    return attribute[2] === undefined ? value !== null : value === attribute[2];
+  }
+  return element.tagName.toLowerCase() === selector.toLowerCase();
+}
+
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = tagName.toUpperCase();
+    this.className = '';
+    this.classList = new FakeClassList(this);
+    this.children = [];
+    this.parentNode = null;
+    this.attributes = new Map();
+    this.listeners = new Map();
+    this.pointerCaptures = new Set();
+    this.style = {
+      setProperty: (name, value) => {
+        this.style[name] = value;
+      }
+    };
+    this.textContent = '';
+    this.scrollLeft = 0;
+    this.tabIndex = -1;
+  }
+
+  get firstChild() {
+    return this.children[0] || null;
+  }
+
+  appendChild(child) {
+    child.parentNode = this;
+    this.children.push(child);
+    return child;
+  }
+
+  removeChild(child) {
+    const index = this.children.indexOf(child);
+    if (index !== -1) this.children.splice(index, 1);
+    child.parentNode = null;
+    return child;
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  getAttribute(name) {
+    return this.attributes.has(name) ? this.attributes.get(name) : null;
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
+  addEventListener(type, listener) {
+    if (!this.listeners.has(type)) this.listeners.set(type, []);
+    this.listeners.get(type).push(listener);
+  }
+
+  dispatch(type, values = {}) {
+    const event = Object.assign({
+      type,
+      button: 0,
+      pointerId: 1,
+      clientX: 0,
+      key: '',
+      shiftKey: false,
+      preventDefault() {},
+      stopPropagation() {}
+    }, values);
+    (this.listeners.get(type) || []).forEach((listener) => listener(event));
+    return event;
+  }
+
+  querySelectorAll(selector) {
+    const matches = [];
+    const visit = (element) => {
+      element.children.forEach((child) => {
+        if (matchesSelector(child, selector)) matches.push(child);
+        visit(child);
+      });
+    };
+    visit(this);
+    return matches;
+  }
+
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+
+  setPointerCapture(pointerId) {
+    this.pointerCaptures.add(pointerId);
+  }
+
+  hasPointerCapture(pointerId) {
+    return this.pointerCaptures.has(pointerId);
+  }
+
+  releasePointerCapture(pointerId) {
+    this.pointerCaptures.delete(pointerId);
+  }
+
+  getBoundingClientRect() {
+    return { left: 0 };
+  }
+
+  focus() {
+    this.focused = true;
+  }
+}
+
+function createFakeDocument() {
+  const elementsById = new Map();
+  const document = {
+    readyState: 'loading',
+    roots: [],
+    addEventListener() {},
+    createElement(tagName) {
+      return new FakeElement(tagName);
+    },
+    register(id, element) {
+      element.setAttribute('id', id);
+      elementsById.set(id, element);
+      this.roots.push(element);
+      return element;
+    },
+    getElementById(id) {
+      return elementsById.get(id) || null;
+    },
+    querySelector() {
+      return null;
+    },
+    querySelectorAll(selector) {
+      return this.roots.flatMap((root) => {
+        const matches = matchesSelector(root, selector) ? [root] : [];
+        return matches.concat(root.querySelectorAll(selector));
+      });
+    }
+  };
+  return document;
+}
+
 function loadNutritionController(options = {}) {
   const values = new Map(Object.entries(options.storage || {}).map(([key, value]) => [key, clone(value)]));
   if (!values.has('openrouter_settings_v1')) values.set('openrouter_settings_v1', { key: 'test-key' });
@@ -92,11 +271,18 @@ function loadNutritionController(options = {}) {
     },
     canEditActionDuration(session) {
       return !(session && session.steps);
+    },
+    getActionDurationKey(action, batches) {
+      return durationOverrideKey(action, batches);
+    },
+    nextSessionActionId() {
+      return null;
     }
   }, options.cookingCore || {});
-  const document = {
+  const document = options.document || {
     readyState: 'loading',
     addEventListener() {},
+    createElement() { return new FakeElement('div'); },
     getElementById() { return null; },
     querySelector() { return null; },
     querySelectorAll() { return []; }
@@ -105,10 +291,10 @@ function loadNutritionController(options = {}) {
     location: { hash: '' },
     addEventListener() {},
     confirm() { return true; },
-    NutritionCore: {
+    NutritionCore: Object.assign({
       getLocalDateKey() { return '2026-07-18'; },
       normalizeState() { return { activeCycle: { id: 'cycle-1', startDate: '2026-07-18' } }; }
-    },
+    }, options.nutritionCore || {}),
     NutritionData: { plan14: [], meals: [] },
     NutritionCookingCore: cookingCore,
     NutritionScheduler: {
@@ -162,7 +348,7 @@ function loadNutritionController(options = {}) {
   window.clearTimeout = context.clearTimeout;
   const source = read('nutrition.js').replace(
     "if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);",
-    "window.__nutritionTestApi = { ensureCookingPlan: ensureCookingPlan, scheduleCookingGeneration: scheduleCookingGeneration, saveCookingActionDuration: saveCookingActionDuration, resetCookingActionDuration: resetCookingActionDuration, buildCookingKeyboardResizePreview: buildCookingKeyboardResizePreview, loadCookingData: loadCookingData, getUiState: function () { return cookingUiState; }, getUiError: function () { return cookingUiError; }, getGenerationRequests: function () { return generationRequests; }, getRuntime: function () { return { kitchenProfile: kitchenProfile, cookingStore: cookingStore, cookingWeek: cookingWeek, cookingSessionKind: cookingSessionKind }; }, setRuntime: function (next) { state = next.state; kitchenProfile = next.kitchenProfile; cookingStore = next.cookingStore; cookingWeek = next.cookingWeek || 1; cookingSessionKind = next.cookingSessionKind === 'refresh' ? 'refresh' : 'main'; } };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);"
+    "window.__nutritionTestApi = { ensureCookingPlan: ensureCookingPlan, scheduleCookingGeneration: scheduleCookingGeneration, saveCookingActionDuration: saveCookingActionDuration, resetCookingActionDuration: resetCookingActionDuration, buildCookingKeyboardResizePreview: buildCookingKeyboardResizePreview, cookingMinuteAtPixel: typeof cookingMinuteAtPixel === 'function' ? cookingMinuteAtPixel : undefined, buildCookingPointerResizePreview: typeof buildCookingPointerResizePreview === 'function' ? buildCookingPointerResizePreview : undefined, renderCookingTimeline: renderCookingTimeline, loadCookingData: loadCookingData, getUiState: function () { return cookingUiState; }, getUiError: function () { return cookingUiError; }, getGenerationRequests: function () { return generationRequests; }, getCookingSelection: function () { return { actionId: selectedCookingActionId, batchId: activeBatchId }; }, getRuntime: function () { return { kitchenProfile: kitchenProfile, cookingStore: cookingStore, cookingWeek: cookingWeek, cookingSessionKind: cookingSessionKind }; }, setRuntime: function (next) { state = next.state; kitchenProfile = next.kitchenProfile; cookingStore = next.cookingStore; cookingWeek = next.cookingWeek || 1; cookingSessionKind = next.cookingSessionKind === 'refresh' ? 'refresh' : 'main'; } };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);"
   );
   vm.createContext(context);
   vm.runInContext(source, context);
@@ -211,6 +397,58 @@ function setDurationRuntime(harness, stored, sessionKind = 'main') {
     cookingWeek: 1,
     cookingSessionKind: sessionKind
   });
+}
+
+function createTimelinePlan() {
+  return {
+    version: 1,
+    planHash: 'timeline-hash',
+    cycleId: 'cycle-1',
+    week: 1,
+    sessionKind: 'main',
+    batches: [{ id: 'batch-1', mealId: 'meal-1', label: 'блюдо 1', colorIndex: 0 }],
+    actions: [{ id: 'action-1', title: 'подготовить блюдо', category: 'prep', batchId: 'batch-1' }],
+    schedule: [{
+      actionId: 'action-1',
+      batchId: 'batch-1',
+      title: 'подготовить блюдо',
+      mode: 'active',
+      location: 'kitchen',
+      startMinute: 0,
+      endMinute: 10,
+      durationMinutes: 10,
+      userOccupied: true,
+      equipmentIds: [],
+      cookwareIds: [],
+      outletIds: []
+    }],
+    estimate: { minMinutes: 10, maxMinutes: 10 },
+    peakOutlets: 0,
+    warnings: []
+  };
+}
+
+function createTimelineHarness(durationOverrides = {}) {
+  const document = createFakeDocument();
+  const timeline = document.register('cookingTimeline', new FakeElement('div'));
+  const now = document.register('cookingNow', new FakeElement('aside'));
+  const NutritionCore = require('../nutrition-core.js');
+  const harness = loadNutritionController({ document, nutritionCore: NutritionCore });
+  harness.api.setRuntime({
+    state: { activeCycle: { id: 'cycle-1', startDate: '2026-07-18' } },
+    kitchenProfile: {
+      revision: 1,
+      activeMode: 'home',
+      resources: [],
+      calibration: { durationOverrides: clone(durationOverrides) }
+    },
+    cookingStore: { plansByHash: {}, sessionsById: {}, activeSessionId: null },
+    cookingWeek: 1,
+    cookingSessionKind: 'main'
+  });
+  const plan = createTimelinePlan();
+  harness.api.renderCookingTimeline(plan, timeline);
+  return Object.assign(harness, { document, timeline, now, plan });
 }
 
 test('nutrition controller persists menu, kitchen and cooking state through gamification storage', () => {
@@ -331,7 +569,7 @@ test('nutrition desktop layout keeps calendar and cooking timeline readable at f
   assert.ok(html.includes('@media(max-width:820px)'));
 });
 
-test('cooking timeline exposes semantic cards, resize handles and the duration inspector', () => {
+test('cooking timeline source exposes resize handles and the duration inspector', () => {
   const html = read('menu.html');
   const js = read('nutrition.js');
 
@@ -340,8 +578,8 @@ test('cooking timeline exposes semantic cards, resize handles and the duration i
   assert.ok(html.includes('.timeline-block-selected'));
   assert.ok(html.includes('.cooking-duration-editor'));
   assert.ok(js.includes("createElement('div', 'timeline-block"));
-  assert.equal(js.includes("createElement('button', 'timeline-block"), false);
-  assert.ok(js.includes("setAttribute('role', 'button')"));
+  assert.equal(js.includes("createElement('button', 'timeline-block '"), false);
+  assert.ok(js.includes("createElement('button', 'timeline-block-select')"));
   assert.ok(js.includes("setAttribute('data-action-id'"));
   assert.ok(js.includes("setAttribute('role', 'slider')"));
   assert.ok(js.includes("setAttribute('aria-valuemin', '1')"));
@@ -357,12 +595,126 @@ test('cooking timeline exposes semantic cards, resize handles and the duration i
   assert.ok(js.includes('resetCookingActionDuration(plan, entry.actionId'));
 });
 
+test('cooking timeline renders a neutral block with sibling select button and sliders', () => {
+  const harness = createTimelineHarness();
+  const block = harness.timeline.querySelector('.timeline-block');
+  const select = block.querySelector('.timeline-block-select');
+  const handles = block.querySelectorAll('.timeline-resize-handle');
+
+  assert.equal(block.tagName, 'DIV');
+  assert.equal(block.getAttribute('role'), null);
+  assert.equal(block.getAttribute('tabindex'), null);
+  assert.equal(block.tabIndex, -1);
+  assert.ok(select, 'timeline block must contain a native select button');
+  assert.equal(select.tagName, 'BUTTON');
+  assert.equal(select.parentNode, block);
+  assert.equal(select.getAttribute('aria-pressed'), 'false');
+  assert.match(select.getAttribute('aria-label'), /подготовить блюдо/);
+  assert.match(select.title, /подготовить блюдо/);
+  assert.equal(handles.length, 2);
+  handles.forEach((handle) => {
+    assert.equal(handle.parentNode, block);
+    assert.equal(handle.getAttribute('role'), 'slider');
+    assert.notEqual(handle.parentNode, select);
+  });
+});
+
+test('cooking select button toggles batch highlight while handles leave it unchanged', () => {
+  const harness = createTimelineHarness();
+  const block = harness.timeline.querySelector('.timeline-block');
+  const select = block.querySelector('.timeline-block-select');
+  const handle = block.querySelector('.timeline-resize-handle.end');
+
+  assert.ok(select, 'timeline block must contain a native select button');
+  select.dispatch('click');
+  assert.deepEqual(clone(harness.api.getCookingSelection()), { actionId: 'action-1', batchId: 'batch-1' });
+  assert.equal(block.classList.contains('batch-active'), true);
+  assert.equal(select.getAttribute('aria-pressed'), 'true');
+
+  handle.dispatch('pointerdown', { clientX: 260 });
+  handle.dispatch('pointerup', { clientX: 260 });
+  assert.equal(harness.api.getCookingSelection().batchId, 'batch-1');
+
+  select.dispatch('click');
+  assert.deepEqual(clone(harness.api.getCookingSelection()), { actionId: 'action-1', batchId: null });
+  assert.equal(block.classList.contains('batch-active'), false);
+});
+
+test('cooking pointer resize does not save or change duration without rounded movement', () => {
+  const harness = createTimelineHarness();
+  const block = harness.timeline.querySelector('.timeline-block');
+  const handle = block.querySelector('.timeline-resize-handle.end');
+  const writesBefore = harness.writes.length;
+
+  handle.dispatch('pointerdown', { clientX: 254 });
+  handle.dispatch('pointerup', { clientX: 254 });
+
+  assert.equal(harness.writes.length, writesBefore);
+  assert.equal(block.getAttribute('data-preview-duration'), null);
+  assert.equal(handle.getAttribute('aria-valuenow'), '10');
+});
+
+test('cooking pointer resize restores its label after a rounded-zero move', () => {
+  const harness = createTimelineHarness();
+  const block = harness.timeline.querySelector('.timeline-block');
+  const handle = block.querySelector('.timeline-resize-handle.end');
+  const time = block.querySelector('.timeline-block-time');
+  const writesBefore = harness.writes.length;
+
+  handle.dispatch('pointerdown', { clientX: 254 });
+  handle.dispatch('pointermove', { clientX: 255 });
+  handle.dispatch('pointerup', { clientX: 255 });
+
+  assert.equal(harness.writes.length, writesBefore);
+  assert.equal(block.getAttribute('data-preview-duration'), null);
+  assert.equal(time.textContent, '0 мин → 10 мин');
+  assert.equal(handle.getAttribute('aria-valuenow'), '10');
+});
+
+test('cooking resize extrapolates first and last boundaries outside the timeline', () => {
+  const harness = loadNutritionController();
+  const scale = {
+    width: 70,
+    minuteAt(pixel) {
+      return Math.max(0, Math.min(70, pixel)) / 7;
+    }
+  };
+  const entry = { startMinute: 0, endMinute: 10, durationMinutes: 10 };
+
+  assert.equal(typeof harness.api.cookingMinuteAtPixel, 'function');
+  assert.equal(typeof harness.api.buildCookingPointerResizePreview, 'function');
+  assert.equal(harness.api.cookingMinuteAtPixel(scale, -70), -10);
+  assert.equal(harness.api.cookingMinuteAtPixel(scale, 140), 20);
+  assert.deepEqual(
+    clone(harness.api.buildCookingPointerResizePreview(
+      entry,
+      'end',
+      { pointerPixel: 70, pointerMinute: 10, boundaryMinute: 10 },
+      140,
+      scale
+    )),
+    { startMinute: 0, endMinute: 20, durationMinutes: 20 }
+  );
+  assert.deepEqual(
+    clone(harness.api.buildCookingPointerResizePreview(
+      entry,
+      'start',
+      { pointerPixel: 0, pointerMinute: 0, boundaryMinute: 0 },
+      -70,
+      scale
+    )),
+    { startMinute: -10, endMinute: 10, durationMinutes: 20 }
+  );
+});
+
 test('cooking resize keeps one action synchronized and supports pointer cancellation and keyboard steps', () => {
   const js = read('nutrition.js');
 
   assert.ok(js.includes("querySelectorAll('.timeline-block')"));
   assert.ok(js.includes("getAttribute('data-action-id') === actionId"));
-  assert.ok(js.includes('timelineScale.minuteAt'));
+  assert.ok(js.includes('cookingMinuteAtPixel'));
+  assert.ok(js.includes('pointerMinute'));
+  assert.ok(js.includes('boundaryMinute'));
   assert.ok(js.includes('setPointerCapture'));
   assert.ok(js.includes("addEventListener('pointermove'"));
   assert.ok(js.includes("addEventListener('pointerup'"));
@@ -408,9 +760,22 @@ test('calendar and timeline use quiet internal scrollbars without page overflow'
   assert.ok(html.includes('::-webkit-scrollbar-thumb'));
   assert.ok(html.includes('::-webkit-scrollbar-track'));
   assert.ok(html.includes('::-webkit-scrollbar-thumb:hover'));
+  assert.ok(html.includes(':focus-within::-webkit-scrollbar-thumb'));
   assert.ok(html.includes('body{min-height:100vh;max-width:1760px;overflow-x:hidden'));
   assert.equal(html.includes('.cycle-scroll{overflow:visible'), false);
   assert.ok(html.includes('.cooking-now{min-width:0;max-width:100%'));
+});
+
+test('duration inspector shows a raw manual override separately from current duration', () => {
+  const key = 'meal-1::prep::подготовить блюдо';
+  const harness = createTimelineHarness({ [key]: 14 });
+  const select = harness.timeline.querySelector('.timeline-block-select');
+
+  assert.ok(select, 'timeline block must contain a native select button');
+  select.dispatch('click');
+
+  assert.equal(harness.now.querySelector('.cooking-duration-current').textContent, 'текущая длительность · 10 мин');
+  assert.equal(harness.now.querySelector('.cooking-duration-saved').textContent, 'сохранено вручную · 14 мин');
 });
 
 test('nutrition controller persists cooking sessions and calibrates completed active work', () => {
@@ -846,7 +1211,7 @@ test('nutrition scripts use one fresh cache version for the changed controller c
   assert.ok(html.includes('nutrition-data.js?v=405'));
   assert.ok(html.includes('nutrition-core.js?v=406'));
   assert.ok(html.includes('nutrition-cooking-core.js?v=405'));
-  assert.ok(html.includes('nutrition.js?v=406'));
+  assert.ok(html.includes('nutrition.js?v=407'));
 });
 
 test('nutrition reads health targets without writing meal data back to health storage', () => {

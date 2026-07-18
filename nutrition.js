@@ -1164,6 +1164,21 @@
     return buildCookingResizePreview(entry, edge, boundary);
   }
 
+  function cookingMinuteAtPixel(timelineScale, pixelValue) {
+    var pixel = Number(pixelValue);
+    if (!Number.isFinite(pixel)) pixel = 0;
+    var width = Math.max(0, Number(timelineScale.width) || 0);
+    if (pixel < 0) return timelineScale.minuteAt(0) + pixel / TIMELINE_PIXELS_PER_MINUTE;
+    if (pixel > width) return timelineScale.minuteAt(width) + (pixel - width) / TIMELINE_PIXELS_PER_MINUTE;
+    return timelineScale.minuteAt(pixel);
+  }
+
+  function buildCookingPointerResizePreview(entry, edge, drag, pointerPixel, timelineScale) {
+    var pointerMinute = cookingMinuteAtPixel(timelineScale, pointerPixel);
+    var boundaryMinute = drag.boundaryMinute + pointerMinute - drag.pointerMinute;
+    return buildCookingResizePreview(entry, edge, boundaryMinute);
+  }
+
   function setCookingResizeAria(handle, durationMinutes) {
     handle.setAttribute('aria-valuemin', '1');
     handle.setAttribute('aria-valuemax', '720');
@@ -1211,7 +1226,8 @@
     container.querySelectorAll('.timeline-block').forEach(function (block) {
       var selected = block.getAttribute('data-action-id') === selectedCookingActionId;
       block.classList.toggle('timeline-block-selected', selected);
-      block.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      var select = block.querySelector('.timeline-block-select');
+      if (select) select.setAttribute('aria-pressed', selected ? 'true' : 'false');
     });
   }
 
@@ -1220,6 +1236,12 @@
     cookingDurationEditorError = '';
     applyCookingActionSelection(document.getElementById('cookingTimeline'));
     renderCookingNow(plan, document.getElementById('cookingNow'));
+  }
+
+  function activateCookingTimelineAction(plan, entry) {
+    selectCookingAction(plan, entry.actionId);
+    activeBatchId = activeBatchId === entry.batchId ? null : entry.batchId;
+    applyBatchHighlight();
   }
 
   function renderCookingDurationEditor(plan, entry, container) {
@@ -1238,6 +1260,9 @@
       createElement('h3', 'cooking-duration-title', entry.title),
       createElement('div', 'cooking-duration-current', 'текущая длительность · ' + formatMinutes(entry.durationMinutes))
     ]);
+    if (hasOverride) {
+      editor.appendChild(createElement('div', 'cooking-duration-saved', 'сохранено вручную · ' + formatMinutes(overrides[durationKey])));
+    }
 
     var form = createElement('form', 'cooking-duration-form');
     var field = createElement('label', 'cooking-duration-field');
@@ -1303,9 +1328,9 @@
     handle.tabIndex = locked ? -1 : 0;
     setCookingResizeAria(handle, entry.durationMinutes);
 
-    function minuteFromPointer(event) {
+    function pixelFromPointer(event) {
       var bounds = block.parentNode.getBoundingClientRect();
-      return timelineScale.minuteAt(event.clientX - bounds.left);
+      return event.clientX - bounds.left;
     }
 
     function restorePreview() {
@@ -1314,6 +1339,14 @@
         endMinute: entry.endMinute,
         durationMinutes: entry.durationMinutes
       }, timelineScale);
+      var timeline = document.getElementById('cookingTimeline');
+      if (!timeline) return;
+      timeline.querySelectorAll('.timeline-block').forEach(function (timelineBlock) {
+        if (timelineBlock.getAttribute('data-action-id') !== entry.actionId) return;
+        timelineBlock.removeAttribute('data-preview-duration');
+        var time = timelineBlock.querySelector('.timeline-block-time');
+        if (time) time.textContent = formatMinutes(entry.startMinute) + ' → ' + formatMinutes(entry.endMinute);
+      });
     }
 
     function showSaveError(result) {
@@ -1330,28 +1363,35 @@
       if (locked || event.button !== 0) return;
       event.preventDefault();
       selectCookingAction(plan, entry.actionId);
+      var pointerPixel = pixelFromPointer(event);
       drag = {
         pointerId: event.pointerId,
-        preview: buildCookingResizePreview(entry, edge, minuteFromPointer(event))
+        pointerPixel: pointerPixel,
+        pointerMinute: cookingMinuteAtPixel(timelineScale, pointerPixel),
+        boundaryMinute: edge === 'start' ? entry.startMinute : entry.endMinute,
+        preview: buildCookingResizePreview(entry, edge, edge === 'start' ? entry.startMinute : entry.endMinute)
       };
       handle.setPointerCapture(event.pointerId);
-      updateCookingResizePreview(entry.actionId, drag.preview, timelineScale);
     });
     handle.addEventListener('pointermove', function (event) {
       if (!drag || drag.pointerId !== event.pointerId) return;
       event.stopPropagation();
       event.preventDefault();
-      drag.preview = buildCookingResizePreview(entry, edge, minuteFromPointer(event));
+      drag.preview = buildCookingPointerResizePreview(entry, edge, drag, pixelFromPointer(event), timelineScale);
       updateCookingResizePreview(entry.actionId, drag.preview, timelineScale);
     });
     handle.addEventListener('pointerup', function (event) {
       if (!drag || drag.pointerId !== event.pointerId) return;
       event.stopPropagation();
       event.preventDefault();
-      drag.preview = buildCookingResizePreview(entry, edge, minuteFromPointer(event));
+      drag.preview = buildCookingPointerResizePreview(entry, edge, drag, pixelFromPointer(event), timelineScale);
       var preview = drag.preview;
       drag = null;
       if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      if (preview.durationMinutes === clampCookingDuration(entry.durationMinutes)) {
+        restorePreview();
+        return;
+      }
       showSaveError(saveCookingActionDuration(plan, entry.actionId, preview.durationMinutes));
     });
     handle.addEventListener('pointercancel', function (event) {
@@ -1549,37 +1589,32 @@
         var batch = plan.batches.find(function (item) { return item.id === entry.batchId; });
         var selected = selectedCookingActionId === entry.actionId;
         var block = createElement('div', 'timeline-block ' + entry.mode + ' batch-color-' + (batch ? batch.colorIndex : 0) + (selected ? ' timeline-block-selected' : ''));
-        block.setAttribute('role', 'button');
-        block.tabIndex = 0;
         block.setAttribute('data-batch-id', entry.batchId);
         block.setAttribute('data-action-id', entry.actionId);
         block.setAttribute('data-lane-id', lane.id);
-        block.setAttribute('aria-pressed', selected ? 'true' : 'false');
-        block.setAttribute('aria-label', entry.title + ', ' + formatMinutes(entry.durationMinutes));
         var blockStart = timelineScale.positionAt(entry.startMinute);
         block.style.left = blockStart + 'px';
         block.style.width = Math.max(2, timelineScale.positionAt(entry.endMinute) - blockStart) + 'px';
-        block.title = entry.title + ' · ' + entry.location + ' · ' + formatMinutes(entry.durationMinutes);
+        var select = createElement('button', 'timeline-block-select');
+        select.type = 'button';
+        select.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        select.setAttribute('aria-label', entry.title + ', ' + formatMinutes(entry.durationMinutes));
+        select.title = entry.title + ' · ' + entry.location + ' · ' + formatMinutes(entry.durationMinutes);
         var copy = createElement('div', 'timeline-block-copy');
         appendChildren(copy, [
           createElement('strong', '', entry.title),
           createElement('span', 'timeline-block-time', formatMinutes(entry.startMinute) + ' → ' + formatMinutes(entry.endMinute))
         ]);
-        block.appendChild(copy);
+        select.appendChild(copy);
+        select.addEventListener('click', function (event) {
+          event.stopPropagation();
+          activateCookingTimelineAction(plan, entry);
+        });
+        block.appendChild(select);
         ['start', 'end'].forEach(function (edge) {
           var handle = createElement('div', 'timeline-resize-handle ' + edge);
           attachCookingResizeHandle(handle, plan, entry, edge, block, timelineScale);
           block.appendChild(handle);
-        });
-        block.addEventListener('click', function (event) {
-          event.stopPropagation();
-          selectCookingAction(plan, entry.actionId);
-        });
-        block.addEventListener('keydown', function (event) {
-          if (event.key !== 'Enter' && event.key !== ' ') return;
-          event.preventDefault();
-          event.stopPropagation();
-          selectCookingAction(plan, entry.actionId);
         });
         track.appendChild(block);
       });
