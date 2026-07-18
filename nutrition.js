@@ -71,6 +71,12 @@
     Gamification.storeSet(COOKING_TRANSACTION_KEY, null);
   }
 
+  function isCookingTransaction(transaction) {
+    return Boolean(transaction && transaction.version === 1 &&
+      Object.prototype.hasOwnProperty.call(transaction, 'kitchenProfile') &&
+      Object.prototype.hasOwnProperty.call(transaction, 'cookingStore'));
+  }
+
   function restoreCookingTransaction(transaction) {
     Gamification.storeSet(KITCHEN_PROFILE_KEY, transaction.kitchenProfile);
     Gamification.storeSet(COOKING_PLANS_KEY, transaction.cookingStore);
@@ -78,32 +84,40 @@
 
   function recoverCookingTransaction() {
     var transaction = getStored(COOKING_TRANSACTION_KEY);
-    var hasProfile = transaction && Object.prototype.hasOwnProperty.call(transaction, 'kitchenProfile');
-    var hasStore = transaction && Object.prototype.hasOwnProperty.call(transaction, 'cookingStore');
-    if (!transaction || transaction.version !== 1 || !hasProfile || !hasStore) return;
+    if (!isCookingTransaction(transaction)) return;
     restoreCookingTransaction(transaction);
     clearCookingTransaction();
   }
 
-  function saveCookingData() {
+  function beginCookingTransaction(beforeProfile, beforeStore) {
+    var existing = getStored(COOKING_TRANSACTION_KEY);
+    if (isCookingTransaction(existing)) return existing;
     var transaction = {
       version: 1,
-      kitchenProfile: getStored(KITCHEN_PROFILE_KEY),
-      cookingStore: getStored(COOKING_PLANS_KEY)
+      kitchenProfile: beforeProfile,
+      cookingStore: beforeStore
     };
     Gamification.storeSet(COOKING_TRANSACTION_KEY, transaction);
+    return transaction;
+  }
+
+  function persistCookingData() {
+    saveKitchenProfile();
+    saveCookingStore();
+  }
+
+  function commitCookingTransaction() {
+    clearCookingTransaction();
+  }
+
+  function rollbackCookingTransaction(transaction) {
+    kitchenProfile = transaction.kitchenProfile;
+    cookingStore = transaction.cookingStore;
     try {
-      saveKitchenProfile();
-      saveCookingStore();
+      restoreCookingTransaction(transaction);
       clearCookingTransaction();
-    } catch (error) {
-      try {
-        restoreCookingTransaction(transaction);
-        clearCookingTransaction();
-      } catch (_) {
-        // A retained journal makes the next load restore both records before use.
-      }
-      throw error;
+    } catch (_) {
+      // Исходный журнал остается в хранилище для повторного отката при загрузке.
     }
   }
 
@@ -316,6 +330,20 @@
     };
   }
 
+  function restartAiCookingPlanForCurrentHash(week, sessionKind, request) {
+    var key = cookingPlanKey(week, sessionKind);
+    var currentRequest = generationRequests[key];
+    if (!currentRequest || currentRequest.token !== request.token || currentRequest.planHash !== request.planHash) return false;
+    var currentDemand = getCookingDemand(week, sessionKind);
+    var currentHash = NutritionCookingCore.createPlanFingerprint(currentDemand, kitchenProfile);
+    if (currentHash === request.planHash) return false;
+    delete generationRequests[key];
+    cookingUiState[key] = 'stale';
+    cookingUiError[key] = '';
+    ensureCookingPlan(week, sessionKind, { forceAi: true });
+    return true;
+  }
+
   function requestAiCookingPlan(week, sessionKind, demand, planHash) {
     var key = cookingPlanKey(week, sessionKind);
     var settings = getOpenRouterSettings();
@@ -345,9 +373,7 @@
     }).then(function (result) {
       var currentRequest = generationRequests[key];
       if (!currentRequest || currentRequest.token !== request.token || currentRequest.planHash !== request.planHash) return;
-      var currentDemand = getCookingDemand(week, sessionKind);
-      var currentHash = NutritionCookingCore.createPlanFingerprint(currentDemand, kitchenProfile);
-      if (currentHash !== planHash) return;
+      if (restartAiCookingPlanForCurrentHash(week, sessionKind, request)) return;
       var aiPlan = createAiPlan(demand, planHash, result);
       if (aiPlan) {
         if (NutritionCookingCore.activeSessionForPlan(cookingStore, planHash)) {
@@ -373,6 +399,7 @@
     }).catch(function (error) {
       var currentRequest = generationRequests[key];
       if (!currentRequest || currentRequest.token !== request.token || currentRequest.planHash !== request.planHash) return;
+      if (restartAiCookingPlanForCurrentHash(week, sessionKind, request)) return;
       cookingUiState[key] = 'error';
       cookingUiError[key] = error && error.message ? error.message : 'не удалось пересобрать план';
       delete generationRequests[key];
@@ -1046,10 +1073,8 @@
   }
 
   function rebuildCookingPlanAfterDurationChange(plan) {
-    cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, plan.cycleId, plan.week);
     var rebuiltPlan = ensureCookingPlan(cookingWeek, cookingSessionKind, { force: true });
     if (!getSelectedCookingEntry(rebuiltPlan)) selectedCookingActionId = null;
-    renderCooking();
     return rebuiltPlan;
   }
 
@@ -1066,24 +1091,25 @@
     if (!updated.ok) return updated;
     var previousKitchenProfile = kitchenProfile;
     var previousCookingStore = cookingStore;
-    var persisted = false;
+    var transaction;
+    var rebuiltPlan;
     try {
+      transaction = beginCookingTransaction(previousKitchenProfile, previousCookingStore);
       kitchenProfile = updated.profile;
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, plan.cycleId, plan.week);
-      saveCookingData();
-      persisted = true;
-      var rebuiltPlan = rebuildCookingPlanAfterDurationChange(plan);
-      return { ok: true, key: updated.key, plan: rebuiltPlan };
+      persistCookingData();
+      rebuiltPlan = rebuildCookingPlanAfterDurationChange(plan);
+      commitCookingTransaction();
     } catch (error) {
-      kitchenProfile = previousKitchenProfile;
-      cookingStore = previousCookingStore;
-      if (persisted) {
-        try {
-          saveCookingData();
-        } catch (_) {}
+      if (transaction) rollbackCookingTransaction(transaction);
+      else {
+        kitchenProfile = previousKitchenProfile;
+        cookingStore = previousCookingStore;
       }
       return { ok: false, error: error.message || 'не удалось сохранить длительность шага' };
     }
+    renderCooking();
+    return { ok: true, key: updated.key, plan: rebuiltPlan };
   }
 
   function saveCookingActionDuration(plan, actionId, minutes) {
