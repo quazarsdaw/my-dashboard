@@ -69,19 +69,62 @@ test('does not overlap active user work but overlaps passive cooking', () => {
 test('keeps cookware, appliances and outlets exclusive', () => {
   const requirements = {
     equipmentTypes: ['burner'],
+    cookwareTypes: ['deepPan'],
+    outletCount: 1,
+    locationPreference: 'kitchen'
+  };
+  const result = Scheduler.scheduleActions([
+    action('deep-pan-a', { mode: 'passive', durationMinutes: 20, requires: requirements }),
+    action('deep-pan-b', { mode: 'passive', durationMinutes: 20, requires: requirements })
+  ], CookingCore.createDefaultKitchenProfile());
+
+  assert.equal(result.ok, true);
+  const first = result.schedule.find((item) => item.actionId === 'deep-pan-a');
+  const second = result.schedule.find((item) => item.actionId === 'deep-pan-b');
+  assert.ok(first.endMinute <= second.startMinute || second.endMinute <= first.startMinute);
+  assert.equal(Scheduler.findResourceConflicts(result.schedule).length, 0);
+});
+
+test('uses the small pot as a compatible second pot', () => {
+  const requirements = {
+    equipmentTypes: ['burner'],
     cookwareTypes: ['pot'],
     outletCount: 1,
     locationPreference: 'kitchen'
   };
   const result = Scheduler.scheduleActions([
-    action('pot-a', { mode: 'passive', durationMinutes: 20, requires: requirements }),
-    action('pot-b', { mode: 'passive', durationMinutes: 20, requires: requirements })
+    action('boil-grain', { mode: 'passive', durationMinutes: 20, requires: requirements }),
+    action('boil-pasta', { mode: 'passive', durationMinutes: 20, requires: requirements })
   ], CookingCore.createDefaultKitchenProfile());
 
   assert.equal(result.ok, true);
-  const first = result.schedule.find((item) => item.actionId === 'pot-a');
-  const second = result.schedule.find((item) => item.actionId === 'pot-b');
-  assert.ok(first.endMinute <= second.startMinute || second.endMinute <= first.startMinute);
+  assert.equal(result.estimate.minMinutes, 20);
+  assert.equal(result.peakOutlets, 2);
+  assert.deepEqual(
+    result.schedule.map((item) => item.cookwareIds[0]).sort(),
+    ['pot-1', 'pot-small']
+  );
+  assert.equal(Scheduler.findResourceConflicts(result.schedule).length, 0);
+});
+
+test('uses the deep pan as a compatible second pan', () => {
+  const requirements = {
+    equipmentTypes: ['burner'],
+    cookwareTypes: ['pan'],
+    outletCount: 1,
+    locationPreference: 'kitchen'
+  };
+  const result = Scheduler.scheduleActions([
+    action('fry-meat', { mode: 'passive', durationMinutes: 20, requires: requirements }),
+    action('fry-vegetables', { mode: 'passive', durationMinutes: 20, requires: requirements })
+  ], CookingCore.createDefaultKitchenProfile());
+
+  assert.equal(result.ok, true);
+  assert.equal(result.estimate.minMinutes, 20);
+  assert.deepEqual(
+    result.schedule.map((item) => item.cookwareIds[0]).sort(),
+    ['pan-1', 'pan-deep']
+  );
   assert.equal(Scheduler.findResourceConflicts(result.schedule).length, 0);
 });
 

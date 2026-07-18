@@ -88,6 +88,98 @@ test('normalizes a damaged kitchen profile without mutating it', () => {
   assert.equal(normalized.resources.some((item) => item.id === 'fake'), false);
 });
 
+test('normalizes exact cooking duration overrides', () => {
+  const profile = CookingCore.normalizeKitchenProfile({
+    calibration: {
+      durationOverrides: {
+        'meal-rice::prep::отвари рис': 18,
+        broken: 0,
+        huge: 900
+      }
+    }
+  });
+
+  assert.deepEqual(profile.calibration.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
+});
+
+test('applies an exact duration only to the same action and meal', () => {
+  const batches = [
+    { id: 'rice-batch', mealId: 'meal-rice' },
+    { id: 'fish-batch', mealId: 'meal-fish' }
+  ];
+  const rice = { id: 'rice-step', batchId: 'rice-batch', title: ' Отвари  рис ', category: 'prep', mode: 'active', durationMinutes: 10 };
+  const fish = { id: 'fish-step', batchId: 'fish-batch', title: 'отвари рис', category: 'prep', mode: 'active', durationMinutes: 10 };
+  const saved = CookingCore.setActionDurationOverride(
+    CookingCore.createDefaultKitchenProfile(), rice, batches, 18
+  );
+  const adjusted = CookingCore.applyCalibrationToActions([rice, fish], saved.profile, batches);
+
+  assert.equal(saved.ok, true);
+  assert.equal(adjusted[0].durationMinutes, 18);
+  assert.notEqual(adjusted[1].durationMinutes, 18);
+});
+
+test('clears an exact duration without resetting pace calibration', () => {
+  const batches = [{ id: 'rice-batch', mealId: 'meal-rice' }];
+  const action = { id: 'rice-step', batchId: 'rice-batch', title: 'отвари рис', category: 'prep', mode: 'active', durationMinutes: 10 };
+  let profile = CookingCore.createDefaultKitchenProfile();
+  profile.calibration.factors.prep = 1.8;
+  profile = CookingCore.setActionDurationOverride(profile, action, batches, 18).profile;
+  profile = CookingCore.clearActionDurationOverride(profile, action, batches).profile;
+
+  assert.equal(profile.calibration.factors.prep, 1.8);
+  assert.deepEqual(profile.calibration.durationOverrides, {});
+});
+
+test('locks duration editing after a cooking session starts', () => {
+  assert.equal(CookingCore.canEditActionDuration(null, 'step'), true);
+  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'pending' } } }, 'step'), false);
+  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'pending' } } }, 'other-step'), false);
+  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'running' } } }, 'step'), false);
+  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'done' } } }, 'step'), false);
+});
+
+test('rejects an exact duration without an identifiable action', () => {
+  const result = CookingCore.setActionDurationOverride(
+    CookingCore.createDefaultKitchenProfile(), null, [], 18
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.key, '');
+});
+
+test('changes a plan fingerprint after saving an exact duration', () => {
+  const demand = CookingCore.buildCookingDemand(plan, state(), catalog, 1);
+  const batches = [{ id: 'rice-batch', mealId: 'meal-rice' }];
+  const action = { id: 'rice-step', batchId: 'rice-batch', title: 'отвари рис', category: 'prep', mode: 'active', durationMinutes: 10 };
+  const profile = CookingCore.createDefaultKitchenProfile();
+  const saved = CookingCore.setActionDurationOverride(profile, action, batches, 18).profile;
+
+  assert.notEqual(
+    CookingCore.createPlanFingerprint(demand, profile),
+    CookingCore.createPlanFingerprint(demand, saved)
+  );
+});
+
+test('applies exact durations to already-calibrated fallback actions', () => {
+  const batches = [{
+    id: 'rice-batch',
+    mealId: 'meal-rice',
+    title: 'рис',
+    strategy: 'serve-day',
+    portions: 1,
+    meal: { instructions: ['подготовить продукты'], prepMinutes: { max: 20 } }
+  }];
+  const action = { batchId: 'rice-batch', title: 'подготовить продукты', category: 'prep' };
+  const profile = CookingCore.setActionDurationOverride(
+    CookingCore.createDefaultKitchenProfile(), action, batches, 7
+  ).profile;
+
+  assert.equal(CookingCore.buildFallbackActions({ batches }, profile)[0].durationMinutes, 7);
+});
+
 test('exposes concrete outlets for the active kitchen mode', () => {
   const profile = CookingCore.createDefaultKitchenProfile();
 
@@ -115,6 +207,46 @@ test('groups repeated meals into stable weekly batches', () => {
   assert.equal(Number.isInteger(rice.colorIndex), true);
   assert.equal(eggs.strategy, 'serve-day');
   assert.equal(eggs.portions, 1);
+});
+
+test('splits weekly preparation into main lunches and refresh dinners', () => {
+  const demand = {
+    version: 1,
+    cycleId: 'cycle-test',
+    week: 1,
+    batches: [
+      { id: 'lunch', strategy: 'batch', meal: meal('lunch', 'обед', 'lunch') },
+      { id: 'dinner', strategy: 'batch', meal: meal('dinner', 'ужин', 'dinner') },
+      { id: 'breakfast', strategy: 'batch', meal: meal('breakfast', 'завтрак', 'breakfast') },
+      { id: 'serve-day', strategy: 'serve-day', meal: meal('serve-day', 'разовая подача', 'lunch') },
+      { id: 'outside', strategy: 'outside', meal: meal('outside', 'вне дома', 'lunch') }
+    ]
+  };
+
+  const main = CookingCore.selectCookingSessionDemand(demand, 'main');
+  const refresh = CookingCore.selectCookingSessionDemand(demand, 'refresh');
+
+  assert.equal(main.sessionKind, 'main');
+  assert.deepEqual(main.batches.map((batch) => batch.id), ['lunch']);
+  assert.equal(refresh.sessionKind, 'refresh');
+  assert.deepEqual(refresh.batches.map((batch) => batch.id), ['dinner']);
+  assert.equal(demand.sessionKind, undefined, 'исходный спрос не должен изменяться');
+});
+
+test('versions cooking fingerprints and distinguishes preparation sessions', () => {
+  const demand = CookingCore.buildCookingDemand(plan, state(), catalog, 1);
+  const profile = CookingCore.createDefaultKitchenProfile();
+  const mainHash = CookingCore.createPlanFingerprint(
+    CookingCore.selectCookingSessionDemand(demand, 'main'),
+    profile
+  );
+  const refreshHash = CookingCore.createPlanFingerprint(
+    CookingCore.selectCookingSessionDemand(demand, 'refresh'),
+    profile
+  );
+
+  assert.match(mainHash, /^cook-v3-/);
+  assert.notEqual(mainHash, refreshHash);
 });
 
 test('changes only the affected week fingerprint after a replacement', () => {
@@ -295,6 +427,22 @@ test('rejects cyclic generated actions', () => {
   assert.ok(result.errors.some((item) => item.code === 'cyclic-dependency'));
 });
 
+test('rejects generated dependencies between separate meal batches', () => {
+  const result = CookingCore.validateGeneratedPlan({
+    batches: [
+      { id: 'batch-one', mealId: 'one', title: 'первое', portions: 2 },
+      { id: 'batch-two', mealId: 'two', title: 'второе', portions: 2 }
+    ],
+    actions: [
+      action({ id: 'one:finish', batchId: 'batch-one' }),
+      action({ id: 'two:start', batchId: 'batch-two', dependsOn: ['one:finish'] })
+    ]
+  }, CookingCore.createDefaultKitchenProfile());
+
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((item) => item.code === 'cross-batch-dependency'));
+});
+
 test('builds a conservative sequential fallback from meal instructions', () => {
   const demand = {
     version: 1,
@@ -329,6 +477,64 @@ test('builds a conservative sequential fallback from meal instructions', () => {
   assert.equal(CookingCore.validateGeneratedPlan({ batches: demand.batches, actions }, CookingCore.createDefaultKitchenProfile()).ok, true);
 });
 
+test('runs independent cooking branches in parallel before finalizing the batch', () => {
+  const demand = {
+    version: 1,
+    cycleId: 'cycle-test',
+    week: 1,
+    batches: [{
+      id: 'batch-dinner',
+      mealId: 'dinner',
+      title: 'курица с гречкой',
+      portions: 3,
+      strategy: 'batch',
+      servingDays: [1, 2, 3],
+      meal: {
+        id: 'dinner',
+        title: 'курица с гречкой',
+        prepMinutes: range(35, 45),
+        instructions: [
+          'отвари гречку до готовности',
+          'запеки курицу и овощи',
+          'разложи по контейнерам'
+        ]
+      }
+    }]
+  };
+
+  const actions = CookingCore.buildFallbackActions(demand, CookingCore.createDefaultKitchenProfile());
+
+  assert.deepEqual(actions[0].dependsOn, []);
+  assert.deepEqual(actions[1].dependsOn, []);
+  assert.deepEqual(actions[2].dependsOn, [actions[0].id, actions[1].id]);
+  assert.deepEqual(actions[3].dependsOn, [actions[2].id]);
+});
+
+test('keeps fallback dependencies inside each batch without chaining separate meals', () => {
+  const demand = {
+    version: 1,
+    cycleId: 'cycle-test',
+    week: 1,
+    batches: [
+      {
+        id: 'batch-one', title: 'первое блюдо', portions: 2, strategy: 'batch',
+        meal: { title: 'первое блюдо', prepMinutes: range(20, 30), instructions: ['нарезать первое', 'свари первое'] }
+      },
+      {
+        id: 'batch-two', title: 'второе блюдо', portions: 2, strategy: 'batch',
+        meal: { title: 'второе блюдо', prepMinutes: range(20, 30), instructions: ['нарезать второе', 'запеки второе'] }
+      }
+    ]
+  };
+
+  const actions = CookingCore.buildFallbackActions(demand, CookingCore.createDefaultKitchenProfile());
+  const firstOfSecondBatch = actions.find((action) => action.id === 'batch-two:fallback-1');
+  const secondOfSecondBatch = actions.find((action) => action.id === 'batch-two:fallback-2');
+
+  assert.deepEqual(firstOfSecondBatch.dependsOn, []);
+  assert.deepEqual(secondOfSecondBatch.dependsOn, ['batch-two:fallback-1']);
+});
+
 test('recognizes imperative cooking verbs from the built-in meal catalog', () => {
   const demand = {
     version: 1,
@@ -360,6 +566,7 @@ function sessionPlan() {
     planHash: 'plan-session',
     cycleId: 'cycle-test',
     week: 1,
+    sessionKind: 'refresh',
     actions: [
       action({ id: 'prepare', durationMinutes: 10, category: 'prep' }),
       action({ id: 'cook', mode: 'passive', durationMinutes: 20, category: 'physical', dependsOn: ['prepare'] })
@@ -369,6 +576,7 @@ function sessionPlan() {
 
 test('tracks start, pause, resume and completion without counting pauses', () => {
   let session = CookingCore.startSession(sessionPlan(), 0);
+  assert.equal(session.sessionKind, 'refresh');
   const blocked = CookingCore.startStep(session, 'cook', 0);
   assert.equal(blocked.ok, false);
   assert.equal(blocked.error.code, 'blocked-dependency');
@@ -451,6 +659,7 @@ test('calibrates active categories with bounded smoothing and ignores passive ti
 test('applies pace factors only to active work and supports reset', () => {
   const profile = CookingCore.createDefaultKitchenProfile();
   profile.calibration.factors.prep = 2;
+  profile.calibration.durationOverrides['meal-rice::prep::отвари рис'] = 18;
   const adjusted = CookingCore.applyCalibrationToActions(sessionPlan().actions, profile);
 
   assert.equal(adjusted[0].durationMinutes, 20);
@@ -460,6 +669,9 @@ test('applies pace factors only to active work and supports reset', () => {
   const reset = CookingCore.resetCalibration(profile);
   assert.deepEqual(reset.calibration.factors, {});
   assert.deepEqual(reset.calibration.observations, {});
+  assert.deepEqual(reset.calibration.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
 });
 
 test('allows correction of an accidentally recorded actual time', () => {
@@ -488,6 +700,25 @@ test('recalculates a completed session from its original calibration baseline af
   assert.equal(recalculated.session.calibrationResult.factors.prep, 1.5);
 });
 
+test('keeps current exact durations while recalculating a completed session', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+  let session = CookingCore.startSession(sessionPlan(), 0);
+  session = CookingCore.startStep(session, 'prepare', 0).session;
+  session = CookingCore.completeStep(session, 'prepare', 20 * 60 * 1000).session;
+  const first = CookingCore.applySessionCalibration(profile, session);
+  const corrected = CookingCore.setStepActualMinutes(first.session, 'prepare', 10).session;
+
+  first.profile.calibration.durationOverrides['meal-rice::prep::отвари рис'] = 18;
+  const recalculated = CookingCore.applySessionCalibration(first.profile, corrected, true);
+
+  assert.deepEqual(recalculated.profile.calibration.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
+  assert.deepEqual(recalculated.session.calibrationResult.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
+});
+
 test('replays later calibration sessions after correcting an older observation', () => {
   const profile = CookingCore.createDefaultKitchenProfile();
   let firstSession = CookingCore.startSession(sessionPlan(), 0);
@@ -507,4 +738,28 @@ test('replays later calibration sessions after correcting an older observation',
   assert.equal(replayed.profile.calibration.observations.prep, 2);
   assert.equal(replayed.sessions[0].calibrationResult.factors.prep, 1.5);
   assert.equal(replayed.sessions[1].calibrationBase.factors.prep, 1.5);
+});
+
+test('keeps current exact durations while replaying calibration sessions', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+  let firstSession = CookingCore.startSession(sessionPlan(), 0);
+  firstSession = CookingCore.startStep(firstSession, 'prepare', 0).session;
+  firstSession = CookingCore.completeStep(firstSession, 'prepare', 20 * 60 * 1000).session;
+  const firstApplied = CookingCore.applySessionCalibration(profile, firstSession);
+
+  let secondSession = CookingCore.startSession({ ...sessionPlan(), planHash: 'plan-session-2' }, 30 * 60 * 1000);
+  secondSession = CookingCore.startStep(secondSession, 'prepare', 30 * 60 * 1000).session;
+  secondSession = CookingCore.completeStep(secondSession, 'prepare', 40 * 60 * 1000).session;
+  const secondApplied = CookingCore.applySessionCalibration(firstApplied.profile, secondSession);
+  const correctedFirst = CookingCore.setStepActualMinutes(firstApplied.session, 'prepare', 10).session;
+
+  secondApplied.profile.calibration.durationOverrides['meal-rice::prep::отвари рис'] = 18;
+  const replayed = CookingCore.replaySessionCalibrations(secondApplied.profile, [correctedFirst, secondApplied.session]);
+
+  assert.deepEqual(replayed.profile.calibration.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
+  assert.deepEqual(replayed.sessions[1].calibrationResult.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
 });

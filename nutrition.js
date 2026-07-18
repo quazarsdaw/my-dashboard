@@ -2,9 +2,11 @@
   'use strict';
 
   var STATE_KEY = 'nutrition_state_v1';
+  var PRICES_KEY = 'nutrition_prices_v1';
   var MEALS_KEY = 'nutrition_meals_v1';
   var KITCHEN_PROFILE_KEY = 'nutrition_kitchen_profile_v1';
   var COOKING_PLANS_KEY = 'nutrition_cooking_plans_v1';
+  var COOKING_TRANSACTION_KEY = 'nutrition_cooking_transaction_v1';
   var DEFAULT_VIEW = 'today';
   var VIEWS = ['today', 'cycle', 'dishes', 'shopping', 'cooking', 'history'];
   var MAIN_SLOTS = ['breakfast', 'lunch', 'dinner'];
@@ -25,22 +27,34 @@
   var cycleWeek = 1;
   var shoppingWeek = 1;
   var cookingWeek = 1;
+  var cookingSessionKind = 'main';
   var activeView = DEFAULT_VIEW;
   var replacementTarget = null;
   var activeBatchId = null;
+  var selectedCookingActionId = null;
   var kitchenProfile;
   var cookingStore;
   var cookingClient = NutritionOpenRouter.createOpenRouterCookingClient({});
-  var cookingUiState = { 1: 'fallback', 2: 'fallback' };
-  var cookingUiError = { 1: '', 2: '' };
+  var cookingUiState = {};
+  var cookingUiError = {};
+  var cookingCommandFeedback = { text: '', kind: 'neutral' };
+  var cookingDurationEditorError = '';
   var generationTimers = {};
+  var generationRequests = {};
+  var generationRequestToken = 0;
 
   function getStored(key) {
     return Gamification.storeGet(key);
   }
 
   function saveState() {
-    Gamification.storeSet(STATE_KEY, state);
+    var persistedState = Object.assign({}, state);
+    delete persistedState.ingredientPrices;
+    Gamification.storeSet(STATE_KEY, persistedState);
+  }
+
+  function savePriceBook() {
+    Gamification.storeSet(PRICES_KEY, { version: 1, prices: state.ingredientPrices });
   }
 
   function saveImportedMeals() {
@@ -55,9 +69,72 @@
     Gamification.storeSet(COOKING_PLANS_KEY, cookingStore);
   }
 
+  function clearCookingTransaction() {
+    Gamification.storeSet(COOKING_TRANSACTION_KEY, null);
+  }
+
+  function isCookingTransaction(transaction) {
+    return Boolean(transaction && transaction.version === 1 &&
+      Object.prototype.hasOwnProperty.call(transaction, 'kitchenProfile') &&
+      Object.prototype.hasOwnProperty.call(transaction, 'cookingStore'));
+  }
+
+  function restoreCookingTransaction(transaction) {
+    Gamification.storeSet(KITCHEN_PROFILE_KEY, transaction.kitchenProfile);
+    Gamification.storeSet(COOKING_PLANS_KEY, transaction.cookingStore);
+  }
+
+  function recoverCookingTransaction() {
+    var transaction = getStored(COOKING_TRANSACTION_KEY);
+    if (!isCookingTransaction(transaction)) return false;
+    restoreCookingTransaction(transaction);
+    var recoveredKitchenProfile = NutritionCookingCore.normalizeKitchenProfile(getStored(KITCHEN_PROFILE_KEY));
+    var recoveredCookingStore = NutritionCookingCore.normalizeCookingStore(getStored(COOKING_PLANS_KEY));
+    clearCookingTransaction();
+    kitchenProfile = recoveredKitchenProfile;
+    cookingStore = recoveredCookingStore;
+    return true;
+  }
+
+  function beginCookingTransaction(beforeProfile, beforeStore) {
+    var existing = getStored(COOKING_TRANSACTION_KEY);
+    if (isCookingTransaction(existing)) {
+      throw new Error('не удалось начать изменение длительности: найден незавершенный журнал');
+    }
+    var transaction = {
+      version: 1,
+      kitchenProfile: beforeProfile,
+      cookingStore: beforeStore
+    };
+    Gamification.storeSet(COOKING_TRANSACTION_KEY, transaction);
+    return transaction;
+  }
+
+  function persistCookingData() {
+    saveKitchenProfile();
+    saveCookingStore();
+  }
+
+  function commitCookingTransaction() {
+    clearCookingTransaction();
+  }
+
+  function rollbackCookingTransaction(transaction) {
+    kitchenProfile = transaction.kitchenProfile;
+    cookingStore = transaction.cookingStore;
+    try {
+      restoreCookingTransaction(transaction);
+      clearCookingTransaction();
+    } catch (_) {
+      // Исходный журнал остается в хранилище для повторного отката при загрузке.
+    }
+  }
+
   function loadCookingData() {
-    kitchenProfile = NutritionCookingCore.normalizeKitchenProfile(getStored(KITCHEN_PROFILE_KEY));
-    cookingStore = NutritionCookingCore.normalizeCookingStore(getStored(COOKING_PLANS_KEY));
+    if (!recoverCookingTransaction()) {
+      kitchenProfile = NutritionCookingCore.normalizeKitchenProfile(getStored(KITCHEN_PROFILE_KEY));
+      cookingStore = NutritionCookingCore.normalizeCookingStore(getStored(COOKING_PLANS_KEY));
+    }
     if (!getStored(KITCHEN_PROFILE_KEY)) saveKitchenProfile();
     if (!getStored(COOKING_PLANS_KEY)) saveCookingStore();
   }
@@ -71,8 +148,12 @@
 
   function loadState() {
     var todayKey = NutritionCore.getLocalDateKey();
-    state = NutritionCore.normalizeState(getStored(STATE_KEY), todayKey);
-    if (!getStored(STATE_KEY)) saveState();
+    var storedState = getStored(STATE_KEY);
+    var storedPriceBook = getStored(PRICES_KEY);
+    state = NutritionCore.normalizeState(storedState, todayKey);
+    state.ingredientPrices = NutritionCore.resolvePriceBook(state.ingredientPrices, storedPriceBook);
+    if (!storedState) saveState();
+    if (!storedPriceBook && Object.keys(state.ingredientPrices).length) savePriceBook();
     var current = NutritionCore.getCycleDay(state.activeCycle.startDate, todayKey);
     selectedDay = current ? current.dayNumber : 1;
   }
@@ -101,6 +182,10 @@
     var min = Math.round(safe.min);
     var max = Math.round(safe.max);
     return '≈' + (min === max ? min : min + '–' + max) + (unit ? ' ' + unit : '');
+  }
+
+  function formatRub(value) {
+    return Math.round(Number(value) || 0).toLocaleString('ru-RU') + ' ₽';
   }
 
   function parseDateKey(value) {
@@ -170,9 +255,33 @@
     return NutritionCookingCore.buildCookingDemand(NutritionData.plan14, state, catalog, week);
   }
 
+  function cookingPlanKey(week, sessionKind) {
+    return String(Number(week) === 2 ? 2 : 1) + ':' + (sessionKind === 'refresh' ? 'refresh' : 'main');
+  }
+
+  function activeCookingPlanKey() {
+    return cookingPlanKey(cookingWeek, cookingSessionKind);
+  }
+
+  function getCookingDemand(week, sessionKind) {
+    return NutritionCookingCore.selectCookingSessionDemand(getWeekDemand(week), sessionKind);
+  }
+
   function getOpenRouterSettings() {
     var stored = getStored('openrouter_settings_v1');
     return stored && typeof stored === 'object' ? stored : {};
+  }
+
+  function setCookingCommandFeedback(text, kind) {
+    var time = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    cookingCommandFeedback = {
+      text: String(text || '') + ' · ' + time,
+      kind: kind || 'neutral'
+    };
   }
 
   function formatMinutes(value) {
@@ -183,6 +292,14 @@
     return hours + ' ч' + (rest ? ' ' + rest + ' мин' : '');
   }
 
+  function formatBatchCount(value) {
+    var count = Math.max(0, Math.round(Number(value) || 0));
+    var mod100 = count % 100;
+    var mod10 = count % 10;
+    var noun = mod100 >= 11 && mod100 <= 14 ? 'партий' : mod10 === 1 ? 'партия' : mod10 >= 2 && mod10 <= 4 ? 'партии' : 'партий';
+    return count + ' ' + noun;
+  }
+
   function buildFallbackPlan(demand, planHash) {
     var actions = NutritionCookingCore.buildFallbackActions(demand, kitchenProfile);
     var scheduled = NutritionScheduler.scheduleActions(actions, kitchenProfile);
@@ -191,6 +308,7 @@
       planHash: planHash,
       cycleId: demand.cycleId,
       week: demand.week,
+      sessionKind: demand.sessionKind,
       model: '',
       generatedAt: new Date().toISOString(),
       status: scheduled.ok ? 'fallback' : 'error',
@@ -201,7 +319,7 @@
       estimate: scheduled.ok ? scheduled.estimate : { minMinutes: 0, maxMinutes: 0 },
       peakOutlets: scheduled.ok ? scheduled.peakOutlets : 0,
       warnings: scheduled.ok
-        ? ['последовательный план собран локально из инструкций блюд']
+        ? ['локальный план собран из инструкций блюд']
         : ['не удалось построить резервный план']
     };
   }
@@ -212,7 +330,7 @@
 
   function createAiPlan(demand, planHash, result) {
     if (!result.ok || !planMatchesDemand(result.value, demand)) return null;
-    var adjustedActions = NutritionCookingCore.applyCalibrationToActions(result.value.actions, kitchenProfile);
+    var adjustedActions = NutritionCookingCore.applyCalibrationToActions(result.value.actions, kitchenProfile, demand.batches);
     var scheduled = NutritionScheduler.scheduleActions(adjustedActions, kitchenProfile);
     if (!scheduled.ok) return null;
     return {
@@ -220,6 +338,7 @@
       planHash: planHash,
       cycleId: demand.cycleId,
       week: demand.week,
+      sessionKind: demand.sessionKind,
       model: result.model || '',
       generatedAt: new Date().toISOString(),
       status: 'ready',
@@ -233,17 +352,40 @@
     };
   }
 
-  function requestAiCookingPlan(week, demand, planHash) {
+  function restartAiCookingPlanForCurrentHash(week, sessionKind, request) {
+    var key = cookingPlanKey(week, sessionKind);
+    var currentRequest = generationRequests[key];
+    if (!currentRequest || currentRequest.token !== request.token || currentRequest.planHash !== request.planHash) return false;
+    var currentDemand = getCookingDemand(week, sessionKind);
+    var currentHash = NutritionCookingCore.createPlanFingerprint(currentDemand, kitchenProfile);
+    if (currentHash === request.planHash) return false;
+    delete generationRequests[key];
+    cookingUiState[key] = 'stale';
+    cookingUiError[key] = '';
+    ensureCookingPlan(week, sessionKind, { forceAi: true });
+    return true;
+  }
+
+  function requestAiCookingPlan(week, sessionKind, demand, planHash) {
+    var key = cookingPlanKey(week, sessionKind);
     var settings = getOpenRouterSettings();
     if (!settings.key) {
-      cookingUiState[week] = 'fallback';
-      cookingUiError[week] = '';
+      cookingUiState[key] = 'fallback';
+      cookingUiError[key] = '';
       return;
     }
-    cookingUiState[week] = 'generating';
-    cookingUiError[week] = '';
-    if (activeView === 'cooking' && cookingWeek === week) renderCooking();
-    if (activeView === 'cycle' && cycleWeek === week) renderBatchRail(demand, NutritionCookingCore.getCachedPlan(cookingStore, planHash));
+    if (generationTimers[key]) {
+      clearTimeout(generationTimers[key]);
+      delete generationTimers[key];
+    }
+    var request = { token: ++generationRequestToken, planHash: planHash };
+    generationRequests[key] = request;
+    cookingUiState[key] = 'generating';
+    cookingUiError[key] = '';
+    if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
+    if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) {
+      renderBatchRail(getWeekDemand(week), NutritionCookingCore.getCachedPlan(cookingStore, planHash));
+    }
 
     cookingClient.decompose({
       apiKey: settings.key,
@@ -251,75 +393,94 @@
       demand: demand,
       profile: kitchenProfile
     }).then(function (result) {
-      var currentDemand = getWeekDemand(week);
-      var currentHash = NutritionCookingCore.createPlanFingerprint(currentDemand, kitchenProfile);
-      if (currentHash !== planHash) return;
+      var currentRequest = generationRequests[key];
+      if (!currentRequest || currentRequest.token !== request.token || currentRequest.planHash !== request.planHash) return;
+      if (restartAiCookingPlanForCurrentHash(week, sessionKind, request)) return;
       var aiPlan = createAiPlan(demand, planHash, result);
       if (aiPlan) {
         if (NutritionCookingCore.activeSessionForPlan(cookingStore, planHash)) {
           var activePlan = NutritionCookingCore.getCachedPlan(cookingStore, planHash);
-          cookingUiState[week] = activePlan && activePlan.source === 'ai' ? 'ready' : 'fallback';
-          cookingUiError[week] = '';
-          if (activeView === 'cycle' && cycleWeek === week) renderCycle();
-          if (activeView === 'cooking' && cookingWeek === week) renderCooking();
+          cookingUiState[key] = activePlan && activePlan.source === 'ai' ? 'ready' : 'fallback';
+          cookingUiError[key] = '';
+          delete generationRequests[key];
+          if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) renderCycle();
+          if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
           return;
         }
         cookingStore = NutritionCookingCore.putCachedPlan(cookingStore, aiPlan);
         saveCookingStore();
-        cookingUiState[week] = 'ready';
-        cookingUiError[week] = '';
+        cookingUiState[key] = 'ready';
+        cookingUiError[key] = '';
       } else {
-        cookingUiState[week] = 'error';
-        cookingUiError[week] = result && result.error ? result.error.message : 'план не прошёл локальную проверку';
+        cookingUiState[key] = 'error';
+        cookingUiError[key] = result && result.error ? result.error.message : 'план не прошёл локальную проверку';
       }
-      if (activeView === 'cycle' && cycleWeek === week) renderCycle();
-      if (activeView === 'cooking' && cookingWeek === week) renderCooking();
+      delete generationRequests[key];
+      if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) renderCycle();
+      if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
+    }).catch(function (error) {
+      var currentRequest = generationRequests[key];
+      if (!currentRequest || currentRequest.token !== request.token || currentRequest.planHash !== request.planHash) return;
+      if (restartAiCookingPlanForCurrentHash(week, sessionKind, request)) return;
+      cookingUiState[key] = 'error';
+      cookingUiError[key] = error && error.message ? error.message : 'не удалось пересобрать план';
+      delete generationRequests[key];
+      if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) renderCycle();
+      if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
     });
   }
 
-  function ensureCookingPlan(week, options) {
+  function ensureCookingPlan(week, sessionKind, options) {
+    var kind = sessionKind === 'refresh' ? 'refresh' : 'main';
+    var key = cookingPlanKey(week, kind);
     var activeSessionId = cookingStore.activeSessionId;
     var activeSession = activeSessionId && cookingStore.sessionsById[activeSessionId];
-    if (activeSession && activeSession.status !== 'completed' && activeSession.cycleId === state.activeCycle.id && Number(activeSession.week) === Number(week)) {
+    if (activeSession && activeSession.status !== 'completed' && activeSession.cycleId === state.activeCycle.id &&
+      Number(activeSession.week) === Number(week) && (activeSession.sessionKind || 'main') === kind) {
       var runningPlan = NutritionCookingCore.getCachedPlan(cookingStore, activeSession.planHash);
       if (runningPlan) {
-        cookingUiState[week] = runningPlan.status === 'ready' ? 'ready' : 'fallback';
+        cookingUiState[key] = runningPlan.status === 'ready' ? 'ready' : 'fallback';
         return runningPlan;
       }
     }
-    var demand = getWeekDemand(week);
+    var demand = getCookingDemand(week, kind);
     var planHash = NutritionCookingCore.createPlanFingerprint(demand, kitchenProfile);
+    var forceAi = options && (options.force || options.forceAi);
+    if (forceAi && generationTimers[key]) {
+      clearTimeout(generationTimers[key]);
+      delete generationTimers[key];
+    }
     var cached = NutritionCookingCore.getCachedPlan(cookingStore, planHash);
     if (!cached) {
       cached = buildFallbackPlan(demand, planHash);
       cookingStore = NutritionCookingCore.putCachedPlan(cookingStore, cached);
       saveCookingStore();
     }
-    if (cookingUiState[week] !== 'generating' && cookingUiState[week] !== 'stale' && cookingUiState[week] !== 'error') {
-      cookingUiState[week] = cached.status === 'ready' ? 'ready' : 'fallback';
+    if (cookingUiState[key] !== 'generating' && cookingUiState[key] !== 'stale' && cookingUiState[key] !== 'error') {
+      cookingUiState[key] = cached.status === 'ready' ? 'ready' : 'fallback';
     }
     var settings = getOpenRouterSettings();
-    if (!settings.key && cookingUiState[week] !== 'generating') {
-      cookingUiState[week] = cached.status === 'ready' ? 'ready' : 'fallback';
-      cookingUiError[week] = '';
+    if (!settings.key && cookingUiState[key] !== 'generating') {
+      cookingUiState[key] = cached.status === 'ready' ? 'ready' : 'fallback';
+      cookingUiError[key] = '';
     }
-    if (settings.key && cookingUiState[week] !== 'generating' && (
-      options && options.forceAi || cookingUiState[week] !== 'stale' && cached.source !== 'ai'
-    )) {
-      requestAiCookingPlan(week, demand, planHash);
+    if (settings.key && (forceAi || (cookingUiState[key] !== 'generating' && cookingUiState[key] !== 'stale' && cached.source !== 'ai'))) {
+      requestAiCookingPlan(week, kind, demand, planHash);
     }
     return cached;
   }
 
-  function scheduleCookingGeneration(week, delay) {
-    cookingUiState[week] = 'stale';
-    cookingUiError[week] = '';
-    if (generationTimers[week]) clearTimeout(generationTimers[week]);
-    generationTimers[week] = setTimeout(function () {
-      delete generationTimers[week];
-      ensureCookingPlan(week, { forceAi: true });
+  function scheduleCookingGeneration(week, sessionKind, delay) {
+    var kind = sessionKind === 'refresh' ? 'refresh' : 'main';
+    var key = cookingPlanKey(week, kind);
+    cookingUiState[key] = 'stale';
+    cookingUiError[key] = '';
+    if (generationTimers[key]) clearTimeout(generationTimers[key]);
+    generationTimers[key] = setTimeout(function () {
+      delete generationTimers[key];
+      ensureCookingPlan(week, kind, { forceAi: true });
       if (activeView === 'cycle' && cycleWeek === week) renderCycle();
-      if (activeView === 'cooking' && cookingWeek === week) renderCooking();
+      if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === kind) renderCooking();
     }, Number(delay) || 450);
   }
 
@@ -536,7 +697,7 @@
 
   function beginNextCycle(mode) {
     if (!window.confirm('завершить текущий цикл и начать следующие 14 дней?')) return;
-    var snapshot = NutritionCore.createCycleSnapshot(state, NutritionData.plan14, catalog);
+    var snapshot = NutritionCore.createCycleSnapshot(state, NutritionData.plan14, catalog, NutritionData.ingredientPrices);
     state = NutritionCore.startNextCycle(state, NutritionCore.getLocalDateKey(), mode, snapshot);
     selectedDay = 1;
     saveState();
@@ -567,11 +728,11 @@
     });
     renderTrainingExtra(trainingExtra);
     var week = getWeekForDay(selectedDay);
-    var quickPlan = ensureCookingPlan(week);
+    var quickPlan = ensureCookingPlan(week, 'main');
     var shoppingMeta = document.getElementById('shoppingQuickMeta');
     var cookingMeta = document.getElementById('cookingQuickMeta');
     if (shoppingMeta) shoppingMeta.textContent = 'неделя ' + week;
-    if (cookingMeta) cookingMeta.textContent = 'неделя ' + week + ' · ' + formatMinutes(quickPlan.estimate.minMinutes) + '–' + formatMinutes(quickPlan.estimate.maxMinutes);
+    if (cookingMeta) cookingMeta.textContent = 'основная заготовка · ' + formatMinutes(quickPlan.estimate.minMinutes) + '–' + formatMinutes(quickPlan.estimate.maxMinutes);
     renderCycleCompleteActions();
   }
 
@@ -581,7 +742,7 @@
     if (!grid || !rail) return;
     clearElement(grid);
     var demand = getWeekDemand(cycleWeek);
-    var cookingPlan = ensureCookingPlan(cycleWeek);
+    var cookingPlan = ensureCookingPlan(cycleWeek, 'main');
     var occurrenceBatches = {};
     demand.batches.forEach(function (batch) {
       batch.occurrences.forEach(function (occurrence) {
@@ -638,7 +799,7 @@
   }
 
   function cookingStateLabel(week, plan) {
-    var stateName = cookingUiState[week] || plan && plan.status || 'fallback';
+    var stateName = cookingUiState[cookingPlanKey(week, plan && plan.sessionKind)] || plan && plan.status || 'fallback';
     var labels = {
       ready: 'план актуален',
       generating: 'пересобирается',
@@ -803,9 +964,14 @@
 
   function renderShopping() {
     var container = document.getElementById('shoppingGroups');
-    if (!container) return;
+    var budgetMeta = document.getElementById('shoppingBudgetMeta');
+    if (!container || !budgetMeta) return;
     clearElement(container);
-    var items = NutritionCore.buildShoppingList(NutritionData.plan14, state, catalog, shoppingWeek);
+    var shoppingItems = NutritionCore.buildShoppingList(NutritionData.plan14, state, catalog, shoppingWeek);
+    var items = NutritionCore.priceShoppingItems(shoppingItems, state.ingredientPrices, NutritionData.ingredientPrices);
+    var missingPrices = items.filter(function (item) { return !item.hasPrice; }).length;
+    var totalRub = NutritionCore.calculateShoppingTotal(items);
+    budgetMeta.textContent = 'неделя ' + shoppingWeek + ' · ≈' + formatRub(totalRub) + (missingPrices ? ' · без цены: ' + missingPrices : '');
     var groups = groupShopping(items);
     Object.keys(NutritionData.ingredientCategories).forEach(function (category) {
       if (!groups[category] || !groups[category].length) return;
@@ -814,9 +980,10 @@
       var list = createElement('div', 'shopping-list');
       groups[category].forEach(function (item) {
         var key = state.activeCycle.id + ':' + shoppingWeek + ':' + item.id + ':' + item.unit;
-        var row = createElement('label', 'shopping-item');
-        var checkbox = createElement('input');
+        var row = createElement('div', 'shopping-item');
+        var checkbox = createElement('input', 'shopping-check');
         checkbox.type = 'checkbox';
+        checkbox.setAttribute('aria-label', 'куплено: ' + item.name);
         checkbox.checked = state.shoppingChecks[key] === true;
         row.classList.toggle('checked', checkbox.checked);
         checkbox.addEventListener('change', function () {
@@ -825,7 +992,33 @@
           saveState();
           row.classList.toggle('checked', checkbox.checked);
         });
-        appendChildren(row, [checkbox, createElement('span', 'shopping-name', item.name), createElement('span', 'shopping-amount', formatIngredientAmount(item.amount) + ' ' + item.unit)]);
+        var priceKey = item.priceKey;
+        var priceField = createElement('label', 'shopping-price-field');
+        var priceInput = createElement('input', 'shopping-price-input');
+        priceInput.type = 'number';
+        priceInput.min = '0';
+        priceInput.step = '1';
+        priceInput.inputMode = 'decimal';
+        priceInput.value = item.unitPriceRub === null ? '' : String(item.unitPriceRub);
+        priceInput.setAttribute('aria-label', 'цена: ' + item.name + ', ' + item.priceLabel);
+        priceInput.addEventListener('change', function () {
+          var nextPrice = priceInput.value === '' ? null : Number(priceInput.value);
+          if (nextPrice !== null && Number.isFinite(nextPrice) && nextPrice >= 0) {
+            state.ingredientPrices[priceKey] = Math.round(nextPrice * 100) / 100;
+          } else {
+            delete state.ingredientPrices[priceKey];
+          }
+          savePriceBook();
+          renderShopping();
+        });
+        appendChildren(priceField, [priceInput, createElement('span', 'shopping-price-unit', item.priceLabel)]);
+        appendChildren(row, [
+          checkbox,
+          createElement('span', 'shopping-name', item.name),
+          createElement('span', 'shopping-amount', formatIngredientAmount(item.amount) + ' ' + item.unit),
+          priceField,
+          createElement('span', 'shopping-line-cost', item.hasPrice ? '≈' + formatRub(item.lineCostRub) : '—')
+        ]);
         list.appendChild(row);
       });
       section.appendChild(list);
@@ -845,10 +1038,12 @@
   }
 
   function getLastCookingSession(plan) {
-    var weekKey = plan.cycleId + ':' + plan.week;
-    var id = cookingStore.lastSessionIdsByWeek && cookingStore.lastSessionIdsByWeek[weekKey] || cookingStore.lastSessionId;
+    var weekKey = plan.cycleId + ':' + plan.week + ':' + (plan.sessionKind || 'main');
+    var legacyWeekKey = plan.cycleId + ':' + plan.week;
+    var id = cookingStore.lastSessionIdsByWeek && (cookingStore.lastSessionIdsByWeek[weekKey] || cookingStore.lastSessionIdsByWeek[legacyWeekKey]) || cookingStore.lastSessionId;
     var session = id && cookingStore.sessionsById[id];
-    return session && session.status === 'completed' && session.cycleId === plan.cycleId && Number(session.week) === Number(plan.week)
+    return session && session.status === 'completed' && session.cycleId === plan.cycleId && Number(session.week) === Number(plan.week) &&
+      (session.sessionKind || 'main') === (plan.sessionKind || 'main')
       ? session
       : null;
   }
@@ -859,13 +1054,93 @@
     return Boolean(session && session.status !== 'completed');
   }
 
+  function blockCookingCommand() {
+    var message = 'сначала заверши активную сессию готовки';
+    cookingUiError[activeCookingPlanKey()] = message;
+    setCookingCommandFeedback(message, 'error');
+    return { ok: false, error: message };
+  }
+
+  function regenerateCookingPlan() {
+    if (hasActiveCookingSession()) return blockCookingCommand();
+    cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
+    saveCookingStore();
+    scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
+    if (getOpenRouterSettings().key) {
+      setCookingCommandFeedback('пересборка через openrouter запущена, резервный план уже обновлён', 'working');
+    } else {
+      setCookingCommandFeedback('план пересобран локально, результат может совпадать', 'success');
+    }
+    return { ok: true };
+  }
+
+  function resetCookingCalibration() {
+    if (hasActiveCookingSession()) return blockCookingCommand();
+    if (!window.confirm('сбросить накопленный темп готовки? журнал сессий останется.')) {
+      return { ok: false, cancelled: true };
+    }
+    var calibration = kitchenProfile.calibration || {};
+    var hadCalibration = Object.keys(calibration.factors || {}).length > 0 ||
+      Object.keys(calibration.observations || {}).length > 0 ||
+      Boolean(cookingStore.lastSessionId) ||
+      Object.keys(cookingStore.lastSessionIdsByWeek || {}).length > 0 ||
+      (Array.isArray(cookingStore.calibrationSessionIds) && cookingStore.calibrationSessionIds.length > 0);
+    kitchenProfile = NutritionCookingCore.resetCalibration(kitchenProfile);
+    cookingStore.lastSessionId = null;
+    cookingStore.lastSessionIdsByWeek = {};
+    cookingStore.calibrationSessionIds = [];
+    saveKitchenProfile();
+    cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
+    cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);
+    saveCookingStore();
+    scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
+    setCookingCommandFeedback(
+      hadCalibration
+        ? 'темп сброшен, ручные длительности сохранены'
+        : 'темп уже исходный, ручные длительности не изменены',
+      hadCalibration ? 'success' : 'neutral'
+    );
+    return { ok: true, changed: hadCalibration };
+  }
+
+  function clearCookingPlanCache() {
+    if (!window.confirm('удалить кеш планов готовки? рацион и блюда останутся без изменений.')) {
+      return { ok: false, cancelled: true };
+    }
+    cookingClient.abort();
+    cookingStore = NutritionCookingCore.clearCachedPlans(cookingStore);
+    cookingUiState = {};
+    cookingUiError = {};
+    saveCookingStore();
+    setCookingCommandFeedback('кеш очищен, резервный план создан заново', 'success');
+    return { ok: true };
+  }
+
+  function syncCookingSelectionToActiveSession() {
+    var id = cookingStore.activeSessionId;
+    var session = id && cookingStore.sessionsById[id];
+    if (!session || session.status === 'completed' || session.cycleId !== state.activeCycle.id) return;
+    cookingWeek = Number(session.week) === 2 ? 2 : 1;
+    cookingSessionKind = session.sessionKind === 'refresh' ? 'refresh' : 'main';
+    var weekTabs = document.querySelector('[data-week-tabs="cooking"]');
+    if (weekTabs) weekTabs.querySelectorAll('[data-week]').forEach(function (button) {
+      button.classList.toggle('active', Number(button.getAttribute('data-week')) === cookingWeek);
+    });
+    var sessionTabs = document.getElementById('cookingSessionTabs');
+    if (sessionTabs) sessionTabs.querySelectorAll('[data-cooking-session]').forEach(function (button) {
+      var active = button.getAttribute('data-cooking-session') === cookingSessionKind;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
   function persistCookingSession(session) {
     cookingStore.sessionsById[session.id] = session;
     cookingStore.activeSessionId = session.status === 'completed' ? null : session.id;
     if (session.status === 'completed') {
       cookingStore.lastSessionId = session.id;
       if (!cookingStore.lastSessionIdsByWeek) cookingStore.lastSessionIdsByWeek = {};
-      cookingStore.lastSessionIdsByWeek[session.cycleId + ':' + session.week] = session.id;
+      cookingStore.lastSessionIdsByWeek[session.cycleId + ':' + session.week + ':' + (session.sessionKind || 'main')] = session.id;
       if (!Array.isArray(cookingStore.calibrationSessionIds)) cookingStore.calibrationSessionIds = [];
       if (cookingStore.calibrationSessionIds.indexOf(session.id) === -1) cookingStore.calibrationSessionIds.push(session.id);
     }
@@ -876,6 +1151,347 @@
     return plan.schedule.find(function (entry) { return entry.actionId === actionId; }) || null;
   }
 
+  function getSelectedCookingEntry(plan) {
+    if (!selectedCookingActionId || !plan || !Array.isArray(plan.schedule)) return null;
+    return entryForAction(plan, selectedCookingActionId);
+  }
+
+  function rebuildCookingPlanAfterDurationChange(plan) {
+    var rebuiltPlan = ensureCookingPlan(cookingWeek, cookingSessionKind, { force: true });
+    if (!getSelectedCookingEntry(rebuiltPlan)) selectedCookingActionId = null;
+    return rebuiltPlan;
+  }
+
+  function updateCookingActionDuration(plan, actionId, updateProfile) {
+    var actions = plan && Array.isArray(plan.actions) ? plan.actions : [];
+    var action = actions.find(function (item) { return item && item.id === actionId; });
+    if (!action) return { ok: false, error: 'шаг готовки не найден' };
+    try {
+      recoverCookingTransaction();
+    } catch (error) {
+      return {
+        ok: false,
+        error: 'не удалось восстановить незавершенное изменение длительности: ' +
+          (error.message || 'ошибка хранилища')
+      };
+    }
+    if (hasActiveCookingSession()) {
+      return { ok: false, error: 'сначала заверши активную сессию готовки' };
+    }
+    var updated = updateProfile(kitchenProfile, action, plan.batches);
+    if (!updated.ok) return updated;
+    var previousKitchenProfile = kitchenProfile;
+    var previousCookingStore = cookingStore;
+    var transaction;
+    var rebuiltPlan;
+    try {
+      transaction = beginCookingTransaction(previousKitchenProfile, previousCookingStore);
+      kitchenProfile = updated.profile;
+      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, plan.cycleId, plan.week);
+      persistCookingData();
+      rebuiltPlan = rebuildCookingPlanAfterDurationChange(plan);
+      commitCookingTransaction();
+    } catch (error) {
+      if (transaction) rollbackCookingTransaction(transaction);
+      else {
+        kitchenProfile = previousKitchenProfile;
+        cookingStore = previousCookingStore;
+      }
+      return { ok: false, error: error.message || 'не удалось сохранить длительность шага' };
+    }
+    renderCooking();
+    return { ok: true, key: updated.key, plan: rebuiltPlan };
+  }
+
+  function saveCookingActionDuration(plan, actionId, minutes) {
+    return updateCookingActionDuration(plan, actionId, function (profile, action, batches) {
+      return NutritionCookingCore.setActionDurationOverride(profile, action, batches, minutes);
+    });
+  }
+
+  function resetCookingActionDuration(plan, actionId) {
+    return updateCookingActionDuration(plan, actionId, function (profile, action, batches) {
+      return NutritionCookingCore.clearActionDurationOverride(profile, action, batches);
+    });
+  }
+
+  function clampCookingDuration(value) {
+    return Math.max(1, Math.min(720, Math.round(Number(value) || 0)));
+  }
+
+  function buildCookingResizePreview(entry, edge, boundaryMinute) {
+    var startMinute = Number(entry.startMinute) || 0;
+    var endMinute = Number(entry.endMinute) || startMinute + 1;
+    var boundary = Number(boundaryMinute);
+    if (!Number.isFinite(boundary)) boundary = edge === 'start' ? startMinute : endMinute;
+    var durationMinutes = clampCookingDuration(edge === 'start' ? endMinute - boundary : boundary - startMinute);
+    return edge === 'start'
+      ? { startMinute: endMinute - durationMinutes, endMinute: endMinute, durationMinutes: durationMinutes }
+      : { startMinute: startMinute, endMinute: startMinute + durationMinutes, durationMinutes: durationMinutes };
+  }
+
+  function buildCookingKeyboardResizePreview(entry, edge, key, shiftKey) {
+    var step = shiftKey ? 5 : 1;
+    var boundaryDelta = key === 'ArrowRight' ? step : -step;
+    var boundary = edge === 'start' ? entry.startMinute + boundaryDelta : entry.endMinute + boundaryDelta;
+    return buildCookingResizePreview(entry, edge, boundary);
+  }
+
+  function cookingMinuteAtPixel(timelineScale, pixelValue) {
+    var pixel = Number(pixelValue);
+    if (!Number.isFinite(pixel)) pixel = 0;
+    var width = Math.max(0, Number(timelineScale.width) || 0);
+    if (pixel < 0) return timelineScale.minuteAt(0) + pixel / TIMELINE_PIXELS_PER_MINUTE;
+    if (pixel > width) return timelineScale.minuteAt(width) + (pixel - width) / TIMELINE_PIXELS_PER_MINUTE;
+    return timelineScale.minuteAt(pixel);
+  }
+
+  function buildCookingPointerResizePreview(entry, edge, drag, pointerPixel, timelineScale) {
+    var pointerMinute = cookingMinuteAtPixel(timelineScale, pointerPixel);
+    var boundaryMinute = drag.boundaryMinute + pointerMinute - drag.pointerMinute;
+    return buildCookingResizePreview(entry, edge, boundaryMinute);
+  }
+
+  function setCookingResizeAria(handle, durationMinutes) {
+    handle.setAttribute('aria-valuemin', '1');
+    handle.setAttribute('aria-valuemax', '720');
+    handle.setAttribute('aria-valuenow', String(durationMinutes));
+    handle.setAttribute('aria-valuetext', formatMinutes(durationMinutes));
+  }
+
+  function updateCookingResizePreview(actionId, preview, timelineScale) {
+    var timeline = document.getElementById('cookingTimeline');
+    if (!timeline) return;
+    timeline.querySelectorAll('.timeline-block').forEach(function (timelineBlock) {
+      if (timelineBlock.getAttribute('data-action-id') === actionId) {
+        var blockStart = timelineScale.positionAt(preview.startMinute);
+        timelineBlock.style.left = blockStart + 'px';
+        timelineBlock.style.width = Math.max(2, timelineScale.positionAt(preview.endMinute) - blockStart) + 'px';
+        timelineBlock.setAttribute('data-preview-duration', String(preview.durationMinutes));
+        var time = timelineBlock.querySelector('.timeline-block-time');
+        if (time) time.textContent = formatMinutes(preview.durationMinutes);
+        timelineBlock.querySelectorAll('.timeline-resize-handle').forEach(function (resizeHandle) {
+          setCookingResizeAria(resizeHandle, preview.durationMinutes);
+        });
+      }
+    });
+  }
+
+  function focusCookingResizeHandle(actionId, laneId, edge) {
+    var timeline = document.getElementById('cookingTimeline');
+    if (!timeline) return;
+    var target = null;
+    timeline.querySelectorAll('.timeline-block').forEach(function (timelineBlock) {
+      if (!target && timelineBlock.getAttribute('data-action-id') === actionId && timelineBlock.getAttribute('data-lane-id') === laneId) {
+        target = timelineBlock.querySelector('.timeline-resize-handle.' + edge);
+      }
+    });
+    if (!target) return;
+    try {
+      target.focus({ preventScroll: true });
+    } catch (error) {
+      target.focus();
+    }
+  }
+
+  function applyCookingActionSelection(container) {
+    if (!container) return;
+    container.querySelectorAll('.timeline-block').forEach(function (block) {
+      var selected = block.getAttribute('data-action-id') === selectedCookingActionId;
+      block.classList.toggle('timeline-block-selected', selected);
+      var select = block.querySelector('.timeline-block-select');
+      if (select) select.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+  }
+
+  function selectCookingAction(plan, actionId) {
+    selectedCookingActionId = actionId;
+    cookingDurationEditorError = '';
+    applyCookingActionSelection(document.getElementById('cookingTimeline'));
+    renderCookingNow(plan, document.getElementById('cookingNow'));
+  }
+
+  function activateCookingTimelineAction(plan, entry) {
+    selectCookingAction(plan, entry.actionId);
+    activeBatchId = activeBatchId === entry.batchId ? null : entry.batchId;
+    applyBatchHighlight();
+  }
+
+  function renderCookingDurationEditor(plan, entry, container) {
+    if (!entry) return;
+    var action = plan.actions.find(function (item) { return item.id === entry.actionId; });
+    var batch = plan.batches.find(function (item) { return item.id === entry.batchId; });
+    var durationKey = action && NutritionCookingCore.getActionDurationKey(action, plan.batches);
+    var overrides = kitchenProfile.calibration && kitchenProfile.calibration.durationOverrides || {};
+    var hasOverride = Boolean(durationKey && Number.isInteger(overrides[durationKey]));
+    var locked = hasActiveCookingSession();
+    var editor = createElement('section', 'cooking-duration-editor');
+    editor.setAttribute('aria-label', 'редактор длительности действия');
+    appendChildren(editor, [
+      createElement('div', 'cooking-duration-eyebrow', 'выбранное действие'),
+      createElement('div', 'cooking-duration-meal', batch ? batch.label : 'блюдо'),
+      createElement('h3', 'cooking-duration-title', entry.title),
+      createElement('div', 'cooking-duration-current', 'текущая длительность · ' + formatMinutes(entry.durationMinutes))
+    ]);
+    if (hasOverride) {
+      editor.appendChild(createElement('div', 'cooking-duration-saved', 'сохранено вручную · ' + formatMinutes(overrides[durationKey])));
+    }
+
+    var form = createElement('form', 'cooking-duration-form');
+    var field = createElement('label', 'cooking-duration-field');
+    field.appendChild(createElement('span', '', 'минуты'));
+    var input = createElement('input', 'field-control cooking-duration-input');
+    input.type = 'number';
+    input.min = '1';
+    input.max = '720';
+    input.step = '1';
+    input.value = String(entry.durationMinutes);
+    input.disabled = locked;
+    input.setAttribute('aria-label', 'длительность действия в минутах');
+    field.appendChild(input);
+    var actions = createElement('div', 'cooking-duration-actions');
+    var save = createElement('button', 'primary-btn', 'сохранить');
+    var reset = createElement('button', 'quiet-btn', 'вернуть расчётное');
+    save.type = 'submit';
+    reset.type = 'button';
+    save.disabled = locked;
+    reset.disabled = locked || !hasOverride;
+    appendChildren(actions, [save, reset]);
+    appendChildren(form, [field, actions]);
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var minutes = Number(input.value);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 720) {
+        cookingDurationEditorError = 'укажи целое число от 1 до 720';
+        renderCookingNow(plan, container);
+        return;
+      }
+      cookingDurationEditorError = '';
+      var result = saveCookingActionDuration(plan, entry.actionId, minutes);
+      if (!result.ok) {
+        cookingDurationEditorError = result.error || 'не удалось сохранить длительность';
+        renderCooking();
+      }
+    });
+    reset.addEventListener('click', function () {
+      cookingDurationEditorError = '';
+      var result = resetCookingActionDuration(plan, entry.actionId);
+      if (!result.ok) {
+        cookingDurationEditorError = result.error || 'не удалось вернуть расчётную длительность';
+        renderCooking();
+      }
+    });
+    editor.appendChild(form);
+    if (locked) editor.appendChild(createElement('div', 'cooking-duration-note', 'редактирование недоступно во время активной сессии'));
+    if (cookingDurationEditorError) {
+      var error = createElement('div', 'cooking-duration-error', cookingDurationEditorError);
+      error.setAttribute('role', 'alert');
+      editor.appendChild(error);
+    }
+    container.appendChild(editor);
+  }
+
+  function attachCookingResizeHandle(handle, plan, entry, edge, block, timelineScale) {
+    var locked = hasActiveCookingSession();
+    var drag = null;
+    handle.setAttribute('role', 'slider');
+    handle.setAttribute('aria-label', (edge === 'start' ? 'изменить начало' : 'изменить конец') + ' действия «' + entry.title + '»');
+    handle.setAttribute('aria-orientation', 'horizontal');
+    handle.setAttribute('aria-disabled', locked ? 'true' : 'false');
+    handle.tabIndex = locked ? -1 : 0;
+    setCookingResizeAria(handle, entry.durationMinutes);
+
+    function pixelFromPointer(event) {
+      var bounds = block.parentNode.getBoundingClientRect();
+      return event.clientX - bounds.left;
+    }
+
+    function restorePreview() {
+      updateCookingResizePreview(entry.actionId, {
+        startMinute: entry.startMinute,
+        endMinute: entry.endMinute,
+        durationMinutes: entry.durationMinutes
+      }, timelineScale);
+      var timeline = document.getElementById('cookingTimeline');
+      if (!timeline) return;
+      timeline.querySelectorAll('.timeline-block').forEach(function (timelineBlock) {
+        if (timelineBlock.getAttribute('data-action-id') !== entry.actionId) return;
+        timelineBlock.removeAttribute('data-preview-duration');
+        var time = timelineBlock.querySelector('.timeline-block-time');
+        if (time) time.textContent = formatMinutes(entry.startMinute) + ' → ' + formatMinutes(entry.endMinute);
+      });
+    }
+
+    function showSaveError(result) {
+      if (result.ok) return;
+      cookingDurationEditorError = result.error || 'не удалось сохранить длительность';
+      renderCooking();
+    }
+
+    handle.addEventListener('click', function (event) {
+      event.stopPropagation();
+    });
+    handle.addEventListener('pointerdown', function (event) {
+      event.stopPropagation();
+      if (locked || event.button !== 0) return;
+      event.preventDefault();
+      selectCookingAction(plan, entry.actionId);
+      var pointerPixel = pixelFromPointer(event);
+      drag = {
+        pointerId: event.pointerId,
+        pointerPixel: pointerPixel,
+        pointerMinute: cookingMinuteAtPixel(timelineScale, pointerPixel),
+        boundaryMinute: edge === 'start' ? entry.startMinute : entry.endMinute,
+        preview: buildCookingResizePreview(entry, edge, edge === 'start' ? entry.startMinute : entry.endMinute)
+      };
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener('pointermove', function (event) {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      event.preventDefault();
+      drag.preview = buildCookingPointerResizePreview(entry, edge, drag, pixelFromPointer(event), timelineScale);
+      updateCookingResizePreview(entry.actionId, drag.preview, timelineScale);
+    });
+    handle.addEventListener('pointerup', function (event) {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      event.preventDefault();
+      drag.preview = buildCookingPointerResizePreview(entry, edge, drag, pixelFromPointer(event), timelineScale);
+      var preview = drag.preview;
+      drag = null;
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      if (preview.durationMinutes === clampCookingDuration(entry.durationMinutes)) {
+        restorePreview();
+        return;
+      }
+      showSaveError(saveCookingActionDuration(plan, entry.actionId, preview.durationMinutes));
+    });
+    handle.addEventListener('pointercancel', function (event) {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      drag = null;
+      restorePreview();
+    });
+    handle.addEventListener('lostpointercapture', function () {
+      if (!drag) return;
+      drag = null;
+      restorePreview();
+    });
+    handle.addEventListener('keydown', function (event) {
+      event.stopPropagation();
+      if (locked || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+      event.preventDefault();
+      selectCookingAction(plan, entry.actionId);
+      var preview = buildCookingKeyboardResizePreview(entry, edge, event.key, event.shiftKey);
+      updateCookingResizePreview(entry.actionId, preview, timelineScale);
+      var laneId = block.getAttribute('data-lane-id');
+      var result = saveCookingActionDuration(plan, entry.actionId, preview.durationMinutes);
+      showSaveError(result);
+      if (result.ok) focusCookingResizeHandle(entry.actionId, laneId, edge);
+    });
+  }
+
   function nextSessionEntry(plan, session) {
     var actionId = NutritionCookingCore.nextSessionActionId(plan.schedule, session);
     return actionId ? entryForAction(plan, actionId) : null;
@@ -883,10 +1499,17 @@
 
   function runSessionTransition(plan, transition, actionId) {
     var session = getActiveCookingSession(plan);
+    var activeId = cookingStore.activeSessionId;
+    var activeSession = activeId && cookingStore.sessionsById[activeId];
+    if (!session && activeSession && activeSession.status !== 'completed' && activeSession.planHash !== plan.planHash) {
+      cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
+      renderCooking();
+      return;
+    }
     if (!session) session = NutritionCookingCore.startSession(plan, Date.now());
     var result = transition(session, actionId, Date.now());
     if (!result.ok) {
-      cookingUiError[cookingWeek] = result.error.message;
+      cookingUiError[activeCookingPlanKey()] = result.error.message;
       renderCooking();
       return;
     }
@@ -898,11 +1521,11 @@
       persistCookingSession(result.session);
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
       saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, 250);
+      scheduleCookingGeneration(cookingWeek, result.session.sessionKind, 250);
     } else {
       persistCookingSession(result.session);
     }
-    cookingUiError[cookingWeek] = '';
+    cookingUiError[activeCookingPlanKey()] = '';
     renderCooking();
   }
 
@@ -913,7 +1536,7 @@
     if (answer === null) return;
     var corrected = NutritionCookingCore.setStepActualMinutes(session, actionId, Number(answer));
     if (!corrected.ok) {
-      cookingUiError[cookingWeek] = corrected.error.message;
+      cookingUiError[activeCookingPlanKey()] = corrected.error.message;
       renderCooking();
       return;
     }
@@ -929,10 +1552,10 @@
       kitchenProfile = replayed.profile;
       saveKitchenProfile();
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, corrected.session.week);
-      scheduleCookingGeneration(corrected.session.week, 250);
+      scheduleCookingGeneration(corrected.session.week, corrected.session.sessionKind, 250);
     }
     persistCookingSession(corrected.session);
-    cookingUiError[cookingWeek] = '';
+    cookingUiError[activeCookingPlanKey()] = '';
     renderCookingNow(plan, document.getElementById('cookingNow'));
   }
 
@@ -944,22 +1567,31 @@
     var now = document.getElementById('cookingNow');
     var legend = document.getElementById('cookingBatchLegend');
     if (!context || !status || !overview || !timeline || !now || !legend) return;
-    var plan = ensureCookingPlan(cookingWeek);
+    var timelineScrollLeft = timeline.scrollLeft;
+    var plan = ensureCookingPlan(cookingWeek, cookingSessionKind);
     var stateInfo = cookingStateLabel(cookingWeek, plan);
-    context.textContent = 'неделя ' + cookingWeek + ' · ' + plan.batches.length + ' партий';
+    var sessionTitle = cookingSessionKind === 'refresh' ? 'короткое обновление' : 'основная заготовка';
+    context.textContent = 'неделя ' + cookingWeek + ' · ' + sessionTitle + ' · ' + formatBatchCount(plan.batches.length);
     status.className = 'cooking-status ' + stateInfo.name;
-    status.textContent = cookingUiError[cookingWeek] || stateInfo.label;
+    status.textContent = cookingUiError[activeCookingPlanKey()] || stateInfo.label;
     var modeSelect = document.getElementById('kitchenModeSelect');
     if (modeSelect) modeSelect.value = kitchenProfile.activeMode;
+    var commandFeedback = document.getElementById('cookingCommandFeedback');
+    if (commandFeedback) {
+      commandFeedback.className = 'cooking-command-feedback ' + cookingCommandFeedback.kind;
+      commandFeedback.textContent = cookingCommandFeedback.text;
+    }
 
     clearElement(overview);
     appendChildren(overview, [
       createElement('strong', '', formatMinutes(plan.estimate.minMinutes) + '–' + formatMinutes(plan.estimate.maxMinutes)),
+      createElement('span', '', 'время одной сессии'),
       createElement('span', '', 'пик ' + plan.peakOutlets + ' роз.'),
       createElement('span', '', plan.source === 'ai' ? 'openrouter · ' + (plan.model || 'модель') : 'локально · без api'),
       createElement('span', '', plan.generatedAt ? 'обновлено ' + new Date(plan.generatedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '')
     ]);
     renderCookingTimeline(plan, timeline);
+    timeline.scrollLeft = timelineScrollLeft;
     renderCookingNow(plan, now);
     renderCookingLegend(plan, legend);
     applyBatchHighlight();
@@ -992,19 +1624,31 @@
     return lanes;
   }
 
+  var TIMELINE_PIXELS_PER_MINUTE = 7;
+  var TIMELINE_RESOURCE_WIDTH = 140;
+  var TIMELINE_MIN_SEGMENT_WIDTH = 260;
+
   function renderCookingTimeline(plan, container) {
     clearElement(container);
     if (!plan.schedule.length) {
       container.appendChild(createElement('div', 'cooking-empty', 'для этой недели нет действий готовки'));
       return;
     }
-    var duration = Math.max(1, plan.estimate.minMinutes);
+    var timelineScale = NutritionCore.buildTimelineScale(
+      plan.schedule,
+      plan.estimate.minMinutes,
+      TIMELINE_PIXELS_PER_MINUTE,
+      TIMELINE_MIN_SEGMENT_WIDTH
+    );
+    var duration = timelineScale.duration;
+    var timelineWidth = TIMELINE_RESOURCE_WIDTH + Math.ceil(timelineScale.width);
+    container.style.setProperty('--timeline-width', timelineWidth + 'px');
     var ruler = createElement('div', 'timeline-ruler');
     ruler.appendChild(createElement('div', 'timeline-ruler-label', 'ресурс'));
     var scale = createElement('div', 'timeline-scale');
     [0, 25, 50, 75, 100].forEach(function (percent) {
       var tick = createElement('span', 'timeline-tick', formatMinutes(duration * percent / 100));
-      tick.style.left = percent + '%';
+      tick.style.left = timelineScale.positionAt(duration * percent / 100) + 'px';
       scale.appendChild(tick);
     });
     ruler.appendChild(scale);
@@ -1014,21 +1658,41 @@
       var row = createElement('div', 'timeline-lane');
       row.appendChild(createElement('div', 'timeline-lane-name', lane.title));
       var track = createElement('div', 'timeline-track');
+      [0, 25, 50, 75, 100].forEach(function (percent) {
+        var guide = createElement('span', 'timeline-guide');
+        guide.style.left = timelineScale.positionAt(duration * percent / 100) + 'px';
+        track.appendChild(guide);
+      });
       lane.entries.forEach(function (entry) {
         var batch = plan.batches.find(function (item) { return item.id === entry.batchId; });
-        var block = createElement('button', 'timeline-block ' + entry.mode + ' batch-color-' + (batch ? batch.colorIndex : 0));
-        block.type = 'button';
+        var selected = selectedCookingActionId === entry.actionId;
+        var block = createElement('div', 'timeline-block ' + entry.mode + ' batch-color-' + (batch ? batch.colorIndex : 0) + (selected ? ' timeline-block-selected' : ''));
         block.setAttribute('data-batch-id', entry.batchId);
-        block.style.left = Math.min(100, entry.startMinute / duration * 100) + '%';
-        block.style.width = Math.max(2, (entry.endMinute - entry.startMinute) / duration * 100) + '%';
-        block.title = entry.title + ' · ' + entry.location + ' · ' + formatMinutes(entry.durationMinutes);
-        appendChildren(block, [
+        block.setAttribute('data-action-id', entry.actionId);
+        block.setAttribute('data-lane-id', lane.id);
+        var blockStart = timelineScale.positionAt(entry.startMinute);
+        block.style.left = blockStart + 'px';
+        block.style.width = Math.max(2, timelineScale.positionAt(entry.endMinute) - blockStart) + 'px';
+        var select = createElement('button', 'timeline-block-select');
+        select.type = 'button';
+        select.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        select.setAttribute('aria-label', entry.title + ', ' + formatMinutes(entry.durationMinutes));
+        select.title = entry.title + ' · ' + entry.location + ' · ' + formatMinutes(entry.durationMinutes);
+        var copy = createElement('div', 'timeline-block-copy');
+        appendChildren(copy, [
           createElement('strong', '', entry.title),
-          createElement('span', '', formatMinutes(entry.startMinute) + ' → ' + formatMinutes(entry.endMinute))
+          createElement('span', 'timeline-block-time', formatMinutes(entry.startMinute) + ' → ' + formatMinutes(entry.endMinute))
         ]);
-        block.addEventListener('click', function () {
-          activeBatchId = activeBatchId === entry.batchId ? null : entry.batchId;
-          renderCooking();
+        select.appendChild(copy);
+        select.addEventListener('click', function (event) {
+          event.stopPropagation();
+          activateCookingTimelineAction(plan, entry);
+        });
+        block.appendChild(select);
+        ['start', 'end'].forEach(function (edge) {
+          var handle = createElement('div', 'timeline-resize-handle ' + edge);
+          attachCookingResizeHandle(handle, plan, entry, edge, block, timelineScale);
+          block.appendChild(handle);
         });
         track.appendChild(block);
       });
@@ -1050,6 +1714,8 @@
     clearElement(container);
     var session = getActiveCookingSession(plan);
     var journalSession = session || getLastCookingSession(plan);
+    var selectedEntry = getSelectedCookingEntry(plan);
+    if (selectedEntry) renderCookingDurationEditor(plan, selectedEntry, container);
     var current = nextSessionEntry(plan, session);
     if (!current) {
       container.appendChild(createElement('div', 'cooking-empty', session ? 'все шаги сессии завершены' : 'готовить нечего'));
@@ -1168,20 +1834,37 @@
 
   function renderHistory() {
     var container = document.getElementById('historyList');
-    if (!container) return;
+    var summary = document.getElementById('historySummary');
+    if (!container || !summary) return;
     clearElement(container);
+    clearElement(summary);
     if (!state.history.length) {
+      summary.hidden = true;
       var empty = createElement('div', 'empty-state');
       appendChildren(empty, [createElement('strong', '', 'завершённых циклов пока нет'), createElement('span', '', 'первый результат появится после 14 дней')]);
       container.appendChild(empty);
       return;
     }
+    summary.hidden = false;
+    var pricedHistory = state.history.filter(function (item) { return Number.isFinite(item.shoppingCostRub); });
+    var latestCost = pricedHistory.length ? pricedHistory[pricedHistory.length - 1].shoppingCostRub : null;
+    var averageCost = pricedHistory.length ? Math.round(pricedHistory.reduce(function (total, item) { return total + item.shoppingCostRub; }, 0) / pricedHistory.length) : null;
+    [
+      ['завершено циклов', String(state.history.length)],
+      ['последний расход', latestCost === null ? 'нет данных' : formatRub(latestCost)],
+      ['средний расход', averageCost === null ? 'нет данных' : formatRub(averageCost)]
+    ].forEach(function (metric) {
+      var stat = createElement('div', 'history-stat');
+      appendChildren(stat, [createElement('span', 'history-stat-label', metric[0]), createElement('strong', 'history-stat-value', metric[1])]);
+      summary.appendChild(stat);
+    });
     state.history.slice().reverse().forEach(function (item) {
       var row = createElement('article', 'history-item');
       appendChildren(row, [
         createElement('div', 'history-date', formatDate(item.startDate) + ' — ' + formatDate(item.endDate)),
         createElement('div', 'history-metric', item.completedMeals + ' / ' + item.plannedMeals + ' приёмов'),
-        createElement('div', 'history-metric', item.adherencePercent + '% · ' + item.trainingDays + ' тренировок')
+        createElement('div', 'history-metric', item.adherencePercent + '% · ' + item.trainingDays + ' тренировок'),
+        createElement('div', 'history-metric history-cost', Number.isFinite(item.shoppingCostRub) ? formatRub(item.shoppingCostRub) : 'расход не зафиксирован')
       ]);
       container.appendChild(row);
     });
@@ -1207,7 +1890,8 @@
         cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, affectedWeek);
         saveCookingStore();
         activeBatchId = null;
-        scheduleCookingGeneration(affectedWeek, 450);
+        if (replacementTarget.slot === 'lunch') scheduleCookingGeneration(affectedWeek, 'main', 450);
+        if (replacementTarget.slot === 'dinner') scheduleCookingGeneration(affectedWeek, 'refresh', 450);
         closeReplaceDialog();
         renderToday();
         renderCycle();
@@ -1239,6 +1923,15 @@
 
   function setWeek(kind, week) {
     var safeWeek = Number(week) === 2 ? 2 : 1;
+    if (kind === 'cooking') {
+      var activeId = cookingStore.activeSessionId;
+      var activeSession = activeId && cookingStore.sessionsById[activeId];
+      if (activeSession && activeSession.status !== 'completed' && Number(activeSession.week) !== safeWeek) {
+        cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
+        renderCooking();
+        return;
+      }
+    }
     if (kind === 'cycle') cycleWeek = safeWeek;
     if (kind === 'shopping') shoppingWeek = safeWeek;
     if (kind === 'cooking') cookingWeek = safeWeek;
@@ -1249,6 +1942,26 @@
     if (kind === 'cycle') renderCycle();
     if (kind === 'shopping') renderShopping();
     if (kind === 'cooking') renderCooking();
+  }
+
+  function setCookingSession(sessionKind) {
+    var kind = sessionKind === 'refresh' ? 'refresh' : 'main';
+    var activeId = cookingStore.activeSessionId;
+    var activeSession = activeId && cookingStore.sessionsById[activeId];
+    if (activeSession && activeSession.status !== 'completed' && (activeSession.sessionKind || 'main') !== kind) {
+      cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
+      renderCooking();
+      return;
+    }
+    cookingSessionKind = kind;
+    activeBatchId = null;
+    var tabs = document.getElementById('cookingSessionTabs');
+    if (tabs) tabs.querySelectorAll('[data-cooking-session]').forEach(function (button) {
+      var active = button.getAttribute('data-cooking-session') === kind;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    renderCooking();
   }
 
   function wireEvents() {
@@ -1273,10 +1986,14 @@
         if (button) setWeek(tabs.getAttribute('data-week-tabs'), button.getAttribute('data-week'));
       });
     });
+    document.getElementById('cookingSessionTabs').addEventListener('click', function (event) {
+      var button = event.target.closest('[data-cooking-session]');
+      if (button) setCookingSession(button.getAttribute('data-cooking-session'));
+    });
     document.getElementById('kitchenModeSelect').addEventListener('change', function (event) {
       if (hasActiveCookingSession()) {
         event.target.value = kitchenProfile.activeMode;
-        cookingUiError[cookingWeek] = 'сначала заверши активную сессию готовки';
+        cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
         renderCooking();
         return;
       }
@@ -1286,46 +2003,22 @@
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);
       saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, 10);
+      scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
       renderCycle();
       renderCooking();
     });
     document.getElementById('regenerateCookingBtn').addEventListener('click', function () {
-      if (hasActiveCookingSession()) {
-        cookingUiError[cookingWeek] = 'сначала заверши активную сессию готовки';
-        renderCooking();
-        return;
-      }
-      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
-      saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, 10);
+      regenerateCookingPlan();
       renderCooking();
     });
     document.getElementById('resetCookingCalibrationBtn').addEventListener('click', function () {
-      if (hasActiveCookingSession()) {
-        cookingUiError[cookingWeek] = 'сначала заверши активную сессию готовки';
-        renderCooking();
-        return;
-      }
-      if (!window.confirm('сбросить накопленный темп готовки? журнал сессий останется.')) return;
-      kitchenProfile = NutritionCookingCore.resetCalibration(kitchenProfile);
-      cookingStore.lastSessionId = null;
-      cookingStore.lastSessionIdsByWeek = {};
-      cookingStore.calibrationSessionIds = [];
-      saveKitchenProfile();
-      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
-      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);
-      saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, 10);
+      var result = resetCookingCalibration();
+      if (result.cancelled) return;
       renderCooking();
     });
     document.getElementById('clearCookingCacheBtn').addEventListener('click', function () {
-      if (!window.confirm('удалить кеш планов готовки? рацион и блюда останутся без изменений.')) return;
-      cookingClient.abort();
-      cookingStore = NutritionCookingCore.clearCachedPlans(cookingStore);
-      cookingUiState = { 1: 'fallback', 2: 'fallback' };
-      cookingUiError = { 1: '', 2: '' };
-      saveCookingStore();
+      var result = clearCookingPlanCache();
+      if (result.cancelled) return;
       renderCycle();
       renderCooking();
     });
@@ -1373,12 +2066,21 @@
     window.addEventListener('hashchange', function () {
       switchView(window.location.hash.slice(1), false);
     });
-    window.addEventListener('storage', function (event) {
-      if (!event || [STATE_KEY, MEALS_KEY, KITCHEN_PROFILE_KEY, COOKING_PLANS_KEY].indexOf(event.key) === -1) return;
-      if (event.key === MEALS_KEY) loadImportedMeals();
-      if (event.key === STATE_KEY) loadState();
-      if (event.key === KITCHEN_PROFILE_KEY || event.key === COOKING_PLANS_KEY) loadCookingData();
+    function reloadStoredData(changedKeys) {
+      var keys = Array.isArray(changedKeys) ? changedKeys : [];
+      var supportedKeys = [STATE_KEY, PRICES_KEY, MEALS_KEY, KITCHEN_PROFILE_KEY, COOKING_PLANS_KEY];
+      if (!keys.some(function (key) { return supportedKeys.indexOf(key) !== -1; })) return;
+      if (keys.indexOf(MEALS_KEY) !== -1) loadImportedMeals();
+      if (keys.indexOf(STATE_KEY) !== -1 || keys.indexOf(PRICES_KEY) !== -1) loadState();
+      if (keys.indexOf(KITCHEN_PROFILE_KEY) !== -1 || keys.indexOf(COOKING_PLANS_KEY) !== -1) loadCookingData();
       renderAll();
+    }
+    window.addEventListener('storage', function (event) {
+      reloadStoredData(event ? [event.key] : []);
+    });
+    window.addEventListener('dashboard-sync-applied', function (event) {
+      var changedKeys = event && event.detail ? event.detail.changedKeys : [];
+      reloadStoredData(changedKeys);
     });
   }
 
@@ -1386,6 +2088,7 @@
     loadImportedMeals();
     loadState();
     loadCookingData();
+    syncCookingSelectionToActiveSession();
     wireEvents();
     var initialView = window.location.hash.slice(1);
     switchView(initialView || DEFAULT_VIEW, false);

@@ -64,9 +64,17 @@
     });
   }
 
+  function resourceMatchesType(resource, requiredType, kind) {
+    if (resource.kind !== kind) return false;
+    if (resource.type === requiredType) return true;
+    if (kind !== 'cookware') return false;
+    return (requiredType === 'pot' && resource.type === 'smallPot') ||
+      (requiredType === 'pan' && resource.type === 'deepPan');
+  }
+
   function resourcesByType(profile, type, kind) {
     return profile.resources.filter(function (item) {
-      return item.kind === kind && item.type === type;
+      return resourceMatchesType(item, type, kind);
     });
   }
 

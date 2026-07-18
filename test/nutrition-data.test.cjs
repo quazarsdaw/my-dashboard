@@ -66,3 +66,18 @@ test('ingredient categories have user-facing labels', () => {
     assert.ok(NutritionData.ingredientCategories[category], category);
   });
 });
+
+test('planned grocery ingredients have editable default prices', () => {
+  const plannedIds = new Set();
+  NutritionData.plan14.days.forEach((day) => {
+    Object.values(day.meals).forEach((mealId) => plannedIds.add(mealId));
+  });
+
+  NutritionData.meals.filter((meal) => plannedIds.has(meal.id) && !meal.tags.includes('вне дома')).forEach((meal) => {
+    meal.ingredients.forEach((ingredient) => {
+      const key = `${ingredient.id}::${ingredient.unit}`;
+      assert.ok(Number.isFinite(NutritionData.ingredientPrices[key]), key);
+      assert.ok(NutritionData.ingredientPrices[key] >= 0, key);
+    });
+  });
+});

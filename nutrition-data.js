@@ -411,6 +411,37 @@
     other: 'прочее'
   };
 
+  var ingredientPrices = {
+    'oats::г': 180,
+    'milk::мл': 100,
+    'greek-yogurt::г': 500,
+    'banana::шт': 25,
+    'nuts::г': 1200,
+    'cottage-cheese::г': 500,
+    'plain-yogurt::г': 350,
+    'berries::г': 600,
+    'eggs::шт': 13,
+    'wholegrain-bread::г': 300,
+    'fresh-vegetables::г': 300,
+    'fruit::шт': 80,
+    'butter::г': 900,
+    'chicken-thigh::г': 500,
+    'buckwheat::г': 180,
+    'mixed-vegetables::г': 250,
+    'vegetable-oil::мл': 180,
+    'turkey-mince::г': 650,
+    'pasta::г': 200,
+    'canned-tomatoes::г': 230,
+    'hard-cheese::г': 1000,
+    'beef::г': 900,
+    'rice::г': 180,
+    'mackerel::г': 450,
+    'potato::г': 70,
+    'white-fish::г': 700,
+    'chicken-breast::г': 550,
+    'lentils::г': 250
+  };
+
   function deepFreeze(value) {
     if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
     Object.keys(value).forEach(function (key) { deepFreeze(value[key]); });
@@ -424,6 +455,7 @@
     trainingExtras: trainingExtras,
     cookingSessions: cookingSessions,
     ingredientCategories: ingredientCategories,
+    ingredientPrices: ingredientPrices,
     mealTypeLabels: {
       breakfast: 'завтрак',
       lunch: 'обед',

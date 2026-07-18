@@ -190,6 +190,7 @@
       trainingDays: {},
       trainingExtras: {},
       shoppingChecks: {},
+      ingredientPrices: {},
       cookingChecks: {},
       history: []
     };
@@ -197,6 +198,85 @@
 
   function normalizeDictionary(value) {
     return isRecord(value) ? clone(value) : {};
+  }
+
+  function normalizePriceBook(value) {
+    var result = {};
+    if (!isRecord(value)) return result;
+    Object.keys(value).forEach(function (key) {
+      var price = value[key];
+      if (typeof price === 'number' && Number.isFinite(price) && price >= 0) result[key] = price;
+    });
+    return result;
+  }
+
+  function resolvePriceBook(legacyPrices, storedPriceBook) {
+    if (!isRecord(storedPriceBook) || storedPriceBook.version !== 1 || !isRecord(storedPriceBook.prices)) {
+      return normalizePriceBook(legacyPrices);
+    }
+    return normalizePriceBook(storedPriceBook.prices);
+  }
+
+  function buildTimelineScale(schedule, durationMinutes, pixelsPerMinute, minSegmentWidth) {
+    var entries = Array.isArray(schedule) ? schedule : [];
+    var duration = Number.isFinite(Number(durationMinutes)) ? Math.max(1, Number(durationMinutes)) : 1;
+    entries.forEach(function (entry) {
+      var end = entry && Number(entry.endMinute);
+      if (Number.isFinite(end)) duration = Math.max(duration, end);
+    });
+    var pixels = Number.isFinite(Number(pixelsPerMinute)) ? Math.max(1, Number(pixelsPerMinute)) : 1;
+    var minimum = Number.isFinite(Number(minSegmentWidth)) ? Math.max(1, Number(minSegmentWidth)) : 1;
+    var boundaries = [0, duration];
+    entries.forEach(function (entry) {
+      var start = entry && Number(entry.startMinute);
+      var end = entry && Number(entry.endMinute);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+      boundaries.push(Math.max(0, Math.min(duration, start)));
+      boundaries.push(Math.max(0, Math.min(duration, end)));
+    });
+    boundaries.sort(function (a, b) { return a - b; });
+    boundaries = boundaries.filter(function (minute, index) {
+      return index === 0 || minute !== boundaries[index - 1];
+    });
+
+    var offset = 0;
+    var segments = [];
+    for (var index = 0; index < boundaries.length - 1; index += 1) {
+      var startMinute = boundaries[index];
+      var endMinute = boundaries[index + 1];
+      var width = Math.max((endMinute - startMinute) * pixels, minimum);
+      segments.push({ start: startMinute, end: endMinute, offset: offset, width: width });
+      offset += width;
+    }
+
+    return {
+      duration: duration,
+      width: offset,
+      positionAt: function (minuteValue) {
+        var minute = Math.max(0, Math.min(duration, Number(minuteValue) || 0));
+        if (minute >= duration) return offset;
+        for (var segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+          var segment = segments[segmentIndex];
+          if (minute <= segment.end) {
+            var ratio = (minute - segment.start) / Math.max(1, segment.end - segment.start);
+            return segment.offset + segment.width * Math.max(0, Math.min(1, ratio));
+          }
+        }
+        return offset;
+      },
+      minuteAt: function (pixelValue) {
+        var pixel = Math.max(0, Math.min(offset, Number(pixelValue) || 0));
+        if (pixel >= offset) return duration;
+        for (var segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+          var segment = segments[segmentIndex];
+          if (pixel <= segment.offset + segment.width) {
+            var ratio = (pixel - segment.offset) / Math.max(1, segment.width);
+            return segment.start + (segment.end - segment.start) * Math.max(0, Math.min(1, ratio));
+          }
+        }
+        return duration;
+      }
+    };
   }
 
   function normalizeState(rawState, todayKey) {
@@ -217,6 +297,7 @@
       trainingDays: normalizeDictionary(rawState.trainingDays),
       trainingExtras: normalizeDictionary(rawState.trainingExtras),
       shoppingChecks: normalizeDictionary(rawState.shoppingChecks),
+      ingredientPrices: normalizePriceBook(rawState.ingredientPrices),
       cookingChecks: normalizeDictionary(rawState.cookingChecks),
       history: Array.isArray(rawState.history) ? clone(rawState.history) : []
     };
@@ -321,7 +402,46 @@
     });
   }
 
-  function createCycleSnapshot(state, template) {
+  function priceKey(item) {
+    return item.id + '::' + item.unit;
+  }
+
+  function priceBasis(unit) {
+    if (unit === 'г') return { amount: 1000, label: '₽/кг' };
+    if (unit === 'мл') return { amount: 1000, label: '₽/л' };
+    return { amount: 1, label: '₽/' + unit };
+  }
+
+  function validPrice(book, key) {
+    if (!isRecord(book) || !Object.prototype.hasOwnProperty.call(book, key)) return null;
+    var value = book[key];
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+  }
+
+  function priceShoppingItems(items, priceBook, defaultPrices) {
+    return (items || []).map(function (item) {
+      var key = priceKey(item);
+      var savedPrice = validPrice(priceBook, key);
+      var fallbackPrice = validPrice(defaultPrices, key);
+      var unitPrice = savedPrice !== null ? savedPrice : fallbackPrice;
+      var basis = priceBasis(item.unit);
+      return Object.assign({}, item, {
+        priceKey: key,
+        priceLabel: basis.label,
+        unitPriceRub: unitPrice,
+        lineCostRub: unitPrice === null ? null : Math.round((Number(item.amount) || 0) / basis.amount * unitPrice),
+        hasPrice: unitPrice !== null
+      });
+    });
+  }
+
+  function calculateShoppingTotal(items) {
+    return Math.round((items || []).reduce(function (total, item) {
+      return total + (Number.isFinite(item.lineCostRub) ? item.lineCostRub : 0);
+    }, 0));
+  }
+
+  function createCycleSnapshot(state, template, catalog, defaultPrices) {
     var cycle = state && state.activeCycle ? state.activeCycle : {};
     var cyclePrefix = (cycle.id || '') + ':';
     var completedMeals = Object.keys(state && state.completions || {}).filter(function (key) {
@@ -337,6 +457,16 @@
       var end = new Date(startUtc + 13 * 86400000);
       endDate = end.toISOString().slice(0, 10);
     }
+    var pricedShopping = [];
+    if (Array.isArray(catalog)) {
+      [1, 2].forEach(function (week) {
+        var items = buildShoppingList(template, state, catalog, week);
+        pricedShopping = pricedShopping.concat(priceShoppingItems(items, state && state.ingredientPrices, defaultPrices));
+      });
+    }
+    var shoppingCostRub = pricedShopping.length && pricedShopping.every(function (item) { return item.hasPrice; })
+      ? calculateShoppingTotal(pricedShopping)
+      : null;
     return {
       id: cycle.id || '',
       templateId: cycle.templateId || 'plan-14-v1',
@@ -346,6 +476,7 @@
       plannedMeals: plannedMeals,
       adherencePercent: plannedMeals ? Math.round(completedMeals / plannedMeals * 100) : 0,
       trainingDays: trainingDays,
+      shoppingCostRub: shoppingCostRub,
       overrides: clone(state && state.overrides || {}),
       completions: clone(state && state.completions || {}),
       notes: clone(state && state.notes || {}),
@@ -373,6 +504,7 @@
       trainingDays: {},
       trainingExtras: {},
       shoppingChecks: {},
+      ingredientPrices: clone(safeState.ingredientPrices),
       cookingChecks: {},
       history: history
     };
@@ -394,6 +526,12 @@
     resolveDayPlan: resolveDayPlan,
     calculateDaySummary: calculateDaySummary,
     buildShoppingList: buildShoppingList,
+    priceKey: priceKey,
+    priceBasis: priceBasis,
+    resolvePriceBook: resolvePriceBook,
+    buildTimelineScale: buildTimelineScale,
+    priceShoppingItems: priceShoppingItems,
+    calculateShoppingTotal: calculateShoppingTotal,
     createCycleSnapshot: createCycleSnapshot,
     startNextCycle: startNextCycle
   };

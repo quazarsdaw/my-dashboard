@@ -63,9 +63,22 @@
       calibration: {
         defaultActiveFactor: 1.5,
         factors: {},
-        observations: {}
+        observations: {},
+        durationOverrides: {}
       }
     };
+  }
+
+  function normalizeActionTitle(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function getActionDurationKey(action, batches) {
+    var batch = (batches || []).find(function (item) { return item && action && item.id === action.batchId; });
+    var mealId = batch && batch.mealId;
+    var title = normalizeActionTitle(action && action.title);
+    var category = normalizeActionTitle(action && action.category);
+    return mealId && title && category ? [mealId, category, title].join('::') : '';
   }
 
   function normalizeKitchenProfile(raw) {
@@ -74,6 +87,7 @@
     var activeMode = ACTIVE_MODES.indexOf(raw.activeMode) !== -1 ? raw.activeMode : fallback.activeMode;
     var factors = {};
     var observations = {};
+    var durationOverrides = {};
     var rawCalibration = isRecord(raw.calibration) ? raw.calibration : {};
 
     ACTIVE_CATEGORIES.forEach(function (category) {
@@ -82,6 +96,13 @@
       var count = Number(rawCalibration.observations && rawCalibration.observations[category]);
       if (Number.isInteger(count) && count > 0) observations[category] = count;
     });
+
+    if (isRecord(rawCalibration.durationOverrides)) {
+      Object.keys(rawCalibration.durationOverrides).forEach(function (key) {
+        var value = Number(rawCalibration.durationOverrides[key]);
+        if (key && Number.isInteger(value) && value >= 1 && value <= 720) durationOverrides[key] = value;
+      });
+    }
 
     ACTIVE_MODES.forEach(function (mode) {
       var rawMode = isRecord(raw.modes && raw.modes[mode]) ? raw.modes[mode] : {};
@@ -108,7 +129,32 @@
     );
     fallback.calibration.factors = factors;
     fallback.calibration.observations = observations;
+    fallback.calibration.durationOverrides = durationOverrides;
     return fallback;
+  }
+
+  function setActionDurationOverride(profile, action, batches, minutes) {
+    var result = normalizeKitchenProfile(profile);
+    var key = getActionDurationKey(action, batches);
+    var value = Number(minutes);
+    if (!key) return { ok: false, profile: result, key: key, error: 'не удалось определить шаг готовки' };
+    if (!Number.isInteger(value) || value < 1 || value > 720) {
+      return { ok: false, profile: result, key: key, error: 'длительность должна быть целым числом от 1 до 720 минут' };
+    }
+    result.calibration.durationOverrides[key] = value;
+    return { ok: true, profile: result, key: key, error: null };
+  }
+
+  function clearActionDurationOverride(profile, action, batches) {
+    var result = normalizeKitchenProfile(profile);
+    var key = getActionDurationKey(action, batches);
+    if (!key) return { ok: false, profile: result, key: key, error: 'не удалось определить шаг готовки' };
+    delete result.calibration.durationOverrides[key];
+    return { ok: true, profile: result, key: key, error: null };
+  }
+
+  function canEditActionDuration(session, actionId) {
+    return !(session && isRecord(session.steps));
   }
 
   function getActiveOutletPool(profile) {
@@ -217,6 +263,21 @@
     };
   }
 
+  function normalizeCookingSessionKind(value) {
+    return value === 'refresh' ? 'refresh' : 'main';
+  }
+
+  function selectCookingSessionDemand(demand, sessionKind) {
+    var source = isRecord(demand) ? clone(demand) : { version: 1, cycleId: '', week: 1, batches: [] };
+    var kind = normalizeCookingSessionKind(sessionKind);
+    var mealType = kind === 'refresh' ? 'dinner' : 'lunch';
+    source.sessionKind = kind;
+    source.batches = (Array.isArray(source.batches) ? source.batches : []).filter(function (batch) {
+      return batch && batch.strategy === 'batch' && batch.meal && batch.meal.mealType === mealType;
+    });
+    return source;
+  }
+
   function profileFingerprint(profile) {
     var safe = normalizeKitchenProfile(profile);
     return {
@@ -230,7 +291,7 @@
   }
 
   function createPlanFingerprint(demand, profile) {
-    return 'cook-' + hashString(stableStringify({ demand: demand, profile: profileFingerprint(profile) }));
+    return 'cook-v3-' + hashString(stableStringify({ demand: demand, profile: profileFingerprint(profile) }));
   }
 
   function createEmptyCookingStore() {
@@ -481,10 +542,14 @@
     });
     if (!actions.length) errors.push(validationError('missing-actions', 'в плане нет действий'));
 
+    var actionsById = {};
+    actions.forEach(function (action) { actionsById[action.id] = action; });
     actions.forEach(function (action) {
       action.dependsOn.forEach(function (dependency) {
         if (!actionIds[dependency]) {
           errors.push(validationError('missing-dependency', 'не найдена зависимость: ' + dependency, action.id));
+        } else if (actionsById[dependency].batchId !== action.batchId) {
+          errors.push(validationError('cross-batch-dependency', 'разные блюда не должны блокировать друг друга', action.id));
         }
       });
     });
@@ -537,13 +602,18 @@
     };
   }
 
+  function instructionJoinsBranches(text) {
+    return /(разлож|смеш|подай|подач|добав|собер|остуд|перелож|порци)/i.test(String(text || ''));
+  }
+
   function buildFallbackActions(demand, profile) {
     var safeProfile = normalizeKitchenProfile(profile);
     var actions = [];
-    var previousId = null;
 
     (demand && Array.isArray(demand.batches) ? demand.batches : []).forEach(function (batch) {
       if (!batch || batch.strategy === 'outside' || !batch.meal) return;
+      var branchEnds = [];
+      var preparationIds = [];
       var instructions = Array.isArray(batch.meal.instructions) && batch.meal.instructions.length
         ? batch.meal.instructions
         : ['приготовить ' + batch.title];
@@ -558,6 +628,25 @@
           : 1;
         var duration = instructionDuration(instruction, activeBase);
         var id = batch.id + ':fallback-' + (index + 1);
+        var requirements = instructionRequirements(instruction);
+        var dependsOn = [];
+
+        if (instructionJoinsBranches(instruction)) {
+          dependsOn = branchEnds.slice();
+          branchEnds = [id];
+          preparationIds = [];
+        } else if (requirements.equipmentTypes.length) {
+          dependsOn = preparationIds.slice();
+          branchEnds = branchEnds.filter(function (branchId) {
+            return preparationIds.indexOf(branchId) === -1;
+          });
+          branchEnds.push(id);
+          preparationIds = [];
+        } else {
+          branchEnds.push(id);
+          preparationIds.push(id);
+        }
+
         actions.push({
           id: id,
           batchId: batch.id,
@@ -565,13 +654,12 @@
           durationMinutes: Math.max(1, Math.ceil(duration * factor)),
           mode: mode,
           category: category,
-          dependsOn: previousId ? [previousId] : [],
+          dependsOn: dependsOn,
           interruptible: mode === 'active',
           readiness: '',
           warning: '',
-          requires: instructionRequirements(instruction)
+          requires: requirements
         });
-        previousId = id;
       });
 
       if (batch.strategy === 'batch' && Number(batch.portions) > 1) {
@@ -585,7 +673,7 @@
           )),
           mode: 'active',
           category: 'portioning',
-          dependsOn: previousId ? [previousId] : [],
+          dependsOn: branchEnds.slice(),
           interruptible: true,
           readiness: '',
           warning: '',
@@ -596,10 +684,10 @@
             locationPreference: 'kitchen'
           }
         });
-        previousId = portionId;
+        branchEnds = [portionId];
       }
     });
-    return actions;
+    return applyDurationOverridesToActions(actions, safeProfile, demand && demand.batches);
   }
 
   function numericTimestamp(value) {
@@ -640,6 +728,7 @@
       planHash: String(plan && plan.planHash || ''),
       cycleId: String(plan && plan.cycleId || ''),
       week: Number(plan && plan.week) || 1,
+      sessionKind: normalizeCookingSessionKind(plan && plan.sessionKind),
       status: 'ready',
       createdAt: timestamp,
       startedAt: null,
@@ -832,14 +921,21 @@
     return result;
   }
 
+  function applyCalibrationBaseline(profile, calibrationBase) {
+    var current = normalizeKitchenProfile(profile);
+    var durationOverrides = clone(current.calibration.durationOverrides);
+    current.calibration = clone(calibrationBase);
+    current.calibration.durationOverrides = durationOverrides;
+    return normalizeKitchenProfile(current);
+  }
+
   function applySessionCalibration(profile, inputSession, reuseBase) {
     var session = clone(inputSession);
     var current = normalizeKitchenProfile(profile);
     if (!reuseBase || !isRecord(session.calibrationBase)) {
       session.calibrationBase = clone(current.calibration);
     }
-    current.calibration = clone(session.calibrationBase);
-    current = normalizeKitchenProfile(current);
+    current = applyCalibrationBaseline(current, session.calibrationBase);
     var calibrated = updateCalibration(current, session);
     session.calibrationResult = clone(calibrated.calibration);
     return { profile: calibrated, session: session };
@@ -850,8 +946,7 @@
     var current = normalizeKitchenProfile(profile);
     if (!sessions.length) return { profile: current, sessions: [] };
     if (isRecord(sessions[0].calibrationBase)) {
-      current.calibration = clone(sessions[0].calibrationBase);
-      current = normalizeKitchenProfile(current);
+      current = applyCalibrationBaseline(current, sessions[0].calibrationBase);
     }
     sessions = sessions.map(function (session) {
       var applied = applySessionCalibration(current, session, false);
@@ -861,15 +956,27 @@
     return { profile: current, sessions: sessions };
   }
 
-  function applyCalibrationToActions(actions, profile) {
+  function applyDurationOverridesToActions(actions, profile, batches) {
     var safe = normalizeKitchenProfile(profile);
     return (Array.isArray(actions) ? actions : []).map(function (action) {
+      var copy = clone(action);
+      var key = getActionDurationKey(copy, batches);
+      var override = key && safe.calibration.durationOverrides[key];
+      if (Number.isInteger(override)) copy.durationMinutes = override;
+      return copy;
+    });
+  }
+
+  function applyCalibrationToActions(actions, profile, batches) {
+    var safe = normalizeKitchenProfile(profile);
+    var calibrated = (Array.isArray(actions) ? actions : []).map(function (action) {
       var copy = clone(action);
       if (copy.mode !== 'active') return copy;
       var factor = safe.calibration.factors[copy.category] || safe.calibration.defaultActiveFactor;
       copy.durationMinutes = Math.max(1, Math.ceil(Number(copy.durationMinutes) * factor));
       return copy;
     });
+    return applyDurationOverridesToActions(calibrated, safe, batches);
   }
 
   function resetCalibration(profile) {
@@ -884,6 +991,7 @@
     normalizeKitchenProfile: normalizeKitchenProfile,
     getActiveOutletPool: getActiveOutletPool,
     buildCookingDemand: buildCookingDemand,
+    selectCookingSessionDemand: selectCookingSessionDemand,
     createPlanFingerprint: createPlanFingerprint,
     createEmptyCookingStore: createEmptyCookingStore,
     normalizeCookingStore: normalizeCookingStore,
@@ -906,6 +1014,10 @@
     updateCalibration: updateCalibration,
     applySessionCalibration: applySessionCalibration,
     replaySessionCalibrations: replaySessionCalibrations,
+    getActionDurationKey: getActionDurationKey,
+    setActionDurationOverride: setActionDurationOverride,
+    clearActionDurationOverride: clearActionDurationOverride,
+    canEditActionDuration: canEditActionDuration,
     applyCalibrationToActions: applyCalibrationToActions,
     resetCalibration: resetCalibration
   };

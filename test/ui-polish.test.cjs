@@ -99,6 +99,9 @@ test('nutrition page provides clickable desktop and mobile section navigation', 
   assert.ok(html.includes('id="healthContext"'));
   assert.ok(html.includes('class="cooking-week-context"'));
   assert.ok(html.includes('id="cycleBatchRail"'));
+  assert.ok(html.includes('class="cycle-scroll"'));
+  assert.ok(html.includes('id="shoppingBudgetMeta"'));
+  assert.ok(html.includes('id="historySummary"'));
   assert.ok(html.includes('id="cookingTimeline"'));
   assert.ok(html.includes('id="cookingNow"'));
   assert.ok(html.includes('@media(max-width:820px)'));
@@ -128,6 +131,7 @@ test('profile backup includes nutrition state and imported meals', () => {
 
   assert.ok(html.includes("'nutrition_meals_v1'"));
   assert.ok(html.includes("'nutrition_state_v1'"));
+  assert.ok(html.includes("'nutrition_prices_v1'"));
   assert.ok(html.includes("'nutrition_kitchen_profile_v1'"));
   assert.ok(html.includes("'nutrition_cooking_plans_v1'"));
 });
