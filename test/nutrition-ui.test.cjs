@@ -277,6 +277,17 @@ function loadNutritionController(options = {}) {
     },
     nextSessionActionId() {
       return null;
+    },
+    resetCalibration(profile) {
+      const next = clone(profile);
+      next.calibration.factors = {};
+      next.calibration.observations = {};
+      return next;
+    },
+    clearCachedPlans(store) {
+      const next = clone(store);
+      next.plansByHash = {};
+      return next;
     }
   }, options.cookingCore || {});
   const document = options.document || {
@@ -348,7 +359,7 @@ function loadNutritionController(options = {}) {
   window.clearTimeout = context.clearTimeout;
   const source = read('nutrition.js').replace(
     "if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);",
-    "window.__nutritionTestApi = { ensureCookingPlan: ensureCookingPlan, scheduleCookingGeneration: scheduleCookingGeneration, saveCookingActionDuration: saveCookingActionDuration, resetCookingActionDuration: resetCookingActionDuration, buildCookingKeyboardResizePreview: buildCookingKeyboardResizePreview, cookingMinuteAtPixel: typeof cookingMinuteAtPixel === 'function' ? cookingMinuteAtPixel : undefined, buildCookingPointerResizePreview: typeof buildCookingPointerResizePreview === 'function' ? buildCookingPointerResizePreview : undefined, renderCookingTimeline: renderCookingTimeline, loadCookingData: loadCookingData, getUiState: function () { return cookingUiState; }, getUiError: function () { return cookingUiError; }, getGenerationRequests: function () { return generationRequests; }, getCookingSelection: function () { return { actionId: selectedCookingActionId, batchId: activeBatchId }; }, getRuntime: function () { return { kitchenProfile: kitchenProfile, cookingStore: cookingStore, cookingWeek: cookingWeek, cookingSessionKind: cookingSessionKind }; }, setRuntime: function (next) { state = next.state; kitchenProfile = next.kitchenProfile; cookingStore = next.cookingStore; cookingWeek = next.cookingWeek || 1; cookingSessionKind = next.cookingSessionKind === 'refresh' ? 'refresh' : 'main'; } };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);"
+    "window.__nutritionTestApi = { ensureCookingPlan: ensureCookingPlan, scheduleCookingGeneration: scheduleCookingGeneration, saveCookingActionDuration: saveCookingActionDuration, resetCookingActionDuration: resetCookingActionDuration, regenerateCookingPlan: typeof regenerateCookingPlan === 'function' ? regenerateCookingPlan : undefined, resetCookingCalibration: typeof resetCookingCalibration === 'function' ? resetCookingCalibration : undefined, clearCookingPlanCache: typeof clearCookingPlanCache === 'function' ? clearCookingPlanCache : undefined, buildCookingKeyboardResizePreview: buildCookingKeyboardResizePreview, cookingMinuteAtPixel: typeof cookingMinuteAtPixel === 'function' ? cookingMinuteAtPixel : undefined, buildCookingPointerResizePreview: typeof buildCookingPointerResizePreview === 'function' ? buildCookingPointerResizePreview : undefined, renderCookingTimeline: renderCookingTimeline, loadCookingData: loadCookingData, getUiState: function () { return cookingUiState; }, getUiError: function () { return cookingUiError; }, getCookingCommandFeedback: function () { return cookingCommandFeedback; }, getGenerationRequests: function () { return generationRequests; }, getCookingSelection: function () { return { actionId: selectedCookingActionId, batchId: activeBatchId }; }, getRuntime: function () { return { kitchenProfile: kitchenProfile, cookingStore: cookingStore, cookingWeek: cookingWeek, cookingSessionKind: cookingSessionKind }; }, setRuntime: function (next) { state = next.state; kitchenProfile = next.kitchenProfile; cookingStore = next.cookingStore; cookingWeek = next.cookingWeek || 1; cookingSessionKind = next.cookingSessionKind === 'refresh' ? 'refresh' : 'main'; } };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);"
   );
   vm.createContext(context);
   vm.runInContext(source, context);
@@ -541,6 +552,81 @@ test('nutrition controller exposes all cooking plan states and resource timeline
   assert.ok(html.includes('data-cooking-session="refresh"'));
   assert.ok(js.includes('function ensureCookingPlan('));
   assert.ok(js.includes('NutritionCookingCore.selectCookingSessionDemand'));
+});
+
+test('cooking command bar exposes an accessible result region', () => {
+  const html = read('menu.html');
+
+  assert.ok(html.includes('id="cookingCommandFeedback"'));
+  assert.ok(html.includes('aria-live="polite"'));
+  assert.ok(html.includes('.cooking-command-feedback'));
+});
+
+test('local cooking rebuild explains that the generated plan can stay unchanged', () => {
+  const harness = loadNutritionController({
+    storage: { openrouter_settings_v1: { key: '' } }
+  });
+  setCookingRuntime(harness, 1);
+
+  assert.equal(typeof harness.api.regenerateCookingPlan, 'function');
+  const result = harness.api.regenerateCookingPlan();
+
+  assert.equal(result.ok, true);
+  assert.match(harness.api.getCookingCommandFeedback().text, /план пересобран локально/);
+  assert.match(harness.api.getCookingCommandFeedback().text, /может совпадать/);
+  assert.equal(harness.api.getCookingCommandFeedback().kind, 'success');
+});
+
+test('cooking pace reset distinguishes changed and already default calibration', () => {
+  const harness = loadNutritionController();
+  harness.api.setRuntime({
+    state: { activeCycle: { id: 'cycle-1', startDate: '2026-07-18' } },
+    kitchenProfile: {
+      revision: 1,
+      calibration: { factors: {}, observations: {}, durationOverrides: { saved: 24 } }
+    },
+    cookingStore: { plansByHash: {}, sessionsById: {}, activeSessionId: null },
+    cookingWeek: 1,
+    cookingSessionKind: 'main'
+  });
+
+  assert.equal(typeof harness.api.resetCookingCalibration, 'function');
+  const unchanged = harness.api.resetCookingCalibration();
+  assert.equal(unchanged.ok, true);
+  assert.match(harness.api.getCookingCommandFeedback().text, /темп уже исходный/);
+
+  const runtime = harness.api.getRuntime();
+  runtime.kitchenProfile.calibration.factors.prep = 1.4;
+  runtime.kitchenProfile.calibration.observations.prep = 2;
+  harness.api.setRuntime(Object.assign({ state: { activeCycle: { id: 'cycle-1', startDate: '2026-07-18' } } }, runtime));
+
+  const changed = harness.api.resetCookingCalibration();
+  assert.equal(changed.ok, true);
+  assert.match(harness.api.getCookingCommandFeedback().text, /темп сброшен/);
+  assert.equal(harness.api.getRuntime().kitchenProfile.calibration.durationOverrides.saved, 24);
+});
+
+test('cooking cache clear reports that the fallback plan is recreated', () => {
+  const harness = loadNutritionController();
+  harness.api.setRuntime({
+    state: { activeCycle: { id: 'cycle-1', startDate: '2026-07-18' } },
+    kitchenProfile: { revision: 1, calibration: { durationOverrides: {} } },
+    cookingStore: {
+      plansByHash: { old: { planHash: 'old', cycleId: 'cycle-1', week: 1 } },
+      sessionsById: {},
+      activeSessionId: null
+    },
+    cookingWeek: 1,
+    cookingSessionKind: 'main'
+  });
+
+  assert.equal(typeof harness.api.clearCookingPlanCache, 'function');
+  const result = harness.api.clearCookingPlanCache();
+
+  assert.equal(result.ok, true);
+  assert.equal(Object.keys(harness.api.getRuntime().cookingStore.plansByHash).length, 0);
+  assert.match(harness.api.getCookingCommandFeedback().text, /кеш очищен/);
+  assert.match(harness.api.getCookingCommandFeedback().text, /резервный план создан заново/);
 });
 
 test('nutrition desktop layout keeps calendar and cooking timeline readable at full zoom', () => {
@@ -1212,7 +1298,7 @@ test('nutrition scripts use one fresh cache version for the changed controller c
   assert.ok(html.includes('nutrition-core.js?v=406'));
   assert.ok(html.includes('nutrition-cooking-core.js?v=406'));
   assert.ok(html.includes('nutrition-scheduler.js?v=406'));
-  assert.ok(html.includes('nutrition.js?v=407'));
+  assert.ok(html.includes('nutrition.js?v=408'));
 });
 
 test('nutrition reads health targets without writing meal data back to health storage', () => {

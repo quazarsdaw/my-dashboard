@@ -37,6 +37,7 @@
   var cookingClient = NutritionOpenRouter.createOpenRouterCookingClient({});
   var cookingUiState = {};
   var cookingUiError = {};
+  var cookingCommandFeedback = { text: '', kind: 'neutral' };
   var cookingDurationEditorError = '';
   var generationTimers = {};
   var generationRequests = {};
@@ -269,6 +270,18 @@
   function getOpenRouterSettings() {
     var stored = getStored('openrouter_settings_v1');
     return stored && typeof stored === 'object' ? stored : {};
+  }
+
+  function setCookingCommandFeedback(text, kind) {
+    var time = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    cookingCommandFeedback = {
+      text: String(text || '') + ' · ' + time,
+      kind: kind || 'neutral'
+    };
   }
 
   function formatMinutes(value) {
@@ -1041,6 +1054,68 @@
     return Boolean(session && session.status !== 'completed');
   }
 
+  function blockCookingCommand() {
+    var message = 'сначала заверши активную сессию готовки';
+    cookingUiError[activeCookingPlanKey()] = message;
+    setCookingCommandFeedback(message, 'error');
+    return { ok: false, error: message };
+  }
+
+  function regenerateCookingPlan() {
+    if (hasActiveCookingSession()) return blockCookingCommand();
+    cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
+    saveCookingStore();
+    scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
+    if (getOpenRouterSettings().key) {
+      setCookingCommandFeedback('пересборка через openrouter запущена, резервный план уже обновлён', 'working');
+    } else {
+      setCookingCommandFeedback('план пересобран локально, результат может совпадать', 'success');
+    }
+    return { ok: true };
+  }
+
+  function resetCookingCalibration() {
+    if (hasActiveCookingSession()) return blockCookingCommand();
+    if (!window.confirm('сбросить накопленный темп готовки? журнал сессий останется.')) {
+      return { ok: false, cancelled: true };
+    }
+    var calibration = kitchenProfile.calibration || {};
+    var hadCalibration = Object.keys(calibration.factors || {}).length > 0 ||
+      Object.keys(calibration.observations || {}).length > 0 ||
+      Boolean(cookingStore.lastSessionId) ||
+      Object.keys(cookingStore.lastSessionIdsByWeek || {}).length > 0 ||
+      (Array.isArray(cookingStore.calibrationSessionIds) && cookingStore.calibrationSessionIds.length > 0);
+    kitchenProfile = NutritionCookingCore.resetCalibration(kitchenProfile);
+    cookingStore.lastSessionId = null;
+    cookingStore.lastSessionIdsByWeek = {};
+    cookingStore.calibrationSessionIds = [];
+    saveKitchenProfile();
+    cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
+    cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);
+    saveCookingStore();
+    scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
+    setCookingCommandFeedback(
+      hadCalibration
+        ? 'темп сброшен, ручные длительности сохранены'
+        : 'темп уже исходный, ручные длительности не изменены',
+      hadCalibration ? 'success' : 'neutral'
+    );
+    return { ok: true, changed: hadCalibration };
+  }
+
+  function clearCookingPlanCache() {
+    if (!window.confirm('удалить кеш планов готовки? рацион и блюда останутся без изменений.')) {
+      return { ok: false, cancelled: true };
+    }
+    cookingClient.abort();
+    cookingStore = NutritionCookingCore.clearCachedPlans(cookingStore);
+    cookingUiState = {};
+    cookingUiError = {};
+    saveCookingStore();
+    setCookingCommandFeedback('кеш очищен, резервный план создан заново', 'success');
+    return { ok: true };
+  }
+
   function syncCookingSelectionToActiveSession() {
     var id = cookingStore.activeSessionId;
     var session = id && cookingStore.sessionsById[id];
@@ -1503,6 +1578,11 @@
     status.textContent = cookingUiError[activeCookingPlanKey()] || stateInfo.label;
     var modeSelect = document.getElementById('kitchenModeSelect');
     if (modeSelect) modeSelect.value = kitchenProfile.activeMode;
+    var commandFeedback = document.getElementById('cookingCommandFeedback');
+    if (commandFeedback) {
+      commandFeedback.className = 'cooking-command-feedback ' + cookingCommandFeedback.kind;
+      commandFeedback.textContent = cookingCommandFeedback.text;
+    }
 
     clearElement(overview);
     appendChildren(overview, [
@@ -1930,41 +2010,17 @@
       renderCooking();
     });
     document.getElementById('regenerateCookingBtn').addEventListener('click', function () {
-      if (hasActiveCookingSession()) {
-        cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
-        renderCooking();
-        return;
-      }
-      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
-      saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
+      regenerateCookingPlan();
       renderCooking();
     });
     document.getElementById('resetCookingCalibrationBtn').addEventListener('click', function () {
-      if (hasActiveCookingSession()) {
-        cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
-        renderCooking();
-        return;
-      }
-      if (!window.confirm('сбросить накопленный темп готовки? журнал сессий останется.')) return;
-      kitchenProfile = NutritionCookingCore.resetCalibration(kitchenProfile);
-      cookingStore.lastSessionId = null;
-      cookingStore.lastSessionIdsByWeek = {};
-      cookingStore.calibrationSessionIds = [];
-      saveKitchenProfile();
-      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
-      cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);
-      saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
+      var result = resetCookingCalibration();
+      if (result.cancelled) return;
       renderCooking();
     });
     document.getElementById('clearCookingCacheBtn').addEventListener('click', function () {
-      if (!window.confirm('удалить кеш планов готовки? рацион и блюда останутся без изменений.')) return;
-      cookingClient.abort();
-      cookingStore = NutritionCookingCore.clearCachedPlans(cookingStore);
-      cookingUiState = {};
-      cookingUiError = {};
-      saveCookingStore();
+      var result = clearCookingPlanCache();
+      if (result.cancelled) return;
       renderCycle();
       renderCooking();
     });

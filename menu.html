@@ -171,6 +171,8 @@ button{color:inherit}
 .cooking-week-context{margin:0}.cooking-status{display:inline-flex;align-items:center;gap:7px;margin-top:6px;font-family:var(--font-mono);font-size:9px;color:var(--text-tertiary)}
 .cooking-status::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}.cooking-status.ready{color:var(--success)}.cooking-status.generating{color:var(--accent)}
 .cooking-status.stale,.cooking-status.fallback{color:var(--warning)}.cooking-status.error{color:var(--danger)}
+.cooking-control-stack{display:grid;gap:8px;justify-items:end}.cooking-command-feedback{min-height:14px;max-width:720px;text-align:right;font-family:var(--font-mono);font-size:9px;color:var(--text-tertiary)}
+.cooking-command-feedback.success{color:var(--success)}.cooking-command-feedback.working{color:var(--accent)}.cooking-command-feedback.error{color:var(--danger)}
 .cooking-controls{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}.cooking-controls .field-control{width:auto;min-width:190px}
 .cooking-overview{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:22px;font-family:var(--font-mono);font-size:10px;color:var(--text-secondary)}
 .cooking-overview strong{font-size:16px;color:var(--text-primary)}
@@ -246,7 +248,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
   .mobile-view-control{display:block}.panel-head{margin-bottom:16px}.catalog-list{grid-template-columns:1fr}
   .cycle-scroll{overflow-x:auto;padding-bottom:8px}.cycle-calendar{display:block;min-width:0;border-left:0}.calendar-day{border-left:1px solid var(--line);margin-bottom:12px}.calendar-day-head{min-height:0;display:flex;align-items:center;justify-content:space-between;gap:10px}
   .calendar-meal{min-height:0;padding:13px 12px 13px 16px}.calendar-meal-title{font-size:13px}.calendar-meal-meta,.calendar-batch-label{font-size:9px}.batch-rail-list{display:block}
-  .cooking-commandbar{align-items:flex-start}.cooking-controls{justify-content:flex-start}.cooking-now{order:-1}
+  .cooking-commandbar{align-items:flex-start}.cooking-control-stack{justify-items:start}.cooking-controls{justify-content:flex-start}.cooking-command-feedback{text-align:left}.cooking-now{order:-1}
 }
 @media(max-width:520px){
   .nutrition-page-head{margin-bottom:14px}.nutrition-cycle-mark{font-size:10px}.panel-head{display:block}.panel-actions{justify-content:flex-start;margin-top:13px}
@@ -254,7 +256,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
   .summary-item{padding:13px 10px}.summary-value{font-size:15px}.meal-row{grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:15px 0}
   .meal-slot{grid-column:1/3}.meal-actions{grid-column:2;grid-row:2}.meal-details{grid-column:1/3}.meal-row.expanded .meal-details{grid-template-columns:1fr}
   .meal-title{font-size:15px}.quick-links{grid-template-columns:1fr}.catalog-tools{grid-template-columns:1fr}.catalog-tools .primary-btn{height:42px}
-  .history-summary{grid-template-columns:1fr}.history-stat{border-right:0;border-bottom:1px solid var(--line)}.history-stat:last-child{border-bottom:0}.history-item{grid-template-columns:1fr 1fr}.history-date{grid-column:1/3}.cooking-commandbar{display:block}.cooking-controls{margin-top:12px}.cooking-controls .field-control{width:100%}
+  .history-summary{grid-template-columns:1fr}.history-stat{border-right:0;border-bottom:1px solid var(--line)}.history-stat:last-child{border-bottom:0}.history-item{grid-template-columns:1fr 1fr}.history-date{grid-column:1/3}.cooking-commandbar{display:block}.cooking-control-stack{margin-top:12px}.cooking-controls .field-control{width:100%}
   .timeline-block-select{padding:9px 18px}.cooking-duration-actions,.cooking-now-actions{grid-template-columns:1fr}.cooking-now-actions .primary-btn{grid-column:auto}
   .cooking-correction-tools{grid-template-columns:1fr}
 }
@@ -350,11 +352,14 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
         <div class="week-tabs cooking-session-tabs" id="cookingSessionTabs" aria-label="Сессия готовки"><button class="week-tab active" type="button" data-cooking-session="main" aria-pressed="true">Основная заготовка</button><button class="week-tab" type="button" data-cooking-session="refresh" aria-pressed="false">Короткое обновление</button></div>
         <div class="cooking-commandbar">
           <div><div class="cooking-week-context" id="cookingWeekContext">неделя 1</div><div class="cooking-status fallback" id="cookingStatus" role="status">резервный план</div></div>
-          <div class="cooking-controls">
-            <select class="field-control" id="kitchenModeSelect" aria-label="Режим розеток"><option value="extended">До зимы · 4 розетки</option><option value="winter">Зима · 2 розетки</option></select>
-            <button class="quiet-btn" id="regenerateCookingBtn" type="button">Пересобрать</button>
-            <button class="quiet-btn" id="resetCookingCalibrationBtn" type="button">Сбросить темп</button>
-            <button class="danger-btn" id="clearCookingCacheBtn" type="button">Очистить кеш</button>
+          <div class="cooking-control-stack">
+            <div class="cooking-controls">
+              <select class="field-control" id="kitchenModeSelect" aria-label="Режим розеток"><option value="extended">До зимы · 4 розетки</option><option value="winter">Зима · 2 розетки</option></select>
+              <button class="quiet-btn" id="regenerateCookingBtn" type="button">Пересобрать</button>
+              <button class="quiet-btn" id="resetCookingCalibrationBtn" type="button">Сбросить темп</button>
+              <button class="danger-btn" id="clearCookingCacheBtn" type="button">Очистить кеш</button>
+            </div>
+            <div class="cooking-command-feedback" id="cookingCommandFeedback" role="status" aria-live="polite" aria-atomic="true"></div>
           </div>
         </div>
         <div class="cooking-overview" id="cookingOverview"></div>
@@ -383,6 +388,6 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 <script src="nutrition-cooking-core.js?v=406"></script>
 <script src="nutrition-scheduler.js?v=406"></script>
 <script src="nutrition-openrouter.js?v=405"></script>
-<script src="nutrition.js?v=407"></script>
+<script src="nutrition.js?v=408"></script>
 </body>
 </html>
