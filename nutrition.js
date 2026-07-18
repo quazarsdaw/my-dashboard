@@ -37,6 +37,7 @@
   var cookingClient = NutritionOpenRouter.createOpenRouterCookingClient({});
   var cookingUiState = {};
   var cookingUiError = {};
+  var cookingDurationEditorError = '';
   var generationTimers = {};
   var generationRequests = {};
   var generationRequestToken = 0;
@@ -1141,6 +1142,243 @@
     });
   }
 
+  function clampCookingDuration(value) {
+    return Math.max(1, Math.min(720, Math.round(Number(value) || 0)));
+  }
+
+  function buildCookingResizePreview(entry, edge, boundaryMinute) {
+    var startMinute = Number(entry.startMinute) || 0;
+    var endMinute = Number(entry.endMinute) || startMinute + 1;
+    var boundary = Number(boundaryMinute);
+    if (!Number.isFinite(boundary)) boundary = edge === 'start' ? startMinute : endMinute;
+    var durationMinutes = clampCookingDuration(edge === 'start' ? endMinute - boundary : boundary - startMinute);
+    return edge === 'start'
+      ? { startMinute: endMinute - durationMinutes, endMinute: endMinute, durationMinutes: durationMinutes }
+      : { startMinute: startMinute, endMinute: startMinute + durationMinutes, durationMinutes: durationMinutes };
+  }
+
+  function buildCookingKeyboardResizePreview(entry, edge, key, shiftKey) {
+    var step = shiftKey ? 5 : 1;
+    var boundaryDelta = key === 'ArrowRight' ? step : -step;
+    var boundary = edge === 'start' ? entry.startMinute + boundaryDelta : entry.endMinute + boundaryDelta;
+    return buildCookingResizePreview(entry, edge, boundary);
+  }
+
+  function setCookingResizeAria(handle, durationMinutes) {
+    handle.setAttribute('aria-valuemin', '1');
+    handle.setAttribute('aria-valuemax', '720');
+    handle.setAttribute('aria-valuenow', String(durationMinutes));
+    handle.setAttribute('aria-valuetext', formatMinutes(durationMinutes));
+  }
+
+  function updateCookingResizePreview(actionId, preview, timelineScale) {
+    var timeline = document.getElementById('cookingTimeline');
+    if (!timeline) return;
+    timeline.querySelectorAll('.timeline-block').forEach(function (timelineBlock) {
+      if (timelineBlock.getAttribute('data-action-id') === actionId) {
+        var blockStart = timelineScale.positionAt(preview.startMinute);
+        timelineBlock.style.left = blockStart + 'px';
+        timelineBlock.style.width = Math.max(2, timelineScale.positionAt(preview.endMinute) - blockStart) + 'px';
+        timelineBlock.setAttribute('data-preview-duration', String(preview.durationMinutes));
+        var time = timelineBlock.querySelector('.timeline-block-time');
+        if (time) time.textContent = formatMinutes(preview.durationMinutes);
+        timelineBlock.querySelectorAll('.timeline-resize-handle').forEach(function (resizeHandle) {
+          setCookingResizeAria(resizeHandle, preview.durationMinutes);
+        });
+      }
+    });
+  }
+
+  function focusCookingResizeHandle(actionId, laneId, edge) {
+    var timeline = document.getElementById('cookingTimeline');
+    if (!timeline) return;
+    var target = null;
+    timeline.querySelectorAll('.timeline-block').forEach(function (timelineBlock) {
+      if (!target && timelineBlock.getAttribute('data-action-id') === actionId && timelineBlock.getAttribute('data-lane-id') === laneId) {
+        target = timelineBlock.querySelector('.timeline-resize-handle.' + edge);
+      }
+    });
+    if (!target) return;
+    try {
+      target.focus({ preventScroll: true });
+    } catch (error) {
+      target.focus();
+    }
+  }
+
+  function applyCookingActionSelection(container) {
+    if (!container) return;
+    container.querySelectorAll('.timeline-block').forEach(function (block) {
+      var selected = block.getAttribute('data-action-id') === selectedCookingActionId;
+      block.classList.toggle('timeline-block-selected', selected);
+      block.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+  }
+
+  function selectCookingAction(plan, actionId) {
+    selectedCookingActionId = actionId;
+    cookingDurationEditorError = '';
+    applyCookingActionSelection(document.getElementById('cookingTimeline'));
+    renderCookingNow(plan, document.getElementById('cookingNow'));
+  }
+
+  function renderCookingDurationEditor(plan, entry, container) {
+    if (!entry) return;
+    var action = plan.actions.find(function (item) { return item.id === entry.actionId; });
+    var batch = plan.batches.find(function (item) { return item.id === entry.batchId; });
+    var durationKey = action && NutritionCookingCore.getActionDurationKey(action, plan.batches);
+    var overrides = kitchenProfile.calibration && kitchenProfile.calibration.durationOverrides || {};
+    var hasOverride = Boolean(durationKey && Number.isInteger(overrides[durationKey]));
+    var locked = hasActiveCookingSession();
+    var editor = createElement('section', 'cooking-duration-editor');
+    editor.setAttribute('aria-label', 'редактор длительности действия');
+    appendChildren(editor, [
+      createElement('div', 'cooking-duration-eyebrow', 'выбранное действие'),
+      createElement('div', 'cooking-duration-meal', batch ? batch.label : 'блюдо'),
+      createElement('h3', 'cooking-duration-title', entry.title),
+      createElement('div', 'cooking-duration-current', 'текущая длительность · ' + formatMinutes(entry.durationMinutes))
+    ]);
+
+    var form = createElement('form', 'cooking-duration-form');
+    var field = createElement('label', 'cooking-duration-field');
+    field.appendChild(createElement('span', '', 'минуты'));
+    var input = createElement('input', 'field-control cooking-duration-input');
+    input.type = 'number';
+    input.min = '1';
+    input.max = '720';
+    input.step = '1';
+    input.value = String(entry.durationMinutes);
+    input.disabled = locked;
+    input.setAttribute('aria-label', 'длительность действия в минутах');
+    field.appendChild(input);
+    var actions = createElement('div', 'cooking-duration-actions');
+    var save = createElement('button', 'primary-btn', 'сохранить');
+    var reset = createElement('button', 'quiet-btn', 'вернуть расчётное');
+    save.type = 'submit';
+    reset.type = 'button';
+    save.disabled = locked;
+    reset.disabled = locked || !hasOverride;
+    appendChildren(actions, [save, reset]);
+    appendChildren(form, [field, actions]);
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      var minutes = Number(input.value);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 720) {
+        cookingDurationEditorError = 'укажи целое число от 1 до 720';
+        renderCookingNow(plan, container);
+        return;
+      }
+      cookingDurationEditorError = '';
+      var result = saveCookingActionDuration(plan, entry.actionId, minutes);
+      if (!result.ok) {
+        cookingDurationEditorError = result.error || 'не удалось сохранить длительность';
+        renderCooking();
+      }
+    });
+    reset.addEventListener('click', function () {
+      cookingDurationEditorError = '';
+      var result = resetCookingActionDuration(plan, entry.actionId);
+      if (!result.ok) {
+        cookingDurationEditorError = result.error || 'не удалось вернуть расчётную длительность';
+        renderCooking();
+      }
+    });
+    editor.appendChild(form);
+    if (locked) editor.appendChild(createElement('div', 'cooking-duration-note', 'редактирование недоступно во время активной сессии'));
+    if (cookingDurationEditorError) {
+      var error = createElement('div', 'cooking-duration-error', cookingDurationEditorError);
+      error.setAttribute('role', 'alert');
+      editor.appendChild(error);
+    }
+    container.appendChild(editor);
+  }
+
+  function attachCookingResizeHandle(handle, plan, entry, edge, block, timelineScale) {
+    var locked = hasActiveCookingSession();
+    var drag = null;
+    handle.setAttribute('role', 'slider');
+    handle.setAttribute('aria-label', (edge === 'start' ? 'изменить начало' : 'изменить конец') + ' действия «' + entry.title + '»');
+    handle.setAttribute('aria-orientation', 'horizontal');
+    handle.setAttribute('aria-disabled', locked ? 'true' : 'false');
+    handle.tabIndex = locked ? -1 : 0;
+    setCookingResizeAria(handle, entry.durationMinutes);
+
+    function minuteFromPointer(event) {
+      var bounds = block.parentNode.getBoundingClientRect();
+      return timelineScale.minuteAt(event.clientX - bounds.left);
+    }
+
+    function restorePreview() {
+      updateCookingResizePreview(entry.actionId, {
+        startMinute: entry.startMinute,
+        endMinute: entry.endMinute,
+        durationMinutes: entry.durationMinutes
+      }, timelineScale);
+    }
+
+    function showSaveError(result) {
+      if (result.ok) return;
+      cookingDurationEditorError = result.error || 'не удалось сохранить длительность';
+      renderCooking();
+    }
+
+    handle.addEventListener('click', function (event) {
+      event.stopPropagation();
+    });
+    handle.addEventListener('pointerdown', function (event) {
+      event.stopPropagation();
+      if (locked || event.button !== 0) return;
+      event.preventDefault();
+      selectCookingAction(plan, entry.actionId);
+      drag = {
+        pointerId: event.pointerId,
+        preview: buildCookingResizePreview(entry, edge, minuteFromPointer(event))
+      };
+      handle.setPointerCapture(event.pointerId);
+      updateCookingResizePreview(entry.actionId, drag.preview, timelineScale);
+    });
+    handle.addEventListener('pointermove', function (event) {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      event.preventDefault();
+      drag.preview = buildCookingResizePreview(entry, edge, minuteFromPointer(event));
+      updateCookingResizePreview(entry.actionId, drag.preview, timelineScale);
+    });
+    handle.addEventListener('pointerup', function (event) {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      event.preventDefault();
+      drag.preview = buildCookingResizePreview(entry, edge, minuteFromPointer(event));
+      var preview = drag.preview;
+      drag = null;
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      showSaveError(saveCookingActionDuration(plan, entry.actionId, preview.durationMinutes));
+    });
+    handle.addEventListener('pointercancel', function (event) {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      drag = null;
+      restorePreview();
+    });
+    handle.addEventListener('lostpointercapture', function () {
+      if (!drag) return;
+      drag = null;
+      restorePreview();
+    });
+    handle.addEventListener('keydown', function (event) {
+      event.stopPropagation();
+      if (locked || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+      event.preventDefault();
+      selectCookingAction(plan, entry.actionId);
+      var preview = buildCookingKeyboardResizePreview(entry, edge, event.key, event.shiftKey);
+      updateCookingResizePreview(entry.actionId, preview, timelineScale);
+      var laneId = block.getAttribute('data-lane-id');
+      var result = saveCookingActionDuration(plan, entry.actionId, preview.durationMinutes);
+      showSaveError(result);
+      if (result.ok) focusCookingResizeHandle(entry.actionId, laneId, edge);
+    });
+  }
+
   function nextSessionEntry(plan, session) {
     var actionId = NutritionCookingCore.nextSessionActionId(plan.schedule, session);
     return actionId ? entryForAction(plan, actionId) : null;
@@ -1216,6 +1454,7 @@
     var now = document.getElementById('cookingNow');
     var legend = document.getElementById('cookingBatchLegend');
     if (!context || !status || !overview || !timeline || !now || !legend) return;
+    var timelineScrollLeft = timeline.scrollLeft;
     var plan = ensureCookingPlan(cookingWeek, cookingSessionKind);
     var stateInfo = cookingStateLabel(cookingWeek, plan);
     var sessionTitle = cookingSessionKind === 'refresh' ? 'короткое обновление' : 'основная заготовка';
@@ -1234,6 +1473,7 @@
       createElement('span', '', plan.generatedAt ? 'обновлено ' + new Date(plan.generatedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '')
     ]);
     renderCookingTimeline(plan, timeline);
+    timeline.scrollLeft = timelineScrollLeft;
     renderCookingNow(plan, now);
     renderCookingLegend(plan, legend);
     applyBatchHighlight();
@@ -1307,20 +1547,39 @@
       });
       lane.entries.forEach(function (entry) {
         var batch = plan.batches.find(function (item) { return item.id === entry.batchId; });
-        var block = createElement('button', 'timeline-block ' + entry.mode + ' batch-color-' + (batch ? batch.colorIndex : 0));
-        block.type = 'button';
+        var selected = selectedCookingActionId === entry.actionId;
+        var block = createElement('div', 'timeline-block ' + entry.mode + ' batch-color-' + (batch ? batch.colorIndex : 0) + (selected ? ' timeline-block-selected' : ''));
+        block.setAttribute('role', 'button');
+        block.tabIndex = 0;
         block.setAttribute('data-batch-id', entry.batchId);
+        block.setAttribute('data-action-id', entry.actionId);
+        block.setAttribute('data-lane-id', lane.id);
+        block.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        block.setAttribute('aria-label', entry.title + ', ' + formatMinutes(entry.durationMinutes));
         var blockStart = timelineScale.positionAt(entry.startMinute);
         block.style.left = blockStart + 'px';
         block.style.width = Math.max(2, timelineScale.positionAt(entry.endMinute) - blockStart) + 'px';
         block.title = entry.title + ' · ' + entry.location + ' · ' + formatMinutes(entry.durationMinutes);
-        appendChildren(block, [
+        var copy = createElement('div', 'timeline-block-copy');
+        appendChildren(copy, [
           createElement('strong', '', entry.title),
-          createElement('span', '', formatMinutes(entry.startMinute) + ' → ' + formatMinutes(entry.endMinute))
+          createElement('span', 'timeline-block-time', formatMinutes(entry.startMinute) + ' → ' + formatMinutes(entry.endMinute))
         ]);
-        block.addEventListener('click', function () {
-          activeBatchId = activeBatchId === entry.batchId ? null : entry.batchId;
-          renderCooking();
+        block.appendChild(copy);
+        ['start', 'end'].forEach(function (edge) {
+          var handle = createElement('div', 'timeline-resize-handle ' + edge);
+          attachCookingResizeHandle(handle, plan, entry, edge, block, timelineScale);
+          block.appendChild(handle);
+        });
+        block.addEventListener('click', function (event) {
+          event.stopPropagation();
+          selectCookingAction(plan, entry.actionId);
+        });
+        block.addEventListener('keydown', function (event) {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          selectCookingAction(plan, entry.actionId);
         });
         track.appendChild(block);
       });
@@ -1342,6 +1601,8 @@
     clearElement(container);
     var session = getActiveCookingSession(plan);
     var journalSession = session || getLastCookingSession(plan);
+    var selectedEntry = getSelectedCookingEntry(plan);
+    if (selectedEntry) renderCookingDurationEditor(plan, selectedEntry, container);
     var current = nextSessionEntry(plan, session);
     if (!current) {
       container.appendChild(createElement('div', 'cooking-empty', session ? 'все шаги сессии завершены' : 'готовить нечего'));

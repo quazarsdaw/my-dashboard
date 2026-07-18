@@ -278,6 +278,36 @@ test('builds one readable warped timeline scale for every resource lane', () => 
   assert.equal(scale.positionAt(6) - scale.positionAt(4), 220);
 });
 
+test('maps warped timeline pixels back to minutes across boundaries and gaps', () => {
+  const scale = NutritionCore.buildTimelineScale([
+    { startMinute: 0, endMinute: 4 },
+    { startMinute: 6, endMinute: 10 }
+  ], 10, 7, 220);
+
+  assert.equal(scale.minuteAt(-100), 0);
+  assert.equal(scale.minuteAt(0), 0);
+  assert.equal(scale.minuteAt(110), 2);
+  assert.equal(scale.minuteAt(220), 4);
+  assert.equal(scale.minuteAt(330), 5);
+  assert.equal(scale.minuteAt(440), 6);
+  assert.equal(scale.minuteAt(scale.width), 10);
+  assert.equal(scale.minuteAt(scale.width + 100), 10);
+});
+
+test('round-trips timeline minutes and pixels through stretched segments', () => {
+  const scale = NutritionCore.buildTimelineScale([
+    { startMinute: 0, endMinute: 4 },
+    { startMinute: 6, endMinute: 10 }
+  ], 10, 7, 220);
+
+  [0, 1, 4, 5, 6, 8, 10].forEach((minute) => {
+    assert.ok(Math.abs(scale.minuteAt(scale.positionAt(minute)) - minute) < 1e-9, `minute ${minute}`);
+  });
+  [0, 55, 220, 330, 440, 605, scale.width].forEach((pixel) => {
+    assert.ok(Math.abs(scale.positionAt(scale.minuteAt(pixel)) - pixel) < 1e-9, `pixel ${pixel}`);
+  });
+});
+
 test('keeps a regular time scale when one interval is already wide enough', () => {
   const scale = NutritionCore.buildTimelineScale([], 100, 7, 220);
 

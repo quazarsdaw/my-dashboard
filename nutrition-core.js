@@ -263,6 +263,18 @@
           }
         }
         return offset;
+      },
+      minuteAt: function (pixelValue) {
+        var pixel = Math.max(0, Math.min(offset, Number(pixelValue) || 0));
+        if (pixel >= offset) return duration;
+        for (var segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+          var segment = segments[segmentIndex];
+          if (pixel <= segment.offset + segment.width) {
+            var ratio = (pixel - segment.offset) / Math.max(1, segment.width);
+            return segment.start + (segment.end - segment.start) * Math.max(0, Math.min(1, ratio));
+          }
+        }
+        return duration;
       }
     };
   }

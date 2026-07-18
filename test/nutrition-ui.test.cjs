@@ -162,7 +162,7 @@ function loadNutritionController(options = {}) {
   window.clearTimeout = context.clearTimeout;
   const source = read('nutrition.js').replace(
     "if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);",
-    "window.__nutritionTestApi = { ensureCookingPlan: ensureCookingPlan, scheduleCookingGeneration: scheduleCookingGeneration, saveCookingActionDuration: saveCookingActionDuration, resetCookingActionDuration: resetCookingActionDuration, loadCookingData: loadCookingData, getUiState: function () { return cookingUiState; }, getUiError: function () { return cookingUiError; }, getGenerationRequests: function () { return generationRequests; }, getRuntime: function () { return { kitchenProfile: kitchenProfile, cookingStore: cookingStore, cookingWeek: cookingWeek, cookingSessionKind: cookingSessionKind }; }, setRuntime: function (next) { state = next.state; kitchenProfile = next.kitchenProfile; cookingStore = next.cookingStore; cookingWeek = next.cookingWeek || 1; cookingSessionKind = next.cookingSessionKind === 'refresh' ? 'refresh' : 'main'; } };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);"
+    "window.__nutritionTestApi = { ensureCookingPlan: ensureCookingPlan, scheduleCookingGeneration: scheduleCookingGeneration, saveCookingActionDuration: saveCookingActionDuration, resetCookingActionDuration: resetCookingActionDuration, buildCookingKeyboardResizePreview: buildCookingKeyboardResizePreview, loadCookingData: loadCookingData, getUiState: function () { return cookingUiState; }, getUiError: function () { return cookingUiError; }, getGenerationRequests: function () { return generationRequests; }, getRuntime: function () { return { kitchenProfile: kitchenProfile, cookingStore: cookingStore, cookingWeek: cookingWeek, cookingSessionKind: cookingSessionKind }; }, setRuntime: function (next) { state = next.state; kitchenProfile = next.kitchenProfile; cookingStore = next.cookingStore; cookingWeek = next.cookingWeek || 1; cookingSessionKind = next.cookingSessionKind === 'refresh' ? 'refresh' : 'main'; } };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);"
   );
   vm.createContext(context);
   vm.runInContext(source, context);
@@ -329,6 +329,88 @@ test('nutrition desktop layout keeps calendar and cooking timeline readable at f
   assert.ok(js.includes("setProperty('--timeline-width'"));
   assert.ok(html.includes('@media(max-width:1480px)'));
   assert.ok(html.includes('@media(max-width:820px)'));
+});
+
+test('cooking timeline exposes semantic cards, resize handles and the duration inspector', () => {
+  const html = read('menu.html');
+  const js = read('nutrition.js');
+
+  assert.ok(html.includes('.timeline-resize-handle'));
+  assert.ok(html.includes('cursor:ew-resize'));
+  assert.ok(html.includes('.timeline-block-selected'));
+  assert.ok(html.includes('.cooking-duration-editor'));
+  assert.ok(js.includes("createElement('div', 'timeline-block"));
+  assert.equal(js.includes("createElement('button', 'timeline-block"), false);
+  assert.ok(js.includes("setAttribute('role', 'button')"));
+  assert.ok(js.includes("setAttribute('data-action-id'"));
+  assert.ok(js.includes("setAttribute('role', 'slider')"));
+  assert.ok(js.includes("setAttribute('aria-valuemin', '1')"));
+  assert.ok(js.includes("setAttribute('aria-valuemax', '720')"));
+  assert.ok(js.includes('renderCookingDurationEditor'));
+  assert.ok(js.includes('attachCookingResizeHandle'));
+  assert.ok(js.includes("createElement('input', 'field-control cooking-duration-input')"));
+  assert.ok(js.includes("input.type = 'number'"));
+  assert.ok(js.includes("input.min = '1'"));
+  assert.ok(js.includes("input.max = '720'"));
+  assert.ok(js.includes("input.step = '1'"));
+  assert.ok(js.includes('saveCookingActionDuration(plan, entry.actionId'));
+  assert.ok(js.includes('resetCookingActionDuration(plan, entry.actionId'));
+});
+
+test('cooking resize keeps one action synchronized and supports pointer cancellation and keyboard steps', () => {
+  const js = read('nutrition.js');
+
+  assert.ok(js.includes("querySelectorAll('.timeline-block')"));
+  assert.ok(js.includes("getAttribute('data-action-id') === actionId"));
+  assert.ok(js.includes('timelineScale.minuteAt'));
+  assert.ok(js.includes('setPointerCapture'));
+  assert.ok(js.includes("addEventListener('pointermove'"));
+  assert.ok(js.includes("addEventListener('pointerup'"));
+  assert.ok(js.includes("addEventListener('pointercancel'"));
+  assert.ok(js.includes("event.key !== 'ArrowLeft'"));
+  assert.ok(js.includes("key === 'ArrowRight'"));
+  assert.ok(js.includes('shiftKey ? 5 : 1'));
+  assert.ok(js.includes('event.stopPropagation()'));
+  assert.ok(js.includes('hasActiveCookingSession()'));
+  assert.ok(js.includes('timelineScrollLeft = timeline.scrollLeft'));
+  assert.ok(js.includes('focusCookingResizeHandle'));
+});
+
+test('cooking resize keyboard preview follows each physical edge', () => {
+  const harness = loadNutritionController();
+  const entry = { startMinute: 10, endMinute: 20, durationMinutes: 10 };
+
+  assert.deepEqual(
+    clone(harness.api.buildCookingKeyboardResizePreview(entry, 'end', 'ArrowRight', false)),
+    { startMinute: 10, endMinute: 21, durationMinutes: 11 }
+  );
+  assert.deepEqual(
+    clone(harness.api.buildCookingKeyboardResizePreview(entry, 'end', 'ArrowLeft', true)),
+    { startMinute: 10, endMinute: 15, durationMinutes: 5 }
+  );
+  assert.deepEqual(
+    clone(harness.api.buildCookingKeyboardResizePreview(entry, 'start', 'ArrowRight', false)),
+    { startMinute: 11, endMinute: 20, durationMinutes: 9 }
+  );
+  assert.deepEqual(
+    clone(harness.api.buildCookingKeyboardResizePreview(entry, 'start', 'ArrowLeft', true)),
+    { startMinute: 5, endMinute: 20, durationMinutes: 15 }
+  );
+});
+
+test('calendar and timeline use quiet internal scrollbars without page overflow', () => {
+  const html = read('menu.html');
+
+  assert.ok(html.includes('class="cycle-scroll"'));
+  assert.ok(html.includes('class="timeline-shell"'));
+  assert.ok(html.includes('scrollbar-width:thin'));
+  assert.ok(html.includes('scrollbar-color:#555B66 transparent'));
+  assert.ok(html.includes('::-webkit-scrollbar-thumb'));
+  assert.ok(html.includes('::-webkit-scrollbar-track'));
+  assert.ok(html.includes('::-webkit-scrollbar-thumb:hover'));
+  assert.ok(html.includes('body{min-height:100vh;max-width:1760px;overflow-x:hidden'));
+  assert.equal(html.includes('.cycle-scroll{overflow:visible'), false);
+  assert.ok(html.includes('.cooking-now{min-width:0;max-width:100%'));
 });
 
 test('nutrition controller persists cooking sessions and calibrates completed active work', () => {
@@ -762,9 +844,9 @@ test('nutrition scripts use one fresh cache version for the changed controller c
   const html = read('menu.html');
 
   assert.ok(html.includes('nutrition-data.js?v=405'));
-  assert.ok(html.includes('nutrition-core.js?v=405'));
+  assert.ok(html.includes('nutrition-core.js?v=406'));
   assert.ok(html.includes('nutrition-cooking-core.js?v=405'));
-  assert.ok(html.includes('nutrition.js?v=405'));
+  assert.ok(html.includes('nutrition.js?v=406'));
 });
 
 test('nutrition reads health targets without writing meal data back to health storage', () => {
