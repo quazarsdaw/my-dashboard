@@ -14,8 +14,8 @@
 - допустимы только целые значения от 1 до 720 минут;
 - сохраняется длительность, но не абсолютная позиция карточки;
 - после сохранения расписание полностью пересобирается с учетом зависимостей, оборудования и розеток;
-- во время активной сессии редактируются только шаги со статусом `pending`;
-- выполняющиеся и завершенные шаги используют существующую фиксацию фактического времени;
+- после запуска активной сессии ее план блокируется целиком;
+- практическое время активной сессии учитывается через существующую фиксацию и исправление фактического времени;
 - кнопка `сбросить темп` не удаляет точные поправки;
 - страница не получает горизонтальную прокрутку, прокручивается только внутренний календарь или таймлайн;
 - свободное перемещение действий и ручной выбор ресурсов не входят в объем;
@@ -121,9 +121,9 @@ test('clears an exact duration without resetting pace calibration', () => {
   assert.deepEqual(profile.calibration.durationOverrides, {});
 });
 
-test('allows duration edits only for pending actions in an active session', () => {
+test('locks duration editing after a cooking session starts', () => {
   assert.equal(CookingCore.canEditActionDuration(null, 'step'), true);
-  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'pending' } } }, 'step'), true);
+  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'pending' } } }, 'step'), false);
   assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'running' } } }, 'step'), false);
   assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'done' } } }, 'step'), false);
 });
@@ -190,7 +190,7 @@ node --test test/nutrition-ui.test.cjs
 
 `saveCookingActionDuration` должен:
 
-1. найти действие и активную сессию;
+1. найти действие и проверить отсутствие активной сессии;
 2. проверить `canEditActionDuration`;
 3. получить новый профиль через core;
 4. сохранить профиль;
@@ -293,7 +293,7 @@ input.step = '1';
 input.value = String(entry.durationMinutes);
 ```
 
-`сохранить` вызывает `saveCookingActionDuration`, `вернуть расчетное` вызывает `resetCookingActionDuration`. текущее рабочее действие остается ниже инспектора и не исчезает.
+`сохранить` вызывает `saveCookingActionDuration`, `вернуть расчетное` вызывает `resetCookingActionDuration`. текущее рабочее действие остается ниже инспектора и не исчезает. после запуска сессии поле, обе команды и ручки ресайза недоступны.
 
 - [ ] **шаг 5: реализовать drag-resize и клавиатуру**
 
