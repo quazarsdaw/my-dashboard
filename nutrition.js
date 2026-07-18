@@ -84,14 +84,21 @@
 
   function recoverCookingTransaction() {
     var transaction = getStored(COOKING_TRANSACTION_KEY);
-    if (!isCookingTransaction(transaction)) return;
+    if (!isCookingTransaction(transaction)) return false;
     restoreCookingTransaction(transaction);
+    var recoveredKitchenProfile = NutritionCookingCore.normalizeKitchenProfile(getStored(KITCHEN_PROFILE_KEY));
+    var recoveredCookingStore = NutritionCookingCore.normalizeCookingStore(getStored(COOKING_PLANS_KEY));
     clearCookingTransaction();
+    kitchenProfile = recoveredKitchenProfile;
+    cookingStore = recoveredCookingStore;
+    return true;
   }
 
   function beginCookingTransaction(beforeProfile, beforeStore) {
     var existing = getStored(COOKING_TRANSACTION_KEY);
-    if (isCookingTransaction(existing)) return existing;
+    if (isCookingTransaction(existing)) {
+      throw new Error('не удалось начать изменение длительности: найден незавершенный журнал');
+    }
     var transaction = {
       version: 1,
       kitchenProfile: beforeProfile,
@@ -122,9 +129,10 @@
   }
 
   function loadCookingData() {
-    recoverCookingTransaction();
-    kitchenProfile = NutritionCookingCore.normalizeKitchenProfile(getStored(KITCHEN_PROFILE_KEY));
-    cookingStore = NutritionCookingCore.normalizeCookingStore(getStored(COOKING_PLANS_KEY));
+    if (!recoverCookingTransaction()) {
+      kitchenProfile = NutritionCookingCore.normalizeKitchenProfile(getStored(KITCHEN_PROFILE_KEY));
+      cookingStore = NutritionCookingCore.normalizeCookingStore(getStored(COOKING_PLANS_KEY));
+    }
     if (!getStored(KITCHEN_PROFILE_KEY)) saveKitchenProfile();
     if (!getStored(COOKING_PLANS_KEY)) saveCookingStore();
   }
@@ -1081,9 +1089,18 @@
   function updateCookingActionDuration(plan, actionId, updateProfile) {
     var actions = plan && Array.isArray(plan.actions) ? plan.actions : [];
     var action = actions.find(function (item) { return item && item.id === actionId; });
+    if (!action) return { ok: false, error: 'шаг готовки не найден' };
+    try {
+      recoverCookingTransaction();
+    } catch (error) {
+      return {
+        ok: false,
+        error: 'не удалось восстановить незавершенное изменение длительности: ' +
+          (error.message || 'ошибка хранилища')
+      };
+    }
     var activeSessionId = cookingStore.activeSessionId;
     var activeSession = activeSessionId && cookingStore.sessionsById[activeSessionId];
-    if (!action) return { ok: false, error: 'шаг готовки не найден' };
     if (hasActiveCookingSession() || !NutritionCookingCore.canEditActionDuration(activeSession, actionId)) {
       return { ok: false, error: 'сначала заверши активную сессию готовки' };
     }

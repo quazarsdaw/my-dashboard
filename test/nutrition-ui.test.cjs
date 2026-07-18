@@ -12,6 +12,14 @@ function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+function durationOverrideKey(action, batches) {
+  const batch = (batches || []).find((item) => item && action && item.id === action.batchId);
+  const mealId = batch && batch.mealId;
+  const title = String(action && action.title || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const category = String(action && action.category || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return mealId && title && category ? [mealId, category, title].join('::') : '';
+}
+
 function loadNutritionController(options = {}) {
   const values = new Map(Object.entries(options.storage || {}).map(([key, value]) => [key, clone(value)]));
   if (!values.has('openrouter_settings_v1')) values.set('openrouter_settings_v1', { key: 'test-key' });
@@ -56,23 +64,31 @@ function loadNutritionController(options = {}) {
     },
     invalidateWeek(store, cycleId, week) {
       const next = clone(store);
+      const active = next.activeSessionId && next.sessionsById[next.activeSessionId];
+      const protectedHash = active && active.status !== 'completed' ? active.planHash : '';
       Object.keys(next.plansByHash).forEach((hash) => {
         const plan = next.plansByHash[hash];
-        if (plan && plan.cycleId === cycleId && Number(plan.week) === Number(week)) delete next.plansByHash[hash];
+        if (hash !== protectedHash && plan && plan.cycleId === cycleId && Number(plan.week) === Number(week)) {
+          delete next.plansByHash[hash];
+        }
       });
       return next;
     },
     setActionDurationOverride(profile, action, batches, minutes) {
       const next = clone(profile);
+      const key = durationOverrideKey(action, batches);
+      if (!key) return { ok: false, profile: next, key, error: 'не удалось определить шаг готовки' };
       next.revision += 1;
-      next.calibration.durationOverrides['duration-key'] = minutes;
-      return { ok: true, profile: next, key: 'duration-key', error: null };
+      next.calibration.durationOverrides[key] = minutes;
+      return { ok: true, profile: next, key, error: null };
     },
-    clearActionDurationOverride(profile) {
+    clearActionDurationOverride(profile, action, batches) {
       const next = clone(profile);
+      const key = durationOverrideKey(action, batches);
+      if (!key) return { ok: false, profile: next, key, error: 'не удалось определить шаг готовки' };
       next.revision += 1;
-      delete next.calibration.durationOverrides['duration-key'];
-      return { ok: true, profile: next, key: 'duration-key', error: null };
+      delete next.calibration.durationOverrides[key];
+      return { ok: true, profile: next, key, error: null };
     },
     canEditActionDuration(session) {
       return !(session && session.steps);
@@ -175,7 +191,7 @@ function createDurationPlan(sessionKind = 'main') {
     week: 1,
     sessionKind,
     batches: [{ id: 'batch-1', mealId: 'meal-1' }],
-    actions: [{ id: 'action-1', batchId: 'batch-1', category: 'prep', text: 'подготовить блюдо' }],
+    actions: [{ id: 'action-1', title: 'подготовить блюдо', category: 'prep', batchId: 'batch-1' }],
     schedule: [{ actionId: 'action-1', startMinute: 0, endMinute: 10 }]
   };
 }
@@ -410,6 +426,7 @@ test('nutrition controller restarts a mismatched latest rejection and ignores a 
 test('nutrition controller saves a duration and rebuilds main and refresh plans inside one journal', () => {
   ['main', 'refresh'].forEach((sessionKind) => {
     const original = createStoredCookingState(sessionKind);
+    const overrideKey = durationOverrideKey(original.plan.actions[0], original.plan.batches);
     const harness = loadNutritionController({
       storage: {
         openrouter_settings_v1: {},
@@ -422,7 +439,7 @@ test('nutrition controller saves a duration and rebuilds main and refresh plans 
     const result = harness.api.saveCookingActionDuration(original.plan, 'action-1', 25);
 
     assert.equal(result.ok, true, sessionKind);
-    assert.equal(harness.values.get('nutrition_kitchen_profile_v1').calibration.durationOverrides['duration-key'], 25);
+    assert.equal(harness.values.get('nutrition_kitchen_profile_v1').calibration.durationOverrides[overrideKey], 25);
     assert.equal(harness.values.get('nutrition_cooking_plans_v1').plansByHash['hash-1'], undefined);
     assert.equal(harness.values.get('nutrition_cooking_plans_v1').plansByHash['hash-2'].sessionKind, sessionKind);
     assert.equal(harness.values.get('nutrition_cooking_transaction_v1'), null);
@@ -431,6 +448,151 @@ test('nutrition controller saves a duration and rebuilds main and refresh plans 
     assert.deepEqual(journals[0].value.kitchenProfile, original.profile);
     assert.deepEqual(journals[0].value.cookingStore, original.store);
   });
+});
+
+test('nutrition controller invalidates main and refresh plans for the week in one duration update', () => {
+  const original = createStoredCookingState('main');
+  const mainPlan = clone(original.plan);
+  mainPlan.planHash = 'main-before';
+  const refreshPlan = createDurationPlan('refresh');
+  refreshPlan.planHash = 'refresh-before';
+  original.plan = mainPlan;
+  original.store.plansByHash = {
+    'main-before': mainPlan,
+    'refresh-before': refreshPlan
+  };
+  const harness = loadNutritionController({
+    storage: {
+      openrouter_settings_v1: {},
+      nutrition_kitchen_profile_v1: original.profile,
+      nutrition_cooking_plans_v1: original.store
+    }
+  });
+  setDurationRuntime(harness, original);
+
+  const result = harness.api.saveCookingActionDuration(mainPlan, 'action-1', 25);
+
+  assert.equal(result.ok, true);
+  assert.equal(harness.values.get('nutrition_cooking_plans_v1').plansByHash['main-before'], undefined);
+  assert.equal(harness.values.get('nutrition_cooking_plans_v1').plansByHash['refresh-before'], undefined);
+  assert.equal(harness.values.get('nutrition_cooking_plans_v1').plansByHash['hash-2'].sessionKind, 'main');
+});
+
+test('nutrition controller resets a saved duration through the vm api', () => {
+  const original = createStoredCookingState();
+  const overrideKey = durationOverrideKey(original.plan.actions[0], original.plan.batches);
+  original.profile.calibration.durationOverrides[overrideKey] = 25;
+  const harness = loadNutritionController({
+    storage: {
+      openrouter_settings_v1: {},
+      nutrition_kitchen_profile_v1: original.profile,
+      nutrition_cooking_plans_v1: original.store
+    }
+  });
+  setDurationRuntime(harness, original);
+
+  const result = harness.api.resetCookingActionDuration(original.plan, 'action-1');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.key, overrideKey);
+  assert.equal(harness.values.get('nutrition_kitchen_profile_v1').calibration.durationOverrides[overrideKey], undefined);
+  assert.equal(harness.values.get('nutrition_cooking_transaction_v1'), null);
+});
+
+test('nutrition controller recovers a stale journal before updating and journals the recovered pair', () => {
+  const recovered = createStoredCookingState();
+  const recent = createStoredCookingState();
+  recent.profile.revision = 5;
+  recent.plan.planHash = 'hash-5';
+  recent.store.plansByHash = { 'hash-5': recent.plan };
+  let updatedRevision = null;
+  let cookingStoreWrites = 0;
+  const harness = loadNutritionController({
+    storage: {
+      openrouter_settings_v1: {},
+      nutrition_kitchen_profile_v1: recent.profile,
+      nutrition_cooking_plans_v1: recent.store,
+      nutrition_cooking_transaction_v1: {
+        version: 1,
+        kitchenProfile: recovered.profile,
+        cookingStore: recovered.store
+      }
+    },
+    cookingCore: {
+      setActionDurationOverride(profile, action, batches, minutes) {
+        updatedRevision = profile.revision;
+        const next = clone(profile);
+        const key = durationOverrideKey(action, batches);
+        next.revision += 1;
+        next.calibration.durationOverrides[key] = minutes;
+        return { ok: true, profile: next, key, error: null };
+      }
+    },
+    failWrite(key) {
+      if (key !== 'nutrition_cooking_plans_v1') return false;
+      cookingStoreWrites += 1;
+      return cookingStoreWrites === 3;
+    }
+  });
+  setDurationRuntime(harness, recent);
+
+  const result = harness.api.saveCookingActionDuration(recovered.plan, 'action-1', 25);
+
+  assert.equal(result.ok, false);
+  assert.equal(updatedRevision, 1);
+  assert.deepEqual(harness.api.getRuntime().kitchenProfile, recovered.profile);
+  assert.deepEqual(harness.api.getRuntime().cookingStore, recovered.store);
+  assert.deepEqual(harness.values.get('nutrition_kitchen_profile_v1'), recovered.profile);
+  assert.deepEqual(harness.values.get('nutrition_cooking_plans_v1'), recovered.store);
+  assert.equal(harness.values.get('nutrition_cooking_transaction_v1'), null);
+  const journalWrites = harness.writes.filter((write) => write.key === 'nutrition_cooking_transaction_v1');
+  assert.deepEqual(journalWrites.map((write) => write.value && write.value.kitchenProfile.revision), [null, 1, null]);
+  assert.deepEqual(journalWrites[1].value.cookingStore, recovered.store);
+});
+
+test('nutrition controller aborts a new duration update when stale journal recovery fails', () => {
+  const recovered = createStoredCookingState();
+  const recent = createStoredCookingState();
+  recent.profile.revision = 5;
+  recent.plan.planHash = 'hash-5';
+  recent.store.plansByHash = { 'hash-5': recent.plan };
+  let updateCalls = 0;
+  let cookingStoreWrites = 0;
+  const staleJournal = {
+    version: 1,
+    kitchenProfile: recovered.profile,
+    cookingStore: recovered.store
+  };
+  const harness = loadNutritionController({
+    storage: {
+      openrouter_settings_v1: {},
+      nutrition_kitchen_profile_v1: recent.profile,
+      nutrition_cooking_plans_v1: recent.store,
+      nutrition_cooking_transaction_v1: staleJournal
+    },
+    cookingCore: {
+      setActionDurationOverride() {
+        updateCalls += 1;
+        return { ok: false, error: 'не должно вызываться' };
+      }
+    },
+    failWrite(key) {
+      if (key !== 'nutrition_cooking_plans_v1') return false;
+      cookingStoreWrites += 1;
+      return cookingStoreWrites === 1;
+    }
+  });
+  setDurationRuntime(harness, recent);
+
+  const result = harness.api.saveCookingActionDuration(recovered.plan, 'action-1', 25);
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /не удалось восстановить незавершенное изменение длительности/);
+  assert.equal(updateCalls, 0);
+  assert.deepEqual(harness.api.getRuntime().kitchenProfile, recent.profile);
+  assert.deepEqual(harness.api.getRuntime().cookingStore, recent.store);
+  assert.deepEqual(harness.values.get('nutrition_cooking_transaction_v1'), staleJournal);
+  assert.equal(harness.writes.some((write) => write.key === 'nutrition_cooking_transaction_v1'), false);
 });
 
 test('nutrition controller blocks duration edits while any cooking session is active', () => {
