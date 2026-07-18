@@ -217,6 +217,21 @@
     };
   }
 
+  function normalizeCookingSessionKind(value) {
+    return value === 'refresh' ? 'refresh' : 'main';
+  }
+
+  function selectCookingSessionDemand(demand, sessionKind) {
+    var source = isRecord(demand) ? clone(demand) : { version: 1, cycleId: '', week: 1, batches: [] };
+    var kind = normalizeCookingSessionKind(sessionKind);
+    var mealType = kind === 'refresh' ? 'dinner' : 'lunch';
+    source.sessionKind = kind;
+    source.batches = (Array.isArray(source.batches) ? source.batches : []).filter(function (batch) {
+      return batch && batch.strategy === 'batch' && batch.meal && batch.meal.mealType === mealType;
+    });
+    return source;
+  }
+
   function profileFingerprint(profile) {
     var safe = normalizeKitchenProfile(profile);
     return {
@@ -230,7 +245,7 @@
   }
 
   function createPlanFingerprint(demand, profile) {
-    return 'cook-' + hashString(stableStringify({ demand: demand, profile: profileFingerprint(profile) }));
+    return 'cook-v2-' + hashString(stableStringify({ demand: demand, profile: profileFingerprint(profile) }));
   }
 
   function createEmptyCookingStore() {
@@ -481,10 +496,14 @@
     });
     if (!actions.length) errors.push(validationError('missing-actions', 'в плане нет действий'));
 
+    var actionsById = {};
+    actions.forEach(function (action) { actionsById[action.id] = action; });
     actions.forEach(function (action) {
       action.dependsOn.forEach(function (dependency) {
         if (!actionIds[dependency]) {
           errors.push(validationError('missing-dependency', 'не найдена зависимость: ' + dependency, action.id));
+        } else if (actionsById[dependency].batchId !== action.batchId) {
+          errors.push(validationError('cross-batch-dependency', 'разные блюда не должны блокировать друг друга', action.id));
         }
       });
     });
@@ -540,10 +559,10 @@
   function buildFallbackActions(demand, profile) {
     var safeProfile = normalizeKitchenProfile(profile);
     var actions = [];
-    var previousId = null;
 
     (demand && Array.isArray(demand.batches) ? demand.batches : []).forEach(function (batch) {
       if (!batch || batch.strategy === 'outside' || !batch.meal) return;
+      var previousId = null;
       var instructions = Array.isArray(batch.meal.instructions) && batch.meal.instructions.length
         ? batch.meal.instructions
         : ['приготовить ' + batch.title];
@@ -640,6 +659,7 @@
       planHash: String(plan && plan.planHash || ''),
       cycleId: String(plan && plan.cycleId || ''),
       week: Number(plan && plan.week) || 1,
+      sessionKind: normalizeCookingSessionKind(plan && plan.sessionKind),
       status: 'ready',
       createdAt: timestamp,
       startedAt: null,
@@ -884,6 +904,7 @@
     normalizeKitchenProfile: normalizeKitchenProfile,
     getActiveOutletPool: getActiveOutletPool,
     buildCookingDemand: buildCookingDemand,
+    selectCookingSessionDemand: selectCookingSessionDemand,
     createPlanFingerprint: createPlanFingerprint,
     createEmptyCookingStore: createEmptyCookingStore,
     normalizeCookingStore: normalizeCookingStore,

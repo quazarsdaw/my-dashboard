@@ -117,6 +117,46 @@ test('groups repeated meals into stable weekly batches', () => {
   assert.equal(eggs.portions, 1);
 });
 
+test('splits weekly preparation into main lunches and refresh dinners', () => {
+  const demand = {
+    version: 1,
+    cycleId: 'cycle-test',
+    week: 1,
+    batches: [
+      { id: 'lunch', strategy: 'batch', meal: meal('lunch', 'обед', 'lunch') },
+      { id: 'dinner', strategy: 'batch', meal: meal('dinner', 'ужин', 'dinner') },
+      { id: 'breakfast', strategy: 'batch', meal: meal('breakfast', 'завтрак', 'breakfast') },
+      { id: 'serve-day', strategy: 'serve-day', meal: meal('serve-day', 'разовая подача', 'lunch') },
+      { id: 'outside', strategy: 'outside', meal: meal('outside', 'вне дома', 'lunch') }
+    ]
+  };
+
+  const main = CookingCore.selectCookingSessionDemand(demand, 'main');
+  const refresh = CookingCore.selectCookingSessionDemand(demand, 'refresh');
+
+  assert.equal(main.sessionKind, 'main');
+  assert.deepEqual(main.batches.map((batch) => batch.id), ['lunch']);
+  assert.equal(refresh.sessionKind, 'refresh');
+  assert.deepEqual(refresh.batches.map((batch) => batch.id), ['dinner']);
+  assert.equal(demand.sessionKind, undefined, 'исходный спрос не должен изменяться');
+});
+
+test('versions cooking fingerprints and distinguishes preparation sessions', () => {
+  const demand = CookingCore.buildCookingDemand(plan, state(), catalog, 1);
+  const profile = CookingCore.createDefaultKitchenProfile();
+  const mainHash = CookingCore.createPlanFingerprint(
+    CookingCore.selectCookingSessionDemand(demand, 'main'),
+    profile
+  );
+  const refreshHash = CookingCore.createPlanFingerprint(
+    CookingCore.selectCookingSessionDemand(demand, 'refresh'),
+    profile
+  );
+
+  assert.match(mainHash, /^cook-v2-/);
+  assert.notEqual(mainHash, refreshHash);
+});
+
 test('changes only the affected week fingerprint after a replacement', () => {
   const profile = CookingCore.createDefaultKitchenProfile();
   const current = state();
@@ -295,6 +335,22 @@ test('rejects cyclic generated actions', () => {
   assert.ok(result.errors.some((item) => item.code === 'cyclic-dependency'));
 });
 
+test('rejects generated dependencies between separate meal batches', () => {
+  const result = CookingCore.validateGeneratedPlan({
+    batches: [
+      { id: 'batch-one', mealId: 'one', title: 'первое', portions: 2 },
+      { id: 'batch-two', mealId: 'two', title: 'второе', portions: 2 }
+    ],
+    actions: [
+      action({ id: 'one:finish', batchId: 'batch-one' }),
+      action({ id: 'two:start', batchId: 'batch-two', dependsOn: ['one:finish'] })
+    ]
+  }, CookingCore.createDefaultKitchenProfile());
+
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((item) => item.code === 'cross-batch-dependency'));
+});
+
 test('builds a conservative sequential fallback from meal instructions', () => {
   const demand = {
     version: 1,
@@ -329,6 +385,31 @@ test('builds a conservative sequential fallback from meal instructions', () => {
   assert.equal(CookingCore.validateGeneratedPlan({ batches: demand.batches, actions }, CookingCore.createDefaultKitchenProfile()).ok, true);
 });
 
+test('keeps fallback dependencies inside each batch without chaining separate meals', () => {
+  const demand = {
+    version: 1,
+    cycleId: 'cycle-test',
+    week: 1,
+    batches: [
+      {
+        id: 'batch-one', title: 'первое блюдо', portions: 2, strategy: 'batch',
+        meal: { title: 'первое блюдо', prepMinutes: range(20, 30), instructions: ['нарезать первое', 'свари первое'] }
+      },
+      {
+        id: 'batch-two', title: 'второе блюдо', portions: 2, strategy: 'batch',
+        meal: { title: 'второе блюдо', prepMinutes: range(20, 30), instructions: ['нарезать второе', 'запеки второе'] }
+      }
+    ]
+  };
+
+  const actions = CookingCore.buildFallbackActions(demand, CookingCore.createDefaultKitchenProfile());
+  const firstOfSecondBatch = actions.find((action) => action.id === 'batch-two:fallback-1');
+  const secondOfSecondBatch = actions.find((action) => action.id === 'batch-two:fallback-2');
+
+  assert.deepEqual(firstOfSecondBatch.dependsOn, []);
+  assert.deepEqual(secondOfSecondBatch.dependsOn, ['batch-two:fallback-1']);
+});
+
 test('recognizes imperative cooking verbs from the built-in meal catalog', () => {
   const demand = {
     version: 1,
@@ -360,6 +441,7 @@ function sessionPlan() {
     planHash: 'plan-session',
     cycleId: 'cycle-test',
     week: 1,
+    sessionKind: 'refresh',
     actions: [
       action({ id: 'prepare', durationMinutes: 10, category: 'prep' }),
       action({ id: 'cook', mode: 'passive', durationMinutes: 20, category: 'physical', dependsOn: ['prepare'] })
@@ -369,6 +451,7 @@ function sessionPlan() {
 
 test('tracks start, pause, resume and completion without counting pauses', () => {
   let session = CookingCore.startSession(sessionPlan(), 0);
+  assert.equal(session.sessionKind, 'refresh');
   const blocked = CookingCore.startStep(session, 'cook', 0);
   assert.equal(blocked.ok, false);
   assert.equal(blocked.error.code, 'blocked-dependency');

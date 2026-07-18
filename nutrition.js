@@ -26,14 +26,15 @@
   var cycleWeek = 1;
   var shoppingWeek = 1;
   var cookingWeek = 1;
+  var cookingSessionKind = 'main';
   var activeView = DEFAULT_VIEW;
   var replacementTarget = null;
   var activeBatchId = null;
   var kitchenProfile;
   var cookingStore;
   var cookingClient = NutritionOpenRouter.createOpenRouterCookingClient({});
-  var cookingUiState = { 1: 'fallback', 2: 'fallback' };
-  var cookingUiError = { 1: '', 2: '' };
+  var cookingUiState = {};
+  var cookingUiError = {};
   var generationTimers = {};
 
   function getStored(key) {
@@ -185,6 +186,18 @@
     return NutritionCookingCore.buildCookingDemand(NutritionData.plan14, state, catalog, week);
   }
 
+  function cookingPlanKey(week, sessionKind) {
+    return String(Number(week) === 2 ? 2 : 1) + ':' + (sessionKind === 'refresh' ? 'refresh' : 'main');
+  }
+
+  function activeCookingPlanKey() {
+    return cookingPlanKey(cookingWeek, cookingSessionKind);
+  }
+
+  function getCookingDemand(week, sessionKind) {
+    return NutritionCookingCore.selectCookingSessionDemand(getWeekDemand(week), sessionKind);
+  }
+
   function getOpenRouterSettings() {
     var stored = getStored('openrouter_settings_v1');
     return stored && typeof stored === 'object' ? stored : {};
@@ -198,6 +211,14 @@
     return hours + ' ч' + (rest ? ' ' + rest + ' мин' : '');
   }
 
+  function formatBatchCount(value) {
+    var count = Math.max(0, Math.round(Number(value) || 0));
+    var mod100 = count % 100;
+    var mod10 = count % 10;
+    var noun = mod100 >= 11 && mod100 <= 14 ? 'партий' : mod10 === 1 ? 'партия' : mod10 >= 2 && mod10 <= 4 ? 'партии' : 'партий';
+    return count + ' ' + noun;
+  }
+
   function buildFallbackPlan(demand, planHash) {
     var actions = NutritionCookingCore.buildFallbackActions(demand, kitchenProfile);
     var scheduled = NutritionScheduler.scheduleActions(actions, kitchenProfile);
@@ -206,6 +227,7 @@
       planHash: planHash,
       cycleId: demand.cycleId,
       week: demand.week,
+      sessionKind: demand.sessionKind,
       model: '',
       generatedAt: new Date().toISOString(),
       status: scheduled.ok ? 'fallback' : 'error',
@@ -216,7 +238,7 @@
       estimate: scheduled.ok ? scheduled.estimate : { minMinutes: 0, maxMinutes: 0 },
       peakOutlets: scheduled.ok ? scheduled.peakOutlets : 0,
       warnings: scheduled.ok
-        ? ['последовательный план собран локально из инструкций блюд']
+        ? ['локальный план собран из инструкций блюд']
         : ['не удалось построить резервный план']
     };
   }
@@ -235,6 +257,7 @@
       planHash: planHash,
       cycleId: demand.cycleId,
       week: demand.week,
+      sessionKind: demand.sessionKind,
       model: result.model || '',
       generatedAt: new Date().toISOString(),
       status: 'ready',
@@ -248,17 +271,20 @@
     };
   }
 
-  function requestAiCookingPlan(week, demand, planHash) {
+  function requestAiCookingPlan(week, sessionKind, demand, planHash) {
+    var key = cookingPlanKey(week, sessionKind);
     var settings = getOpenRouterSettings();
     if (!settings.key) {
-      cookingUiState[week] = 'fallback';
-      cookingUiError[week] = '';
+      cookingUiState[key] = 'fallback';
+      cookingUiError[key] = '';
       return;
     }
-    cookingUiState[week] = 'generating';
-    cookingUiError[week] = '';
-    if (activeView === 'cooking' && cookingWeek === week) renderCooking();
-    if (activeView === 'cycle' && cycleWeek === week) renderBatchRail(demand, NutritionCookingCore.getCachedPlan(cookingStore, planHash));
+    cookingUiState[key] = 'generating';
+    cookingUiError[key] = '';
+    if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
+    if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) {
+      renderBatchRail(getWeekDemand(week), NutritionCookingCore.getCachedPlan(cookingStore, planHash));
+    }
 
     cookingClient.decompose({
       apiKey: settings.key,
@@ -266,43 +292,46 @@
       demand: demand,
       profile: kitchenProfile
     }).then(function (result) {
-      var currentDemand = getWeekDemand(week);
+      var currentDemand = getCookingDemand(week, sessionKind);
       var currentHash = NutritionCookingCore.createPlanFingerprint(currentDemand, kitchenProfile);
       if (currentHash !== planHash) return;
       var aiPlan = createAiPlan(demand, planHash, result);
       if (aiPlan) {
         if (NutritionCookingCore.activeSessionForPlan(cookingStore, planHash)) {
           var activePlan = NutritionCookingCore.getCachedPlan(cookingStore, planHash);
-          cookingUiState[week] = activePlan && activePlan.source === 'ai' ? 'ready' : 'fallback';
-          cookingUiError[week] = '';
-          if (activeView === 'cycle' && cycleWeek === week) renderCycle();
-          if (activeView === 'cooking' && cookingWeek === week) renderCooking();
+          cookingUiState[key] = activePlan && activePlan.source === 'ai' ? 'ready' : 'fallback';
+          cookingUiError[key] = '';
+          if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) renderCycle();
+          if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
           return;
         }
         cookingStore = NutritionCookingCore.putCachedPlan(cookingStore, aiPlan);
         saveCookingStore();
-        cookingUiState[week] = 'ready';
-        cookingUiError[week] = '';
+        cookingUiState[key] = 'ready';
+        cookingUiError[key] = '';
       } else {
-        cookingUiState[week] = 'error';
-        cookingUiError[week] = result && result.error ? result.error.message : 'план не прошёл локальную проверку';
+        cookingUiState[key] = 'error';
+        cookingUiError[key] = result && result.error ? result.error.message : 'план не прошёл локальную проверку';
       }
-      if (activeView === 'cycle' && cycleWeek === week) renderCycle();
-      if (activeView === 'cooking' && cookingWeek === week) renderCooking();
+      if (sessionKind === 'main' && activeView === 'cycle' && cycleWeek === week) renderCycle();
+      if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === sessionKind) renderCooking();
     });
   }
 
-  function ensureCookingPlan(week, options) {
+  function ensureCookingPlan(week, sessionKind, options) {
+    var kind = sessionKind === 'refresh' ? 'refresh' : 'main';
+    var key = cookingPlanKey(week, kind);
     var activeSessionId = cookingStore.activeSessionId;
     var activeSession = activeSessionId && cookingStore.sessionsById[activeSessionId];
-    if (activeSession && activeSession.status !== 'completed' && activeSession.cycleId === state.activeCycle.id && Number(activeSession.week) === Number(week)) {
+    if (activeSession && activeSession.status !== 'completed' && activeSession.cycleId === state.activeCycle.id &&
+      Number(activeSession.week) === Number(week) && (activeSession.sessionKind || 'main') === kind) {
       var runningPlan = NutritionCookingCore.getCachedPlan(cookingStore, activeSession.planHash);
       if (runningPlan) {
-        cookingUiState[week] = runningPlan.status === 'ready' ? 'ready' : 'fallback';
+        cookingUiState[key] = runningPlan.status === 'ready' ? 'ready' : 'fallback';
         return runningPlan;
       }
     }
-    var demand = getWeekDemand(week);
+    var demand = getCookingDemand(week, kind);
     var planHash = NutritionCookingCore.createPlanFingerprint(demand, kitchenProfile);
     var cached = NutritionCookingCore.getCachedPlan(cookingStore, planHash);
     if (!cached) {
@@ -310,31 +339,33 @@
       cookingStore = NutritionCookingCore.putCachedPlan(cookingStore, cached);
       saveCookingStore();
     }
-    if (cookingUiState[week] !== 'generating' && cookingUiState[week] !== 'stale' && cookingUiState[week] !== 'error') {
-      cookingUiState[week] = cached.status === 'ready' ? 'ready' : 'fallback';
+    if (cookingUiState[key] !== 'generating' && cookingUiState[key] !== 'stale' && cookingUiState[key] !== 'error') {
+      cookingUiState[key] = cached.status === 'ready' ? 'ready' : 'fallback';
     }
     var settings = getOpenRouterSettings();
-    if (!settings.key && cookingUiState[week] !== 'generating') {
-      cookingUiState[week] = cached.status === 'ready' ? 'ready' : 'fallback';
-      cookingUiError[week] = '';
+    if (!settings.key && cookingUiState[key] !== 'generating') {
+      cookingUiState[key] = cached.status === 'ready' ? 'ready' : 'fallback';
+      cookingUiError[key] = '';
     }
-    if (settings.key && cookingUiState[week] !== 'generating' && (
-      options && options.forceAi || cookingUiState[week] !== 'stale' && cached.source !== 'ai'
+    if (settings.key && cookingUiState[key] !== 'generating' && (
+      options && options.forceAi || cookingUiState[key] !== 'stale' && cached.source !== 'ai'
     )) {
-      requestAiCookingPlan(week, demand, planHash);
+      requestAiCookingPlan(week, kind, demand, planHash);
     }
     return cached;
   }
 
-  function scheduleCookingGeneration(week, delay) {
-    cookingUiState[week] = 'stale';
-    cookingUiError[week] = '';
-    if (generationTimers[week]) clearTimeout(generationTimers[week]);
-    generationTimers[week] = setTimeout(function () {
-      delete generationTimers[week];
-      ensureCookingPlan(week, { forceAi: true });
+  function scheduleCookingGeneration(week, sessionKind, delay) {
+    var kind = sessionKind === 'refresh' ? 'refresh' : 'main';
+    var key = cookingPlanKey(week, kind);
+    cookingUiState[key] = 'stale';
+    cookingUiError[key] = '';
+    if (generationTimers[key]) clearTimeout(generationTimers[key]);
+    generationTimers[key] = setTimeout(function () {
+      delete generationTimers[key];
+      ensureCookingPlan(week, kind, { forceAi: true });
       if (activeView === 'cycle' && cycleWeek === week) renderCycle();
-      if (activeView === 'cooking' && cookingWeek === week) renderCooking();
+      if (activeView === 'cooking' && cookingWeek === week && cookingSessionKind === kind) renderCooking();
     }, Number(delay) || 450);
   }
 
@@ -582,11 +613,11 @@
     });
     renderTrainingExtra(trainingExtra);
     var week = getWeekForDay(selectedDay);
-    var quickPlan = ensureCookingPlan(week);
+    var quickPlan = ensureCookingPlan(week, 'main');
     var shoppingMeta = document.getElementById('shoppingQuickMeta');
     var cookingMeta = document.getElementById('cookingQuickMeta');
     if (shoppingMeta) shoppingMeta.textContent = 'неделя ' + week;
-    if (cookingMeta) cookingMeta.textContent = 'неделя ' + week + ' · ' + formatMinutes(quickPlan.estimate.minMinutes) + '–' + formatMinutes(quickPlan.estimate.maxMinutes);
+    if (cookingMeta) cookingMeta.textContent = 'основная заготовка · ' + formatMinutes(quickPlan.estimate.minMinutes) + '–' + formatMinutes(quickPlan.estimate.maxMinutes);
     renderCycleCompleteActions();
   }
 
@@ -596,7 +627,7 @@
     if (!grid || !rail) return;
     clearElement(grid);
     var demand = getWeekDemand(cycleWeek);
-    var cookingPlan = ensureCookingPlan(cycleWeek);
+    var cookingPlan = ensureCookingPlan(cycleWeek, 'main');
     var occurrenceBatches = {};
     demand.batches.forEach(function (batch) {
       batch.occurrences.forEach(function (occurrence) {
@@ -653,7 +684,7 @@
   }
 
   function cookingStateLabel(week, plan) {
-    var stateName = cookingUiState[week] || plan && plan.status || 'fallback';
+    var stateName = cookingUiState[cookingPlanKey(week, plan && plan.sessionKind)] || plan && plan.status || 'fallback';
     var labels = {
       ready: 'план актуален',
       generating: 'пересобирается',
@@ -892,10 +923,12 @@
   }
 
   function getLastCookingSession(plan) {
-    var weekKey = plan.cycleId + ':' + plan.week;
-    var id = cookingStore.lastSessionIdsByWeek && cookingStore.lastSessionIdsByWeek[weekKey] || cookingStore.lastSessionId;
+    var weekKey = plan.cycleId + ':' + plan.week + ':' + (plan.sessionKind || 'main');
+    var legacyWeekKey = plan.cycleId + ':' + plan.week;
+    var id = cookingStore.lastSessionIdsByWeek && (cookingStore.lastSessionIdsByWeek[weekKey] || cookingStore.lastSessionIdsByWeek[legacyWeekKey]) || cookingStore.lastSessionId;
     var session = id && cookingStore.sessionsById[id];
-    return session && session.status === 'completed' && session.cycleId === plan.cycleId && Number(session.week) === Number(plan.week)
+    return session && session.status === 'completed' && session.cycleId === plan.cycleId && Number(session.week) === Number(plan.week) &&
+      (session.sessionKind || 'main') === (plan.sessionKind || 'main')
       ? session
       : null;
   }
@@ -906,13 +939,31 @@
     return Boolean(session && session.status !== 'completed');
   }
 
+  function syncCookingSelectionToActiveSession() {
+    var id = cookingStore.activeSessionId;
+    var session = id && cookingStore.sessionsById[id];
+    if (!session || session.status === 'completed' || session.cycleId !== state.activeCycle.id) return;
+    cookingWeek = Number(session.week) === 2 ? 2 : 1;
+    cookingSessionKind = session.sessionKind === 'refresh' ? 'refresh' : 'main';
+    var weekTabs = document.querySelector('[data-week-tabs="cooking"]');
+    if (weekTabs) weekTabs.querySelectorAll('[data-week]').forEach(function (button) {
+      button.classList.toggle('active', Number(button.getAttribute('data-week')) === cookingWeek);
+    });
+    var sessionTabs = document.getElementById('cookingSessionTabs');
+    if (sessionTabs) sessionTabs.querySelectorAll('[data-cooking-session]').forEach(function (button) {
+      var active = button.getAttribute('data-cooking-session') === cookingSessionKind;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
   function persistCookingSession(session) {
     cookingStore.sessionsById[session.id] = session;
     cookingStore.activeSessionId = session.status === 'completed' ? null : session.id;
     if (session.status === 'completed') {
       cookingStore.lastSessionId = session.id;
       if (!cookingStore.lastSessionIdsByWeek) cookingStore.lastSessionIdsByWeek = {};
-      cookingStore.lastSessionIdsByWeek[session.cycleId + ':' + session.week] = session.id;
+      cookingStore.lastSessionIdsByWeek[session.cycleId + ':' + session.week + ':' + (session.sessionKind || 'main')] = session.id;
       if (!Array.isArray(cookingStore.calibrationSessionIds)) cookingStore.calibrationSessionIds = [];
       if (cookingStore.calibrationSessionIds.indexOf(session.id) === -1) cookingStore.calibrationSessionIds.push(session.id);
     }
@@ -930,10 +981,17 @@
 
   function runSessionTransition(plan, transition, actionId) {
     var session = getActiveCookingSession(plan);
+    var activeId = cookingStore.activeSessionId;
+    var activeSession = activeId && cookingStore.sessionsById[activeId];
+    if (!session && activeSession && activeSession.status !== 'completed' && activeSession.planHash !== plan.planHash) {
+      cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
+      renderCooking();
+      return;
+    }
     if (!session) session = NutritionCookingCore.startSession(plan, Date.now());
     var result = transition(session, actionId, Date.now());
     if (!result.ok) {
-      cookingUiError[cookingWeek] = result.error.message;
+      cookingUiError[activeCookingPlanKey()] = result.error.message;
       renderCooking();
       return;
     }
@@ -945,11 +1003,11 @@
       persistCookingSession(result.session);
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
       saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, 250);
+      scheduleCookingGeneration(cookingWeek, result.session.sessionKind, 250);
     } else {
       persistCookingSession(result.session);
     }
-    cookingUiError[cookingWeek] = '';
+    cookingUiError[activeCookingPlanKey()] = '';
     renderCooking();
   }
 
@@ -960,7 +1018,7 @@
     if (answer === null) return;
     var corrected = NutritionCookingCore.setStepActualMinutes(session, actionId, Number(answer));
     if (!corrected.ok) {
-      cookingUiError[cookingWeek] = corrected.error.message;
+      cookingUiError[activeCookingPlanKey()] = corrected.error.message;
       renderCooking();
       return;
     }
@@ -976,10 +1034,10 @@
       kitchenProfile = replayed.profile;
       saveKitchenProfile();
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, corrected.session.week);
-      scheduleCookingGeneration(corrected.session.week, 250);
+      scheduleCookingGeneration(corrected.session.week, corrected.session.sessionKind, 250);
     }
     persistCookingSession(corrected.session);
-    cookingUiError[cookingWeek] = '';
+    cookingUiError[activeCookingPlanKey()] = '';
     renderCookingNow(plan, document.getElementById('cookingNow'));
   }
 
@@ -991,17 +1049,19 @@
     var now = document.getElementById('cookingNow');
     var legend = document.getElementById('cookingBatchLegend');
     if (!context || !status || !overview || !timeline || !now || !legend) return;
-    var plan = ensureCookingPlan(cookingWeek);
+    var plan = ensureCookingPlan(cookingWeek, cookingSessionKind);
     var stateInfo = cookingStateLabel(cookingWeek, plan);
-    context.textContent = 'неделя ' + cookingWeek + ' · ' + plan.batches.length + ' партий';
+    var sessionTitle = cookingSessionKind === 'refresh' ? 'короткое обновление' : 'основная заготовка';
+    context.textContent = 'неделя ' + cookingWeek + ' · ' + sessionTitle + ' · ' + formatBatchCount(plan.batches.length);
     status.className = 'cooking-status ' + stateInfo.name;
-    status.textContent = cookingUiError[cookingWeek] || stateInfo.label;
+    status.textContent = cookingUiError[activeCookingPlanKey()] || stateInfo.label;
     var modeSelect = document.getElementById('kitchenModeSelect');
     if (modeSelect) modeSelect.value = kitchenProfile.activeMode;
 
     clearElement(overview);
     appendChildren(overview, [
       createElement('strong', '', formatMinutes(plan.estimate.minMinutes) + '–' + formatMinutes(plan.estimate.maxMinutes)),
+      createElement('span', '', 'время одной сессии'),
       createElement('span', '', 'пик ' + plan.peakOutlets + ' роз.'),
       createElement('span', '', plan.source === 'ai' ? 'openrouter · ' + (plan.model || 'модель') : 'локально · без api'),
       createElement('span', '', plan.generatedAt ? 'обновлено ' + new Date(plan.generatedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '')
@@ -1041,7 +1101,7 @@
 
   var TIMELINE_PIXELS_PER_MINUTE = 7;
   var TIMELINE_RESOURCE_WIDTH = 140;
-  var TIMELINE_MIN_SEGMENT_WIDTH = 220;
+  var TIMELINE_MIN_SEGMENT_WIDTH = 260;
 
   function renderCookingTimeline(plan, container) {
     clearElement(container);
@@ -1289,7 +1349,8 @@
         cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, affectedWeek);
         saveCookingStore();
         activeBatchId = null;
-        scheduleCookingGeneration(affectedWeek, 450);
+        if (replacementTarget.slot === 'lunch') scheduleCookingGeneration(affectedWeek, 'main', 450);
+        if (replacementTarget.slot === 'dinner') scheduleCookingGeneration(affectedWeek, 'refresh', 450);
         closeReplaceDialog();
         renderToday();
         renderCycle();
@@ -1321,6 +1382,15 @@
 
   function setWeek(kind, week) {
     var safeWeek = Number(week) === 2 ? 2 : 1;
+    if (kind === 'cooking') {
+      var activeId = cookingStore.activeSessionId;
+      var activeSession = activeId && cookingStore.sessionsById[activeId];
+      if (activeSession && activeSession.status !== 'completed' && Number(activeSession.week) !== safeWeek) {
+        cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
+        renderCooking();
+        return;
+      }
+    }
     if (kind === 'cycle') cycleWeek = safeWeek;
     if (kind === 'shopping') shoppingWeek = safeWeek;
     if (kind === 'cooking') cookingWeek = safeWeek;
@@ -1331,6 +1401,26 @@
     if (kind === 'cycle') renderCycle();
     if (kind === 'shopping') renderShopping();
     if (kind === 'cooking') renderCooking();
+  }
+
+  function setCookingSession(sessionKind) {
+    var kind = sessionKind === 'refresh' ? 'refresh' : 'main';
+    var activeId = cookingStore.activeSessionId;
+    var activeSession = activeId && cookingStore.sessionsById[activeId];
+    if (activeSession && activeSession.status !== 'completed' && (activeSession.sessionKind || 'main') !== kind) {
+      cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
+      renderCooking();
+      return;
+    }
+    cookingSessionKind = kind;
+    activeBatchId = null;
+    var tabs = document.getElementById('cookingSessionTabs');
+    if (tabs) tabs.querySelectorAll('[data-cooking-session]').forEach(function (button) {
+      var active = button.getAttribute('data-cooking-session') === kind;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    renderCooking();
   }
 
   function wireEvents() {
@@ -1355,10 +1445,14 @@
         if (button) setWeek(tabs.getAttribute('data-week-tabs'), button.getAttribute('data-week'));
       });
     });
+    document.getElementById('cookingSessionTabs').addEventListener('click', function (event) {
+      var button = event.target.closest('[data-cooking-session]');
+      if (button) setCookingSession(button.getAttribute('data-cooking-session'));
+    });
     document.getElementById('kitchenModeSelect').addEventListener('change', function (event) {
       if (hasActiveCookingSession()) {
         event.target.value = kitchenProfile.activeMode;
-        cookingUiError[cookingWeek] = 'сначала заверши активную сессию готовки';
+        cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
         renderCooking();
         return;
       }
@@ -1368,24 +1462,24 @@
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);
       saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, 10);
+      scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
       renderCycle();
       renderCooking();
     });
     document.getElementById('regenerateCookingBtn').addEventListener('click', function () {
       if (hasActiveCookingSession()) {
-        cookingUiError[cookingWeek] = 'сначала заверши активную сессию готовки';
+        cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
         renderCooking();
         return;
       }
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, cookingWeek);
       saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, 10);
+      scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
       renderCooking();
     });
     document.getElementById('resetCookingCalibrationBtn').addEventListener('click', function () {
       if (hasActiveCookingSession()) {
-        cookingUiError[cookingWeek] = 'сначала заверши активную сессию готовки';
+        cookingUiError[activeCookingPlanKey()] = 'сначала заверши активную сессию готовки';
         renderCooking();
         return;
       }
@@ -1398,15 +1492,15 @@
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 1);
       cookingStore = NutritionCookingCore.invalidateWeek(cookingStore, state.activeCycle.id, 2);
       saveCookingStore();
-      scheduleCookingGeneration(cookingWeek, 10);
+      scheduleCookingGeneration(cookingWeek, cookingSessionKind, 10);
       renderCooking();
     });
     document.getElementById('clearCookingCacheBtn').addEventListener('click', function () {
       if (!window.confirm('удалить кеш планов готовки? рацион и блюда останутся без изменений.')) return;
       cookingClient.abort();
       cookingStore = NutritionCookingCore.clearCachedPlans(cookingStore);
-      cookingUiState = { 1: 'fallback', 2: 'fallback' };
-      cookingUiError = { 1: '', 2: '' };
+      cookingUiState = {};
+      cookingUiError = {};
       saveCookingStore();
       renderCycle();
       renderCooking();
@@ -1477,6 +1571,7 @@
     loadImportedMeals();
     loadState();
     loadCookingData();
+    syncCookingSelectionToActiveSession();
     wireEvents();
     var initialView = window.location.hash.slice(1);
     switchView(initialView || DEFAULT_VIEW, false);

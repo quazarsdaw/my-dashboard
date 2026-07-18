@@ -92,7 +92,11 @@ test('nutrition controller exposes all cooking plan states and resource timeline
   assert.ok(html.includes('id="clearCookingCacheBtn"'));
   assert.ok(html.includes('id="cookingTimeline"'));
   assert.ok(html.includes('id="cookingNow"'));
+  assert.ok(html.includes('id="cookingSessionTabs"'));
+  assert.ok(html.includes('data-cooking-session="main"'));
+  assert.ok(html.includes('data-cooking-session="refresh"'));
   assert.ok(js.includes('function ensureCookingPlan('));
+  assert.ok(js.includes('NutritionCookingCore.selectCookingSessionDemand'));
 });
 
 test('nutrition desktop layout keeps calendar and cooking timeline readable at full zoom', () => {
@@ -109,11 +113,12 @@ test('nutrition desktop layout keeps calendar and cooking timeline readable at f
   assert.ok(html.includes('.cooking-timeline-column{min-width:0;'));
   assert.ok(html.includes('.timeline-shell{width:100%;max-width:100%;min-width:0;overflow-x:auto'));
   assert.ok(html.includes('position:sticky;left:0'));
-  assert.ok(html.includes('min-height:96px'));
-  assert.ok(html.includes('-webkit-line-clamp:2'));
+  assert.ok(html.includes('min-height:136px'));
+  assert.equal(html.includes('-webkit-line-clamp:2'), false);
+  assert.equal(html.includes('display:-webkit-box'), false);
   assert.ok(html.includes('.cycle-workspace,.cooking-layout{grid-template-columns:minmax(0,1fr)}'));
   assert.ok(js.includes('TIMELINE_PIXELS_PER_MINUTE = 7'));
-  assert.ok(js.includes('TIMELINE_MIN_SEGMENT_WIDTH = 220'));
+  assert.ok(js.includes('TIMELINE_MIN_SEGMENT_WIDTH = 260'));
   assert.ok(js.includes('NutritionCore.buildTimelineScale'));
   assert.ok(js.includes("setProperty('--timeline-width'"));
   assert.ok(html.includes('@media(max-width:1480px)'));
@@ -142,7 +147,9 @@ test('nutrition controller persists cooking sessions and calibrates completed ac
   assert.ok(js.includes('NutritionCookingCore.nextSessionActionId'));
   assert.ok(js.includes('NutritionCookingCore.clearCachedPlans'));
   assert.ok(js.includes('NutritionCookingCore.activeSessionForPlan'));
-  assert.ok(js.includes("if (!settings.key && cookingUiState[week] !== 'generating')"));
+  assert.ok(js.includes("if (!settings.key && cookingUiState[key] !== 'generating')"));
+  assert.ok(js.includes('function syncCookingSelectionToActiveSession('));
+  assert.ok(js.includes('activeSession.planHash !== plan.planHash'));
 });
 
 test('nutrition controller supports completion, notes, replacement and training extras', () => {
@@ -187,9 +194,10 @@ test('nutrition controller reloads synced state from storage events', () => {
 test('nutrition scripts use one fresh cache version for the changed controller contract', () => {
   const html = read('menu.html');
 
-  assert.ok(html.includes('nutrition-data.js?v=404'));
-  assert.ok(html.includes('nutrition-core.js?v=404'));
-  assert.ok(html.includes('nutrition.js?v=404'));
+  assert.ok(html.includes('nutrition-data.js?v=405'));
+  assert.ok(html.includes('nutrition-core.js?v=405'));
+  assert.ok(html.includes('nutrition-cooking-core.js?v=405'));
+  assert.ok(html.includes('nutrition.js?v=405'));
 });
 
 test('nutrition reads health targets without writing meal data back to health storage', () => {
