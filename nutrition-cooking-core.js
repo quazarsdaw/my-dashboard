@@ -898,14 +898,21 @@
     return result;
   }
 
+  function applyCalibrationBaseline(profile, calibrationBase) {
+    var current = normalizeKitchenProfile(profile);
+    var durationOverrides = clone(current.calibration.durationOverrides);
+    current.calibration = clone(calibrationBase);
+    current.calibration.durationOverrides = durationOverrides;
+    return normalizeKitchenProfile(current);
+  }
+
   function applySessionCalibration(profile, inputSession, reuseBase) {
     var session = clone(inputSession);
     var current = normalizeKitchenProfile(profile);
     if (!reuseBase || !isRecord(session.calibrationBase)) {
       session.calibrationBase = clone(current.calibration);
     }
-    current.calibration = clone(session.calibrationBase);
-    current = normalizeKitchenProfile(current);
+    current = applyCalibrationBaseline(current, session.calibrationBase);
     var calibrated = updateCalibration(current, session);
     session.calibrationResult = clone(calibrated.calibration);
     return { profile: calibrated, session: session };
@@ -916,8 +923,7 @@
     var current = normalizeKitchenProfile(profile);
     if (!sessions.length) return { profile: current, sessions: [] };
     if (isRecord(sessions[0].calibrationBase)) {
-      current.calibration = clone(sessions[0].calibrationBase);
-      current = normalizeKitchenProfile(current);
+      current = applyCalibrationBaseline(current, sessions[0].calibrationBase);
     }
     sessions = sessions.map(function (session) {
       var applied = applySessionCalibration(current, session, false);

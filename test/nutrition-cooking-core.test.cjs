@@ -663,6 +663,25 @@ test('recalculates a completed session from its original calibration baseline af
   assert.equal(recalculated.session.calibrationResult.factors.prep, 1.5);
 });
 
+test('keeps current exact durations while recalculating a completed session', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+  let session = CookingCore.startSession(sessionPlan(), 0);
+  session = CookingCore.startStep(session, 'prepare', 0).session;
+  session = CookingCore.completeStep(session, 'prepare', 20 * 60 * 1000).session;
+  const first = CookingCore.applySessionCalibration(profile, session);
+  const corrected = CookingCore.setStepActualMinutes(first.session, 'prepare', 10).session;
+
+  first.profile.calibration.durationOverrides['meal-rice::prep::отвари рис'] = 18;
+  const recalculated = CookingCore.applySessionCalibration(first.profile, corrected, true);
+
+  assert.deepEqual(recalculated.profile.calibration.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
+  assert.deepEqual(recalculated.session.calibrationResult.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
+});
+
 test('replays later calibration sessions after correcting an older observation', () => {
   const profile = CookingCore.createDefaultKitchenProfile();
   let firstSession = CookingCore.startSession(sessionPlan(), 0);
@@ -682,4 +701,28 @@ test('replays later calibration sessions after correcting an older observation',
   assert.equal(replayed.profile.calibration.observations.prep, 2);
   assert.equal(replayed.sessions[0].calibrationResult.factors.prep, 1.5);
   assert.equal(replayed.sessions[1].calibrationBase.factors.prep, 1.5);
+});
+
+test('keeps current exact durations while replaying calibration sessions', () => {
+  const profile = CookingCore.createDefaultKitchenProfile();
+  let firstSession = CookingCore.startSession(sessionPlan(), 0);
+  firstSession = CookingCore.startStep(firstSession, 'prepare', 0).session;
+  firstSession = CookingCore.completeStep(firstSession, 'prepare', 20 * 60 * 1000).session;
+  const firstApplied = CookingCore.applySessionCalibration(profile, firstSession);
+
+  let secondSession = CookingCore.startSession({ ...sessionPlan(), planHash: 'plan-session-2' }, 30 * 60 * 1000);
+  secondSession = CookingCore.startStep(secondSession, 'prepare', 30 * 60 * 1000).session;
+  secondSession = CookingCore.completeStep(secondSession, 'prepare', 40 * 60 * 1000).session;
+  const secondApplied = CookingCore.applySessionCalibration(firstApplied.profile, secondSession);
+  const correctedFirst = CookingCore.setStepActualMinutes(firstApplied.session, 'prepare', 10).session;
+
+  secondApplied.profile.calibration.durationOverrides['meal-rice::prep::отвари рис'] = 18;
+  const replayed = CookingCore.replaySessionCalibrations(secondApplied.profile, [correctedFirst, secondApplied.session]);
+
+  assert.deepEqual(replayed.profile.calibration.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
+  assert.deepEqual(replayed.sessions[1].calibrationResult.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
 });
