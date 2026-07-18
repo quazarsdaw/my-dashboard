@@ -63,9 +63,22 @@
       calibration: {
         defaultActiveFactor: 1.5,
         factors: {},
-        observations: {}
+        observations: {},
+        durationOverrides: {}
       }
     };
+  }
+
+  function normalizeActionTitle(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function getActionDurationKey(action, batches) {
+    var batch = (batches || []).find(function (item) { return item && action && item.id === action.batchId; });
+    var mealId = batch && batch.mealId;
+    var title = normalizeActionTitle(action && action.title);
+    var category = normalizeActionTitle(action && action.category);
+    return mealId && title && category ? [mealId, category, title].join('::') : '';
   }
 
   function normalizeKitchenProfile(raw) {
@@ -74,6 +87,7 @@
     var activeMode = ACTIVE_MODES.indexOf(raw.activeMode) !== -1 ? raw.activeMode : fallback.activeMode;
     var factors = {};
     var observations = {};
+    var durationOverrides = {};
     var rawCalibration = isRecord(raw.calibration) ? raw.calibration : {};
 
     ACTIVE_CATEGORIES.forEach(function (category) {
@@ -82,6 +96,13 @@
       var count = Number(rawCalibration.observations && rawCalibration.observations[category]);
       if (Number.isInteger(count) && count > 0) observations[category] = count;
     });
+
+    if (isRecord(rawCalibration.durationOverrides)) {
+      Object.keys(rawCalibration.durationOverrides).forEach(function (key) {
+        var value = Number(rawCalibration.durationOverrides[key]);
+        if (key && Number.isInteger(value) && value >= 1 && value <= 720) durationOverrides[key] = value;
+      });
+    }
 
     ACTIVE_MODES.forEach(function (mode) {
       var rawMode = isRecord(raw.modes && raw.modes[mode]) ? raw.modes[mode] : {};
@@ -108,7 +129,32 @@
     );
     fallback.calibration.factors = factors;
     fallback.calibration.observations = observations;
+    fallback.calibration.durationOverrides = durationOverrides;
     return fallback;
+  }
+
+  function setActionDurationOverride(profile, action, batches, minutes) {
+    var result = normalizeKitchenProfile(profile);
+    var key = getActionDurationKey(action, batches);
+    var value = Number(minutes);
+    if (!key) return { ok: false, profile: result, key: key, error: 'не удалось определить шаг готовки' };
+    if (!Number.isInteger(value) || value < 1 || value > 720) {
+      return { ok: false, profile: result, key: key, error: 'длительность должна быть целым числом от 1 до 720 минут' };
+    }
+    result.calibration.durationOverrides[key] = value;
+    return { ok: true, profile: result, key: key, error: null };
+  }
+
+  function clearActionDurationOverride(profile, action, batches) {
+    var result = normalizeKitchenProfile(profile);
+    var key = getActionDurationKey(action, batches);
+    if (!key) return { ok: false, profile: result, key: key, error: 'не удалось определить шаг готовки' };
+    delete result.calibration.durationOverrides[key];
+    return { ok: true, profile: result, key: key, error: null };
+  }
+
+  function canEditActionDuration(session, actionId) {
+    return !(session && isRecord(session.steps));
   }
 
   function getActiveOutletPool(profile) {
@@ -618,7 +664,7 @@
         previousId = portionId;
       }
     });
-    return actions;
+    return applyDurationOverridesToActions(actions, safeProfile, demand && demand.batches);
   }
 
   function numericTimestamp(value) {
@@ -881,15 +927,27 @@
     return { profile: current, sessions: sessions };
   }
 
-  function applyCalibrationToActions(actions, profile) {
+  function applyDurationOverridesToActions(actions, profile, batches) {
     var safe = normalizeKitchenProfile(profile);
     return (Array.isArray(actions) ? actions : []).map(function (action) {
+      var copy = clone(action);
+      var key = getActionDurationKey(copy, batches);
+      var override = key && safe.calibration.durationOverrides[key];
+      if (Number.isInteger(override)) copy.durationMinutes = override;
+      return copy;
+    });
+  }
+
+  function applyCalibrationToActions(actions, profile, batches) {
+    var safe = normalizeKitchenProfile(profile);
+    var calibrated = (Array.isArray(actions) ? actions : []).map(function (action) {
       var copy = clone(action);
       if (copy.mode !== 'active') return copy;
       var factor = safe.calibration.factors[copy.category] || safe.calibration.defaultActiveFactor;
       copy.durationMinutes = Math.max(1, Math.ceil(Number(copy.durationMinutes) * factor));
       return copy;
     });
+    return applyDurationOverridesToActions(calibrated, safe, batches);
   }
 
   function resetCalibration(profile) {
@@ -927,6 +985,10 @@
     updateCalibration: updateCalibration,
     applySessionCalibration: applySessionCalibration,
     replaySessionCalibrations: replaySessionCalibrations,
+    getActionDurationKey: getActionDurationKey,
+    setActionDurationOverride: setActionDurationOverride,
+    clearActionDurationOverride: clearActionDurationOverride,
+    canEditActionDuration: canEditActionDuration,
     applyCalibrationToActions: applyCalibrationToActions,
     resetCalibration: resetCalibration
   };

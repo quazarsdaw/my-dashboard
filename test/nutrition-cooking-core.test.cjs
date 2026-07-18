@@ -88,6 +88,98 @@ test('normalizes a damaged kitchen profile without mutating it', () => {
   assert.equal(normalized.resources.some((item) => item.id === 'fake'), false);
 });
 
+test('normalizes exact cooking duration overrides', () => {
+  const profile = CookingCore.normalizeKitchenProfile({
+    calibration: {
+      durationOverrides: {
+        'meal-rice::prep::отвари рис': 18,
+        broken: 0,
+        huge: 900
+      }
+    }
+  });
+
+  assert.deepEqual(profile.calibration.durationOverrides, {
+    'meal-rice::prep::отвари рис': 18
+  });
+});
+
+test('applies an exact duration only to the same action and meal', () => {
+  const batches = [
+    { id: 'rice-batch', mealId: 'meal-rice' },
+    { id: 'fish-batch', mealId: 'meal-fish' }
+  ];
+  const rice = { id: 'rice-step', batchId: 'rice-batch', title: ' Отвари  рис ', category: 'prep', mode: 'active', durationMinutes: 10 };
+  const fish = { id: 'fish-step', batchId: 'fish-batch', title: 'отвари рис', category: 'prep', mode: 'active', durationMinutes: 10 };
+  const saved = CookingCore.setActionDurationOverride(
+    CookingCore.createDefaultKitchenProfile(), rice, batches, 18
+  );
+  const adjusted = CookingCore.applyCalibrationToActions([rice, fish], saved.profile, batches);
+
+  assert.equal(saved.ok, true);
+  assert.equal(adjusted[0].durationMinutes, 18);
+  assert.notEqual(adjusted[1].durationMinutes, 18);
+});
+
+test('clears an exact duration without resetting pace calibration', () => {
+  const batches = [{ id: 'rice-batch', mealId: 'meal-rice' }];
+  const action = { id: 'rice-step', batchId: 'rice-batch', title: 'отвари рис', category: 'prep', mode: 'active', durationMinutes: 10 };
+  let profile = CookingCore.createDefaultKitchenProfile();
+  profile.calibration.factors.prep = 1.8;
+  profile = CookingCore.setActionDurationOverride(profile, action, batches, 18).profile;
+  profile = CookingCore.clearActionDurationOverride(profile, action, batches).profile;
+
+  assert.equal(profile.calibration.factors.prep, 1.8);
+  assert.deepEqual(profile.calibration.durationOverrides, {});
+});
+
+test('locks duration editing after a cooking session starts', () => {
+  assert.equal(CookingCore.canEditActionDuration(null, 'step'), true);
+  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'pending' } } }, 'step'), false);
+  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'pending' } } }, 'other-step'), false);
+  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'running' } } }, 'step'), false);
+  assert.equal(CookingCore.canEditActionDuration({ steps: { step: { status: 'done' } } }, 'step'), false);
+});
+
+test('rejects an exact duration without an identifiable action', () => {
+  const result = CookingCore.setActionDurationOverride(
+    CookingCore.createDefaultKitchenProfile(), null, [], 18
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.key, '');
+});
+
+test('changes a plan fingerprint after saving an exact duration', () => {
+  const demand = CookingCore.buildCookingDemand(plan, state(), catalog, 1);
+  const batches = [{ id: 'rice-batch', mealId: 'meal-rice' }];
+  const action = { id: 'rice-step', batchId: 'rice-batch', title: 'отвари рис', category: 'prep', mode: 'active', durationMinutes: 10 };
+  const profile = CookingCore.createDefaultKitchenProfile();
+  const saved = CookingCore.setActionDurationOverride(profile, action, batches, 18).profile;
+
+  assert.notEqual(
+    CookingCore.createPlanFingerprint(demand, profile),
+    CookingCore.createPlanFingerprint(demand, saved)
+  );
+});
+
+test('applies exact durations to already-calibrated fallback actions', () => {
+  const batches = [{
+    id: 'rice-batch',
+    mealId: 'meal-rice',
+    title: 'рис',
+    strategy: 'serve-day',
+    portions: 1,
+    meal: { instructions: ['подготовить продукты'], prepMinutes: { max: 20 } }
+  }];
+  const action = { batchId: 'rice-batch', title: 'подготовить продукты', category: 'prep' };
+  const profile = CookingCore.setActionDurationOverride(
+    CookingCore.createDefaultKitchenProfile(), action, batches, 7
+  ).profile;
+
+  assert.equal(CookingCore.buildFallbackActions({ batches }, profile)[0].durationMinutes, 7);
+});
+
 test('exposes concrete outlets for the active kitchen mode', () => {
   const profile = CookingCore.createDefaultKitchenProfile();
 
