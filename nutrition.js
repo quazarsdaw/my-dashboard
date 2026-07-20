@@ -1540,6 +1540,19 @@
     renderCooking();
   }
 
+  function runReopenSessionStep(plan, session, actionId) {
+    var result = NutritionCookingCore.reopenLastResolvedStep(session, actionId);
+    if (!result.ok) {
+      cookingUiError[activeCookingPlanKey()] = result.error.message;
+      renderCooking();
+      return result;
+    }
+    persistCookingSession(result.session);
+    cookingUiError[activeCookingPlanKey()] = '';
+    renderCooking();
+    return result;
+  }
+
   function correctStepTime(plan, session, actionId) {
     var step = session.steps[actionId];
     var current = Math.max(1, Math.round(Number(step.actualMs) / 60000));
@@ -1721,6 +1734,61 @@
     return pieces.length ? pieces.join(' · ') : 'без отдельного оборудования';
   }
 
+  function renderCookingSessionHistory(plan, session) {
+    var history = createElement('section', 'cooking-session-history internal-scroll');
+    history.setAttribute('aria-label', 'ход сессии готовки');
+    history.appendChild(createElement('div', 'cooking-session-history-title', 'ход сессии'));
+    if (!session || !session.steps) {
+      history.appendChild(createElement('div', 'cooking-session-empty', 'история появится после запуска первого шага'));
+      return history;
+    }
+
+    var orderedIds = [];
+    (plan && Array.isArray(plan.schedule) ? plan.schedule : []).forEach(function (entry) {
+      if (entry && orderedIds.indexOf(entry.actionId) === -1) orderedIds.push(entry.actionId);
+    });
+    (session.actions || []).forEach(function (action) {
+      if (action && orderedIds.indexOf(action.id) === -1) orderedIds.push(action.id);
+    });
+    var currentActionId = NutritionCookingCore.nextSessionActionId(
+      plan && Array.isArray(plan.schedule) && plan.schedule.length ? plan.schedule : session.actions,
+      session
+    );
+
+    orderedIds.forEach(function (actionId) {
+      var step = session.steps[actionId];
+      if (!step) return;
+      var action = (session.actions || []).find(function (item) { return item.id === actionId; });
+      var entry = plan ? entryForAction(plan, actionId) : null;
+      var isCurrent = currentActionId === actionId;
+      var statusName = step.status === 'done' ? 'done' : step.status === 'skipped' ? 'skipped' : isCurrent ? 'current' : 'waiting';
+      var row = createElement('div', 'cooking-session-step ' + statusName);
+      var status = createElement('span', 'cooking-session-status ' + statusName);
+      status.setAttribute('aria-label', step.status === 'done' ? 'готово' : step.status === 'skipped' ? 'пропущено' : isCurrent ? 'текущий шаг' : 'ожидает');
+      status.textContent = step.status === 'done' ? '✓' : step.status === 'skipped' ? '—' : String(orderedIds.indexOf(actionId) + 1);
+      var copy = createElement('div', 'cooking-session-copy');
+      copy.appendChild(createElement('strong', '', action && action.title || entry && entry.title || actionId));
+      var meta = step.status === 'done'
+        ? 'факт ' + formatMinutes(Number(step.actualMs) / 60000)
+        : step.status === 'skipped'
+          ? 'пропущено'
+          : (step.status === 'running' ? 'в работе' : step.status === 'paused' ? 'на паузе' : 'план ' + formatMinutes(Number(step.plannedMinutes) || Number(entry && entry.durationMinutes) || 0));
+      copy.appendChild(createElement('span', '', meta));
+      appendChildren(row, [status, copy]);
+
+      var reopenCheck = NutritionCookingCore.reopenLastResolvedStep(session, actionId);
+      if (reopenCheck.ok) {
+        var reopen = createElement('button', 'cooking-step-reopen', 'вернуть');
+        reopen.type = 'button';
+        reopen.setAttribute('aria-label', 'вернуть шаг: ' + (action && action.title || entry && entry.title || actionId));
+        reopen.addEventListener('click', function () { runReopenSessionStep(plan, session, actionId); });
+        row.appendChild(reopen);
+      }
+      history.appendChild(row);
+    });
+    return history;
+  }
+
   function renderCookingNow(plan, container) {
     clearElement(container);
     var session = getActiveCookingSession(plan);
@@ -1730,6 +1798,7 @@
     var current = nextSessionEntry(plan, session);
     if (!current) {
       container.appendChild(createElement('div', 'cooking-empty', session ? 'все шаги сессии завершены' : 'готовить нечего'));
+      if (journalSession) container.appendChild(renderCookingSessionHistory(plan, journalSession));
       return;
     }
     var currentStep = session && session.steps[current.actionId];
@@ -1755,37 +1824,54 @@
       ? passive.map(function (entry) { return entry.title + ' до ' + formatMinutes(entry.endMinute); }).join(' · ')
       : 'пассивных процессов пока нет'));
     container.appendChild(passiveBlock);
+    if (journalSession) container.appendChild(renderCookingSessionHistory(plan, journalSession));
     var actions = createElement('div', 'cooking-now-actions');
-    var start = createElement('button', 'primary-btn', 'начать');
-    var pause = createElement('button', 'quiet-btn', 'пауза');
-    var done = createElement('button', 'quiet-btn', 'готово');
-    var skip = createElement('button', 'quiet-btn', 'пропустить');
-    start.type = pause.type = done.type = skip.type = 'button';
-    start.id = 'cookingStartStepBtn';
-    pause.id = 'cookingPauseStepBtn';
-    done.id = 'cookingCompleteStepBtn';
-    skip.id = 'cookingSkipStepBtn';
-    start.textContent = currentStatus === 'paused' ? 'продолжить' : 'начать';
-    start.disabled = currentStatus === 'running';
-    pause.disabled = currentStatus !== 'running';
-    done.disabled = currentStatus !== 'running' && currentStatus !== 'paused';
-    start.addEventListener('click', function () {
-      runSessionTransition(plan, NutritionCookingCore.startStep, current.actionId);
-    });
-    pause.addEventListener('click', function () {
-      runSessionTransition(plan, NutritionCookingCore.pauseStep, current.actionId);
-    });
-    done.addEventListener('click', function () {
-      runSessionTransition(plan, NutritionCookingCore.completeStep, current.actionId);
-    });
-    skip.addEventListener('click', function () {
-      var hasDependents = plan.actions.some(function (action) {
-        return Array.isArray(action.dependsOn) && action.dependsOn.indexOf(current.actionId) !== -1;
+    function createStartButton(label) {
+      var button = createElement('button', 'primary-btn', label);
+      button.type = 'button';
+      button.id = 'cookingStartStepBtn';
+      button.addEventListener('click', function () {
+        runSessionTransition(plan, NutritionCookingCore.startStep, current.actionId);
       });
-      if (hasDependents && !window.confirm('пропустить шаг? зависящие от него действия будут разблокированы без проверки результата.')) return;
-      runSessionTransition(plan, NutritionCookingCore.skipStep, current.actionId);
-    });
-    appendChildren(actions, [start, pause, done, skip]);
+      return button;
+    }
+    function createDoneButton() {
+      var button = createElement('button', 'quiet-btn', 'готово');
+      button.type = 'button';
+      button.id = 'cookingCompleteStepBtn';
+      button.addEventListener('click', function () {
+        runSessionTransition(plan, NutritionCookingCore.completeStep, current.actionId);
+      });
+      return button;
+    }
+    function createSkipButton() {
+      var button = createElement('button', 'quiet-btn cooking-skip-step', 'пропустить');
+      button.type = 'button';
+      button.id = 'cookingSkipStepBtn';
+      button.addEventListener('click', function () {
+        var hasDependents = plan.actions.some(function (action) {
+          return Array.isArray(action.dependsOn) && action.dependsOn.indexOf(current.actionId) !== -1;
+        });
+        if (hasDependents && !window.confirm('пропустить шаг? зависящие от него действия будут разблокированы без проверки результата.')) return;
+        runSessionTransition(plan, NutritionCookingCore.skipStep, current.actionId);
+      });
+      return button;
+    }
+    if (currentStatus === 'pending') {
+      appendChildren(actions, [createStartButton('начать'), createSkipButton()]);
+    }
+    if (currentStatus === 'running') {
+      var pause = createElement('button', 'quiet-btn', 'пауза');
+      pause.type = 'button';
+      pause.id = 'cookingPauseStepBtn';
+      pause.addEventListener('click', function () {
+        runSessionTransition(plan, NutritionCookingCore.pauseStep, current.actionId);
+      });
+      appendChildren(actions, [pause, createDoneButton(), createSkipButton()]);
+    }
+    if (currentStatus === 'paused') {
+      appendChildren(actions, [createStartButton('продолжить'), createDoneButton(), createSkipButton()]);
+    }
     container.appendChild(actions);
 
     if (journalSession) {

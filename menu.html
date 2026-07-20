@@ -221,8 +221,18 @@ button{color:inherit}
 .cooking-now-eyebrow{font-size:9px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
 .cooking-now-title{margin-top:12px;font-size:19px;line-height:1.3}.cooking-now-meta{margin-top:12px;font-family:var(--font-mono);font-size:10px;line-height:1.6;color:var(--text-secondary)}
 .cooking-now-passive{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}.cooking-now-passive strong{display:block;font-size:10.5px}.cooking-now-passive span{display:block;margin-top:7px;font-size:10.5px;line-height:1.5;color:var(--text-tertiary)}
+.cooking-session-history{max-height:286px;margin-top:18px;overflow-y:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.cooking-session-history-title{position:sticky;top:0;z-index:1;padding:13px 2px 10px;background:#20232A;font-size:9px;font-weight:850;letter-spacing:.13em;text-transform:uppercase;color:var(--text-tertiary)}
+.cooking-session-step{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:52px;padding:10px 2px;border-top:1px solid rgba(255,255,255,.055);position:relative}
+.cooking-session-step.current{padding-left:10px;background:rgba(125,211,252,.06)}.cooking-session-step.current::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;background:var(--accent)}
+.cooking-session-step.done .cooking-session-copy,.cooking-session-step.skipped .cooking-session-copy{opacity:.68}
+.cooking-session-status{width:20px;height:20px;border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;color:var(--text-tertiary)}
+.cooking-session-status.done{border-color:rgba(107,227,164,.38);background:rgba(107,227,164,.13);color:var(--success)}.cooking-session-status.current{border-color:rgba(125,211,252,.48);color:var(--accent)}
+.cooking-session-copy{min-width:0}.cooking-session-copy strong{display:block;font-size:11px;line-height:1.35;overflow-wrap:anywhere}.cooking-session-copy span{display:block;margin-top:4px;font-family:var(--font-mono);font-size:8.5px;color:var(--text-tertiary)}
+.cooking-step-reopen{border:0;background:transparent;padding:6px 4px;color:var(--accent);font-size:9.5px;font-weight:800;cursor:pointer}.cooking-step-reopen:hover{text-decoration:underline}.cooking-step-reopen:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cooking-session-empty{padding:14px 2px;color:var(--text-tertiary);font-size:10.5px;line-height:1.5}
 .cooking-correction-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;margin-top:10px}.cooking-correction-tools .field-control{min-width:0;width:100%}
-.cooking-now-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}.cooking-now-actions .primary-btn{grid-column:1/3}
+.cooking-now-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}.cooking-now-actions button{flex:1 1 108px;max-width:160px;min-width:0}.cooking-now-actions .cooking-skip-step{flex-grow:0;color:var(--text-secondary)}
 .cooking-batch-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.cooking-batch-chip{border:1px solid var(--line);background:transparent;color:var(--text-secondary);padding:9px 11px;font-size:9.5px;cursor:pointer}.cooking-batch-chip::before{content:'';display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:50%;background:var(--batch-color)}
 .cooking-empty{padding:30px 0;border-top:1px solid var(--line);color:var(--text-secondary);font-size:12px}
 .history-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:24px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.history-summary[hidden]{display:none}
@@ -393,9 +403,9 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 
 <script src="nutrition-data.js?v=405"></script>
 <script src="nutrition-core.js?v=406"></script>
-<script src="nutrition-cooking-core.js?v=406"></script>
+<script src="nutrition-cooking-core.js?v=407"></script>
 <script src="nutrition-scheduler.js?v=406"></script>
 <script src="nutrition-openrouter.js?v=405"></script>
-<script src="nutrition.js?v=409"></script>
+<script src="nutrition.js?v=410"></script>
 </body>
 </html>

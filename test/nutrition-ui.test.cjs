@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
+const ActualCookingCore = require('../nutrition-cooking-core.js');
 
 function read(file) {
   return fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
@@ -359,7 +360,7 @@ function loadNutritionController(options = {}) {
   window.clearTimeout = context.clearTimeout;
   const source = read('nutrition.js').replace(
     "if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);",
-    "window.__nutritionTestApi = { ensureCookingPlan: ensureCookingPlan, scheduleCookingGeneration: scheduleCookingGeneration, saveCookingActionDuration: saveCookingActionDuration, resetCookingActionDuration: resetCookingActionDuration, regenerateCookingPlan: typeof regenerateCookingPlan === 'function' ? regenerateCookingPlan : undefined, resetCookingCalibration: typeof resetCookingCalibration === 'function' ? resetCookingCalibration : undefined, clearCookingPlanCache: typeof clearCookingPlanCache === 'function' ? clearCookingPlanCache : undefined, buildCookingKeyboardResizePreview: buildCookingKeyboardResizePreview, cookingMinuteAtPixel: typeof cookingMinuteAtPixel === 'function' ? cookingMinuteAtPixel : undefined, buildCookingPointerResizePreview: typeof buildCookingPointerResizePreview === 'function' ? buildCookingPointerResizePreview : undefined, renderCookingTimeline: renderCookingTimeline, loadCookingData: loadCookingData, getUiState: function () { return cookingUiState; }, getUiError: function () { return cookingUiError; }, getCookingCommandFeedback: function () { return cookingCommandFeedback; }, getGenerationRequests: function () { return generationRequests; }, getCookingSelection: function () { return { actionId: selectedCookingActionId, batchId: activeBatchId }; }, getRuntime: function () { return { kitchenProfile: kitchenProfile, cookingStore: cookingStore, cookingWeek: cookingWeek, cookingSessionKind: cookingSessionKind }; }, setRuntime: function (next) { state = next.state; kitchenProfile = next.kitchenProfile; cookingStore = next.cookingStore; cookingWeek = next.cookingWeek || 1; cookingSessionKind = next.cookingSessionKind === 'refresh' ? 'refresh' : 'main'; } };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);"
+    "window.__nutritionTestApi = { ensureCookingPlan: ensureCookingPlan, scheduleCookingGeneration: scheduleCookingGeneration, saveCookingActionDuration: saveCookingActionDuration, resetCookingActionDuration: resetCookingActionDuration, regenerateCookingPlan: typeof regenerateCookingPlan === 'function' ? regenerateCookingPlan : undefined, resetCookingCalibration: typeof resetCookingCalibration === 'function' ? resetCookingCalibration : undefined, clearCookingPlanCache: typeof clearCookingPlanCache === 'function' ? clearCookingPlanCache : undefined, buildCookingKeyboardResizePreview: buildCookingKeyboardResizePreview, cookingMinuteAtPixel: typeof cookingMinuteAtPixel === 'function' ? cookingMinuteAtPixel : undefined, buildCookingPointerResizePreview: typeof buildCookingPointerResizePreview === 'function' ? buildCookingPointerResizePreview : undefined, renderCookingTimeline: renderCookingTimeline, renderCookingNow: renderCookingNow, runReopenSessionStep: runReopenSessionStep, loadCookingData: loadCookingData, getUiState: function () { return cookingUiState; }, getUiError: function () { return cookingUiError; }, getCookingCommandFeedback: function () { return cookingCommandFeedback; }, getGenerationRequests: function () { return generationRequests; }, getCookingSelection: function () { return { actionId: selectedCookingActionId, batchId: activeBatchId }; }, getRuntime: function () { return { kitchenProfile: kitchenProfile, cookingStore: cookingStore, cookingWeek: cookingWeek, cookingSessionKind: cookingSessionKind }; }, setRuntime: function (next) { state = next.state; kitchenProfile = next.kitchenProfile; cookingStore = next.cookingStore; cookingWeek = next.cookingWeek || 1; cookingSessionKind = next.cookingSessionKind === 'refresh' ? 'refresh' : 'main'; } };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);"
   );
   vm.createContext(context);
   vm.runInContext(source, context);
@@ -570,6 +571,61 @@ test('nutrition controller exposes all cooking plan states and resource timeline
   assert.ok(html.includes('data-cooking-session="refresh"'));
   assert.ok(js.includes('function ensureCookingPlan('));
   assert.ok(js.includes('NutritionCookingCore.selectCookingSessionDemand'));
+});
+
+test('cooking panel renders session history and persists a reopened step', () => {
+  const html = read('menu.html');
+  const js = read('nutrition.js');
+
+  assert.ok(html.includes('.cooking-session-history'));
+  assert.ok(html.includes('.cooking-session-step.current'));
+  assert.ok(js.includes('function renderCookingSessionHistory('));
+  assert.ok(js.includes('function runReopenSessionStep('));
+  assert.ok(js.includes('NutritionCookingCore.reopenLastResolvedStep'));
+  assert.ok(js.includes("createElement('button', 'cooking-step-reopen', 'вернуть')"));
+  assert.ok(js.includes("if (currentStatus === 'pending')"));
+  assert.ok(js.includes("if (currentStatus === 'running')"));
+  assert.ok(js.includes("if (currentStatus === 'paused')"));
+});
+
+test('cooking controller persists a safely reopened step', () => {
+  const actions = [
+    {
+      id: 'prepare', batchId: 'batch-1', title: 'подготовить продукты', durationMinutes: 8,
+      mode: 'active', category: 'prep', dependsOn: [], assignedResources: {}
+    },
+    {
+      id: 'cook', batchId: 'batch-1', title: 'приготовить блюдо', durationMinutes: 20,
+      mode: 'passive', category: 'other', dependsOn: ['prepare'], assignedResources: {}
+    }
+  ];
+  const plan = {
+    planHash: 'history-plan', cycleId: 'cycle-1', week: 1, sessionKind: 'main',
+    actions, schedule: []
+  };
+  let session = ActualCookingCore.startSession(plan, 0);
+  session = ActualCookingCore.startStep(session, 'prepare', 0).session;
+  session = ActualCookingCore.completeStep(session, 'prepare', 8 * 60 * 1000).session;
+  const store = {
+    plansByHash: {}, sessionsById: { [session.id]: session }, activeSessionId: session.id,
+    lastSessionIdsByWeek: {}, calibrationSessionIds: []
+  };
+  const harness = loadNutritionController({
+    cookingCore: { reopenLastResolvedStep: ActualCookingCore.reopenLastResolvedStep }
+  });
+  harness.api.setRuntime({
+    state: { activeCycle: { id: 'cycle-1', startDate: '2026-07-18' } },
+    kitchenProfile: { revision: 1, calibration: { durationOverrides: {} } },
+    cookingStore: clone(store), cookingWeek: 1, cookingSessionKind: 'main'
+  });
+
+  const result = harness.api.runReopenSessionStep(plan, session, 'prepare');
+  const persisted = harness.values.get('nutrition_cooking_plans_v1');
+
+  assert.equal(result.ok, true);
+  assert.equal(persisted.activeSessionId, session.id);
+  assert.equal(persisted.sessionsById[session.id].steps.prepare.status, 'pending');
+  assert.equal(persisted.sessionsById[session.id].steps.prepare.actualMs, 8 * 60 * 1000);
 });
 
 test('cooking command bar exposes an accessible result region', () => {
@@ -1340,9 +1396,9 @@ test('nutrition scripts use one fresh cache version for the changed controller c
 
   assert.ok(html.includes('nutrition-data.js?v=405'));
   assert.ok(html.includes('nutrition-core.js?v=406'));
-  assert.ok(html.includes('nutrition-cooking-core.js?v=406'));
+  assert.ok(html.includes('nutrition-cooking-core.js?v=407'));
   assert.ok(html.includes('nutrition-scheduler.js?v=406'));
-  assert.ok(html.includes('nutrition.js?v=409'));
+  assert.ok(html.includes('nutrition.js?v=410'));
 });
 
 test('nutrition reads health targets without writing meal data back to health storage', () => {
