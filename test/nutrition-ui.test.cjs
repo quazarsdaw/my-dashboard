@@ -535,6 +535,24 @@ test('nutrition controller renders weekly calendar batches and invalidates only 
   assert.ok(js.includes('scheduleCookingGeneration'));
 });
 
+test('nutrition uses the dashboard completion control on the left of meals and shopping rows', () => {
+  const html = read('menu.html');
+  const js = read('nutrition.js');
+  const mealFunction = js.slice(js.indexOf('function createMealRow('), js.indexOf('function renderTrainingExtra('));
+  const shoppingFunction = js.slice(js.indexOf('function renderShopping('), js.indexOf('function formatIngredientAmount('));
+
+  assert.ok(js.includes('function createCompletionCheck('));
+  assert.match(mealFunction, /createCompletionCheck\(\s*'meal-complete'/);
+  assert.ok(shoppingFunction.includes("createCompletionCheck('shopping-check'"));
+  assert.ok(mealFunction.indexOf('row.appendChild(completion.root)') < mealFunction.indexOf("row.appendChild(createElement('div', 'meal-slot'"));
+  assert.equal(mealFunction.includes('appendChildren(actions, [detailsButton, replaceButton, complete])'), false);
+  assert.ok(html.includes('.completion-check-visual{width:22px;height:22px;border-radius:7px'));
+  assert.ok(html.includes('@keyframes completionCheckPop'));
+  assert.ok(html.includes('@media (prefers-reduced-motion:reduce)'));
+  assert.ok(html.includes('.calendar-meal-title{display:block;margin-top:8px;font-size:15px'));
+  assert.ok(html.includes(".batch-rail-item::before{content:'';position:absolute;left:10px;top:15px;width:4px;height:18px"));
+});
+
 test('nutrition controller exposes all cooking plan states and resource timeline controls', () => {
   const html = read('menu.html');
   const js = read('nutrition.js');

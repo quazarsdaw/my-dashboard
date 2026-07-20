@@ -597,12 +597,39 @@
     return details;
   }
 
+  function createCompletionCheck(className, ariaLabel, checked, onChange) {
+    var root = createElement('label', 'completion-check ' + className + '-wrap');
+    var input = createElement('input', 'completion-check-input ' + className);
+    var visual = createElement('span', 'completion-check-visual');
+    input.type = 'checkbox';
+    input.checked = checked === true;
+    input.setAttribute('aria-label', ariaLabel);
+    input.addEventListener('change', function () { onChange(input.checked); });
+    appendChildren(root, [input, visual]);
+    return { root: root, input: input };
+  }
+
   function createMealRow(slot, meal) {
     var row = createElement('article', 'meal-row');
     row.setAttribute('data-meal-slot', slot);
+    var completion = createCompletionCheck(
+      'meal-complete',
+      'отметить ' + SLOT_LABELS[slot],
+      state.completions[cycleKey(selectedDay, slot)] === true,
+      function (checked) {
+        var key = cycleKey(selectedDay, slot);
+        if (checked) state.completions[key] = true;
+        else delete state.completions[key];
+        saveState();
+        renderToday();
+        if (activeView === 'cycle') renderCycle();
+      }
+    );
+    row.classList.toggle('completed', completion.input.checked);
+    row.appendChild(completion.root);
     row.appendChild(createElement('div', 'meal-slot', SLOT_LABELS[slot]));
 
-    var info = createElement('div');
+    var info = createElement('div', 'meal-info');
     info.appendChild(createElement('div', 'meal-title', meal.title));
     var meta = createElement('div', 'meal-meta');
     appendChildren(meta, [
@@ -624,19 +651,7 @@
     var replaceButton = createElement('button', 'quiet-btn', 'заменить');
     replaceButton.type = 'button';
     replaceButton.addEventListener('click', function () { openReplaceDialog(slot, meal.mealType); });
-    var complete = createElement('input', 'meal-complete');
-    complete.type = 'checkbox';
-    complete.setAttribute('aria-label', 'отметить ' + SLOT_LABELS[slot]);
-    complete.checked = state.completions[cycleKey(selectedDay, slot)] === true;
-    complete.addEventListener('change', function () {
-      var key = cycleKey(selectedDay, slot);
-      if (complete.checked) state.completions[key] = true;
-      else delete state.completions[key];
-      saveState();
-      renderToday();
-      if (activeView === 'cycle') renderCycle();
-    });
-    appendChildren(actions, [detailsButton, replaceButton, complete]);
+    appendChildren(actions, [detailsButton, replaceButton]);
     row.appendChild(actions);
     row.appendChild(createMealDetails(meal, slot));
     return row;
@@ -981,17 +996,13 @@
       groups[category].forEach(function (item) {
         var key = state.activeCycle.id + ':' + shoppingWeek + ':' + item.id + ':' + item.unit;
         var row = createElement('div', 'shopping-item');
-        var checkbox = createElement('input', 'shopping-check');
-        checkbox.type = 'checkbox';
-        checkbox.setAttribute('aria-label', 'куплено: ' + item.name);
-        checkbox.checked = state.shoppingChecks[key] === true;
-        row.classList.toggle('checked', checkbox.checked);
-        checkbox.addEventListener('change', function () {
-          if (checkbox.checked) state.shoppingChecks[key] = true;
+        var completion = createCompletionCheck('shopping-check', 'куплено: ' + item.name, state.shoppingChecks[key] === true, function (checked) {
+          if (checked) state.shoppingChecks[key] = true;
           else delete state.shoppingChecks[key];
           saveState();
-          row.classList.toggle('checked', checkbox.checked);
+          row.classList.toggle('checked', checked);
         });
+        row.classList.toggle('checked', completion.input.checked);
         var priceKey = item.priceKey;
         var priceField = createElement('label', 'shopping-price-field');
         var priceInput = createElement('input', 'shopping-price-input');
@@ -1013,7 +1024,7 @@
         });
         appendChildren(priceField, [priceInput, createElement('span', 'shopping-price-unit', item.priceLabel)]);
         appendChildren(row, [
-          checkbox,
+          completion.root,
           createElement('span', 'shopping-name', item.name),
           createElement('span', 'shopping-amount', formatIngredientAmount(item.amount) + ' ' + item.unit),
           priceField,
