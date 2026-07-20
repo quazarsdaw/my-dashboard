@@ -885,6 +885,70 @@
     return sessionResult(true, session);
   }
 
+  function lastResolvedActionId(session) {
+    var latestId = null;
+    var latestTimestamp = -1;
+    (session.actions || []).forEach(function (action) {
+      var step = session.steps && session.steps[action.id];
+      if (!step || (step.status !== 'done' && step.status !== 'skipped')) return;
+      var timestamp = Number(step.completedAt);
+      if (!Number.isFinite(timestamp)) timestamp = 0;
+      if (timestamp >= latestTimestamp) {
+        latestTimestamp = timestamp;
+        latestId = action.id;
+      }
+    });
+    return latestId;
+  }
+
+  function actionDependsOn(session, actionId, dependencyId, visited) {
+    if (visited[actionId]) return false;
+    visited[actionId] = true;
+    var action = sessionAction(session, actionId);
+    if (!action) return false;
+    return (action.dependsOn || []).some(function (candidateId) {
+      return candidateId === dependencyId || actionDependsOn(session, candidateId, dependencyId, visited);
+    });
+  }
+
+  function hasResolvedDependent(session, actionId) {
+    return (session.actions || []).some(function (action) {
+      var step = session.steps && session.steps[action.id];
+      if (!step || (step.status !== 'done' && step.status !== 'skipped')) return false;
+      return actionDependsOn(session, action.id, actionId, {});
+    });
+  }
+
+  function reopenLastResolvedStep(inputSession, actionId) {
+    var session = clone(inputSession);
+    if (!session || !isRecord(session.steps)) {
+      return sessionResult(false, session, 'step-not-resolved', 'шаг ещё не завершён');
+    }
+    var step = session.steps[actionId];
+    if (session.status === 'completed' || isRecord(session.calibrationResult)) {
+      return sessionResult(false, session, 'session-completed', 'завершённую сессию нельзя вернуть');
+    }
+    if (!step || (step.status !== 'done' && step.status !== 'skipped')) {
+      return sessionResult(false, session, 'step-not-resolved', 'шаг ещё не завершён');
+    }
+    var active = Object.keys(session.steps).some(function (id) {
+      return session.steps[id].status === 'running' || session.steps[id].status === 'paused';
+    });
+    if (active) return sessionResult(false, session, 'active-step-running', 'сначала останови текущий шаг');
+    if (lastResolvedActionId(session) !== actionId) {
+      return sessionResult(false, session, 'not-last-resolved', 'можно вернуть только последний шаг');
+    }
+    if (hasResolvedDependent(session, actionId)) {
+      return sessionResult(false, session, 'resolved-dependent', 'после шага уже завершена зависимая работа');
+    }
+    step.status = 'pending';
+    step.completedAt = null;
+    step.lastStartedAt = null;
+    session.status = 'running';
+    session.completedAt = null;
+    return sessionResult(true, session);
+  }
+
   function setStepActualMinutes(inputSession, actionId, minutes) {
     var session = clone(inputSession);
     var step = session.steps && session.steps[actionId];
@@ -1009,6 +1073,7 @@
     pauseStep: pauseStep,
     completeStep: completeStep,
     skipStep: skipStep,
+    reopenLastResolvedStep: reopenLastResolvedStep,
     nextSessionActionId: nextSessionActionId,
     setStepActualMinutes: setStepActualMinutes,
     updateCalibration: updateCalibration,
