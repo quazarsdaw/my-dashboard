@@ -92,7 +92,7 @@ button{color:inherit}
 .health-context-link:hover{text-decoration:underline}
 .meal-list{display:flex;flex-direction:column;border-top:1px solid var(--line)}
 .meal-row{display:grid;grid-template-columns:30px 110px minmax(0,1fr) auto;gap:16px;align-items:center;
-  padding:18px 2px;border-bottom:1px solid var(--line)}
+  padding:18px 12px;border-bottom:1px solid var(--line);border-radius:10px}
 .meal-row.completed{background:rgba(107,227,164,.025)}.meal-row.completed .meal-meta{color:var(--text-secondary)}
 .meal-slot{font-size:10px;font-weight:850;letter-spacing:.13em;text-transform:uppercase;color:var(--text-tertiary)}
 .meal-title{font-size:16px;font-weight:760;line-height:1.25}
@@ -272,7 +272,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 @media(max-width:520px){
   .nutrition-page-head{margin-bottom:14px}.nutrition-cycle-mark{font-size:10px}.panel-head{display:block}.panel-actions{justify-content:flex-start;margin-top:13px}
   .date-control{width:100%}.date-control input{flex:1;min-width:0}.switch-row{width:100%}.day-summary{grid-template-columns:1fr 1fr}
-  .summary-item{padding:13px 10px}.summary-value{font-size:15px}.meal-row{grid-template-columns:28px minmax(0,1fr);gap:10px;padding:15px 0}
+  .summary-item{padding:13px 10px}.summary-value{font-size:15px}.meal-row{grid-template-columns:28px minmax(0,1fr);gap:10px;padding:15px 10px}
   .meal-complete-wrap{grid-column:1;grid-row:1/3}.meal-slot{grid-column:2;grid-row:1}.meal-info{grid-column:2;grid-row:2}.meal-actions{grid-column:2;grid-row:3;justify-content:flex-end}.meal-details{grid-column:1/3;grid-row:4}.meal-row.expanded .meal-details{grid-template-columns:1fr}
   .meal-title{font-size:15px}.quick-links{grid-template-columns:1fr}.catalog-tools{grid-template-columns:1fr}.catalog-tools .primary-btn{height:42px}
   .history-summary{grid-template-columns:1fr}.history-stat{border-right:0;border-bottom:1px solid var(--line)}.history-stat:last-child{border-bottom:0}.history-item{grid-template-columns:1fr 1fr}.history-date{grid-column:1/3}.cooking-commandbar{display:block}.cooking-control-stack{margin-top:12px}.cooking-controls .field-control{width:100%}

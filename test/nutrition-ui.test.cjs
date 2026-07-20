@@ -547,6 +547,8 @@ test('nutrition uses the dashboard completion control on the left of meals and s
   assert.ok(shoppingFunction.includes("createCompletionCheck('shopping-check'"));
   assert.ok(mealFunction.indexOf('row.appendChild(completion.root)') < mealFunction.indexOf("row.appendChild(createElement('div', 'meal-slot'"));
   assert.equal(mealFunction.includes('appendChildren(actions, [detailsButton, replaceButton, complete])'), false);
+  assert.ok(html.includes('padding:18px 12px;border-bottom:1px solid var(--line);border-radius:10px'));
+  assert.ok(html.includes('.meal-row{grid-template-columns:28px minmax(0,1fr);gap:10px;padding:15px 10px}'));
   assert.ok(html.includes('.completion-check-visual{width:22px;height:22px;border-radius:7px'));
   assert.ok(html.includes('@keyframes completionCheckPop'));
   assert.ok(html.includes('@media (prefers-reduced-motion:reduce)'));
