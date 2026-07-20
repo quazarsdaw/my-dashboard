@@ -1734,6 +1734,30 @@
     return pieces.length ? pieces.join(' · ') : 'без отдельного оборудования';
   }
 
+  function appendCookingHistoryControls(row, plan, step, actionId, isCurrent) {
+    if (isCurrent || (step.status !== 'running' && step.status !== 'paused')) return;
+    var controls = createElement('div', 'cooking-session-controls');
+    var toggleLabel = step.status === 'running' ? 'пауза' : 'продолжить';
+    var toggle = createElement('button', 'cooking-step-inline-action', toggleLabel);
+    toggle.type = 'button';
+    toggle.setAttribute('aria-label', toggleLabel + ' шаг: ' + actionId);
+    toggle.addEventListener('click', function () {
+      runSessionTransition(
+        plan,
+        step.status === 'running' ? NutritionCookingCore.pauseStep : NutritionCookingCore.startStep,
+        actionId
+      );
+    });
+    var done = createElement('button', 'cooking-step-inline-action', 'готово');
+    done.type = 'button';
+    done.setAttribute('aria-label', 'завершить шаг: ' + actionId);
+    done.addEventListener('click', function () {
+      runSessionTransition(plan, NutritionCookingCore.completeStep, actionId);
+    });
+    appendChildren(controls, [toggle, done]);
+    row.appendChild(controls);
+  }
+
   function renderCookingSessionHistory(plan, session) {
     var history = createElement('section', 'cooking-session-history internal-scroll');
     history.setAttribute('aria-label', 'ход сессии готовки');
@@ -1761,10 +1785,22 @@
       var action = (session.actions || []).find(function (item) { return item.id === actionId; });
       var entry = plan ? entryForAction(plan, actionId) : null;
       var isCurrent = currentActionId === actionId;
-      var statusName = step.status === 'done' ? 'done' : step.status === 'skipped' ? 'skipped' : isCurrent ? 'current' : 'waiting';
+      var statusName = step.status === 'done'
+        ? 'done'
+        : step.status === 'skipped'
+          ? 'skipped'
+          : (step.status === 'running' || step.status === 'paused')
+            ? 'active'
+            : isCurrent ? 'current' : 'waiting';
       var row = createElement('div', 'cooking-session-step ' + statusName);
       var status = createElement('span', 'cooking-session-status ' + statusName);
-      status.setAttribute('aria-label', step.status === 'done' ? 'готово' : step.status === 'skipped' ? 'пропущено' : isCurrent ? 'текущий шаг' : 'ожидает');
+      status.setAttribute('aria-label', step.status === 'done'
+        ? 'готово'
+        : step.status === 'skipped'
+          ? 'пропущено'
+          : step.status === 'running'
+            ? 'в работе'
+            : step.status === 'paused' ? 'на паузе' : isCurrent ? 'текущий шаг' : 'ожидает');
       status.textContent = step.status === 'done' ? '✓' : step.status === 'skipped' ? '—' : String(orderedIds.indexOf(actionId) + 1);
       var copy = createElement('div', 'cooking-session-copy');
       copy.appendChild(createElement('strong', '', action && action.title || entry && entry.title || actionId));
@@ -1784,6 +1820,7 @@
         reopen.addEventListener('click', function () { runReopenSessionStep(plan, session, actionId); });
         row.appendChild(reopen);
       }
+      appendCookingHistoryControls(row, plan, step, actionId, isCurrent);
       history.appendChild(row);
     });
     return history;

@@ -227,9 +227,10 @@ button{color:inherit}
 .cooking-session-step.current{padding-left:10px;background:rgba(125,211,252,.06)}.cooking-session-step.current::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;background:var(--accent)}
 .cooking-session-step.done .cooking-session-copy,.cooking-session-step.skipped .cooking-session-copy{opacity:.68}
 .cooking-session-status{width:20px;height:20px;border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;color:var(--text-tertiary)}
-.cooking-session-status.done{border-color:rgba(107,227,164,.38);background:rgba(107,227,164,.13);color:var(--success)}.cooking-session-status.current{border-color:rgba(125,211,252,.48);color:var(--accent)}
+.cooking-session-status.done{border-color:rgba(107,227,164,.38);background:rgba(107,227,164,.13);color:var(--success)}.cooking-session-status.current,.cooking-session-status.active{border-color:rgba(125,211,252,.48);color:var(--accent)}
 .cooking-session-copy{min-width:0}.cooking-session-copy strong{display:block;font-size:11px;line-height:1.35;overflow-wrap:anywhere}.cooking-session-copy span{display:block;margin-top:4px;font-family:var(--font-mono);font-size:8.5px;color:var(--text-tertiary)}
 .cooking-step-reopen{border:0;background:transparent;padding:6px 4px;color:var(--accent);font-size:9.5px;font-weight:800;cursor:pointer}.cooking-step-reopen:hover{text-decoration:underline}.cooking-step-reopen:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cooking-session-controls{display:flex;gap:4px;align-items:center}.cooking-step-inline-action{border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.04);padding:5px 7px;color:var(--text-secondary);font-size:8.5px;font-weight:800;cursor:pointer}.cooking-step-inline-action:hover{border-color:rgba(125,211,252,.4);color:var(--text-primary)}.cooking-step-inline-action:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .cooking-session-empty{padding:14px 2px;color:var(--text-tertiary);font-size:10.5px;line-height:1.5}
 .cooking-correction-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;margin-top:10px}.cooking-correction-tools .field-control{min-width:0;width:100%}
 .cooking-now-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}.cooking-now-actions button{flex:1 1 108px;max-width:160px;min-width:0}.cooking-now-actions .cooking-skip-step{flex-grow:0;color:var(--text-secondary)}
@@ -406,6 +407,6 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,te
 <script src="nutrition-cooking-core.js?v=407"></script>
 <script src="nutrition-scheduler.js?v=406"></script>
 <script src="nutrition-openrouter.js?v=405"></script>
-<script src="nutrition.js?v=410"></script>
+<script src="nutrition.js?v=411"></script>
 </body>
 </html>

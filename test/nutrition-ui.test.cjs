@@ -586,6 +586,9 @@ test('cooking panel renders session history and persists a reopened step', () =>
   assert.ok(js.includes("if (currentStatus === 'pending')"));
   assert.ok(js.includes("if (currentStatus === 'running')"));
   assert.ok(js.includes("if (currentStatus === 'paused')"));
+  assert.ok(js.includes("function appendCookingHistoryControls("));
+  assert.ok(js.includes("'cooking-step-inline-action'"));
+  assert.ok(js.includes("step.status === 'running' ? 'пауза' : 'продолжить'"));
 });
 
 test('cooking controller persists a safely reopened step', () => {
@@ -1398,7 +1401,7 @@ test('nutrition scripts use one fresh cache version for the changed controller c
   assert.ok(html.includes('nutrition-core.js?v=406'));
   assert.ok(html.includes('nutrition-cooking-core.js?v=407'));
   assert.ok(html.includes('nutrition-scheduler.js?v=406'));
-  assert.ok(html.includes('nutrition.js?v=410'));
+  assert.ok(html.includes('nutrition.js?v=411'));
 });
 
 test('nutrition reads health targets without writing meal data back to health storage', () => {
