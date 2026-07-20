@@ -602,6 +602,93 @@ test('skipped prerequisites resolve dependencies but remain visible in the journ
   assert.equal(next.session.steps.cook.status, 'running');
 });
 
+test('reopens only the latest resolved step and preserves measured time', () => {
+  let session = CookingCore.startSession(sessionPlan(), 0);
+  session = CookingCore.startStep(session, 'prepare', 0).session;
+  session = CookingCore.completeStep(session, 'prepare', 8 * 60 * 1000).session;
+
+  const reopened = CookingCore.reopenLastResolvedStep(session, 'prepare');
+
+  assert.equal(reopened.ok, true);
+  assert.equal(reopened.session.steps.prepare.status, 'pending');
+  assert.equal(reopened.session.steps.prepare.completedAt, null);
+  assert.equal(reopened.session.steps.prepare.actualMs, 8 * 60 * 1000);
+  assert.equal(reopened.session.status, 'running');
+  assert.equal(session.steps.prepare.status, 'done', 'исходная сессия не должна изменяться');
+});
+
+test('blocks reopening while another step is running', () => {
+  let session = CookingCore.startSession(sessionPlan(), 0);
+  session = CookingCore.startStep(session, 'prepare', 0).session;
+  session = CookingCore.completeStep(session, 'prepare', 1000).session;
+  session = CookingCore.startStep(session, 'cook', 2000).session;
+
+  const reopened = CookingCore.reopenLastResolvedStep(session, 'prepare');
+
+  assert.equal(reopened.ok, false);
+  assert.equal(reopened.error.code, 'active-step-running');
+  assert.equal(reopened.session.steps.prepare.status, 'done');
+});
+
+test('blocks reopening a resolved step that is not the latest one', () => {
+  const independentPlan = {
+    planHash: 'independent-history', cycleId: 'cycle-test', week: 1,
+    actions: [
+      action({ id: 'first', dependsOn: [] }),
+      action({ id: 'second', dependsOn: [] }),
+      action({ id: 'remaining', dependsOn: [] })
+    ]
+  };
+  let session = CookingCore.startSession(independentPlan, 0);
+  session = CookingCore.startStep(session, 'first', 0).session;
+  session = CookingCore.completeStep(session, 'first', 1000).session;
+  session = CookingCore.startStep(session, 'second', 2000).session;
+  session = CookingCore.completeStep(session, 'second', 3000).session;
+
+  const reopened = CookingCore.reopenLastResolvedStep(session, 'first');
+
+  assert.equal(reopened.ok, false);
+  assert.equal(reopened.error.code, 'not-last-resolved');
+});
+
+test('blocks reopening when a resolved dependent already exists', () => {
+  const dependentPlan = {
+    planHash: 'dependent-history', cycleId: 'cycle-test', week: 1,
+    actions: [
+      action({ id: 'prepare-root', dependsOn: [] }),
+      action({ id: 'dependent', dependsOn: ['prepare-root'] }),
+      action({ id: 'remaining', dependsOn: [] })
+    ]
+  };
+  let session = CookingCore.startSession(dependentPlan, 0);
+  session = CookingCore.startStep(session, 'prepare-root', 0).session;
+  session = CookingCore.completeStep(session, 'prepare-root', 1000).session;
+  session = CookingCore.startStep(session, 'dependent', 2000).session;
+  session = CookingCore.completeStep(session, 'dependent', 3000).session;
+  session.steps['prepare-root'].completedAt = 4000;
+
+  const reopened = CookingCore.reopenLastResolvedStep(session, 'prepare-root');
+
+  assert.equal(reopened.ok, false);
+  assert.equal(reopened.error.code, 'resolved-dependent');
+});
+
+test('does not reopen a completed or already calibrated session', () => {
+  let session = CookingCore.startSession({
+    planHash: 'completed-history', cycleId: 'cycle-test', week: 1,
+    actions: [action({ id: 'only', dependsOn: [] })]
+  }, 0);
+  session = CookingCore.startStep(session, 'only', 0).session;
+  session = CookingCore.completeStep(session, 'only', 1000).session;
+
+  assert.equal(CookingCore.reopenLastResolvedStep(session, 'only').error.code, 'session-completed');
+
+  session.status = 'running';
+  session.completedAt = null;
+  session.calibrationResult = { factors: {} };
+  assert.equal(CookingCore.reopenLastResolvedStep(session, 'only').error.code, 'session-completed');
+});
+
 test('offers an independent active step while a passive process is running', () => {
   const parallelPlan = {
     planHash: 'parallel-plan', cycleId: 'cycle-test', week: 1,
