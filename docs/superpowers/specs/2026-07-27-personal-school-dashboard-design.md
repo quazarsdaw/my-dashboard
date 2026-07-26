@@ -819,9 +819,9 @@ credentials cookie не используются.
 
 используется notion api version `2026-03-11`.
 
-перед реализацией проверена актуальная официальная версия `@notionhq/client@5.22.0`. официальный sdk требует node 18+ и не заявляет supabase edge runtime как прямую целевую среду. поэтому реализация начинается с изолированного compatibility test:
+перед реализацией проверено, что фиксированная официальная версия `@notionhq/client@5.23.2` опубликована в npm. официальный sdk требует node 18+ и не заявляет supabase edge runtime как прямую целевую среду. поэтому реализация начинается с изолированного compatibility test:
 
-- exact import `npm:@notionhq/client@5.22.0`;
+- exact import `npm:@notionhq/client@5.23.2`;
 - deno typecheck;
 - локальный запуск edge function;
 - query configured data source;
@@ -837,6 +837,43 @@ credentials cookie не используются.
 - `GET /v1/blocks/{id}/children`.
 
 добавление отдельного backend из-за sdk запрещено.
+
+### чтение блоков страницы
+
+`getLessonContent` поддерживает следующие notion block types:
+
+- текст: `paragraph`, `heading_1`, `heading_2`, `heading_3`, `heading_4`;
+- списки: `bulleted_list_item`, `numbered_list_item`, `to_do`;
+- выделения: `toggle`, `quote`, `callout`, `code`, `divider`, `equation`;
+- таблицы и layout containers: `table`, `table_row`, `column_list`, `column`, `synced_block`;
+- ссылки и media references: `bookmark`, `link_preview`, `image`, `file`, `pdf`, `video`, `audio`, `embed`.
+
+media и embed не исполняются внутри dashboard: mapper возвращает безопасную ссылку и подпись, а frontend открывает её отдельным явным действием. arbitrary html из notion не рендерится.
+
+неподдерживаемые типы, включая `child_page`, `child_database`, `template`, `breadcrumb`, `table_of_contents`, `link_to_page` и `meeting_notes`, нормализуются в:
+
+```ts
+{
+  type: 'unsupported'
+  sourceType: string
+  label: string
+}
+```
+
+raw block payload клиенту не передаётся.
+
+pagination выполняется отдельно для каждого parent block:
+
+- `page_size = 100`;
+- `next_cursor` считается opaque string и без преобразований передаётся как `start_cursor`;
+- загрузка продолжается, пока `has_more = false`;
+- любой block с `has_children = true` загружается рекурсивно;
+- `visitedBlockIds` защищает от повторного обхода;
+- максимальная глубина — 10;
+- максимальное число нормализованных blocks одной lesson page — 1000;
+- при превышении границы возвращается `LESSON_CONTENT_TOO_LARGE`, а не частично выглядящий как полный результат.
+
+inline rich text нормализуется в plain text spans с допустимыми annotations и безопасными links. script, html и event attributes не принимаются.
 
 перед любой mutation repository:
 
@@ -861,7 +898,7 @@ credentials cookie не используются.
 - duration — integer 15–180;
 - move count — неотрицательное целое;
 - order — конечное число;
-- comment — trim и ограничение 2000 unicode code points;
+- comment — trim и ограничение 1000 unicode code points;
 - artifact — только абсолютный `https://` url, максимум 2048 символов;
 - `http`, `file`, `javascript`, `data`, `notion` и другие schemes отклоняются;
 - url не обрезается автоматически;
@@ -891,22 +928,31 @@ school_mutation_locks (
 rpc:
 
 - `acquire_school_mutation_lock(p_lock_key text, p_lock_token uuid, p_ttl_seconds integer) returns boolean`;
+- `renew_school_mutation_lock(p_lock_key text, p_lock_token uuid, p_ttl_seconds integer) returns boolean`;
 - `release_school_mutation_lock(p_lock_key text, p_lock_token uuid) returns boolean`.
 
 acquire выполняется одной sql operation:
 
 `insert ... on conflict ... do update ... where locked_until < now()`.
 
+renew выполняется одной условной sql operation:
+
+`update ... set locked_until = now() + interval '60 seconds' ... where lock_key = p_lock_key and lock_token = p_lock_token and locked_until >= now()`.
+
 правила:
 
-- default ttl — 20 секунд;
-- допустимо 5–30 секунд;
+- lease ttl — ровно 60 секунд;
+- acquire и renew отклоняют другое значение ttl;
 - отдельный uuid token на запрос;
 - максимум три короткие попытки с jitter;
 - lock освобождается в `finally`;
 - чужой token не освобождает lock;
 - после crash lock становится доступен по ttl;
-- heartbeat не добавляется.
+- постоянный interval heartbeat не добавляется;
+- после каждого успешного notion read или update внутри locked operation вызывается `renew_school_mutation_lock`;
+- renew продлевает `locked_until` только когда совпадают `lock_key`, `lock_token` и lease ещё действует;
+- если renew вернул false, операция не начинает следующий notion-step;
+- если до потери lease уже выполнен update, service запускает предусмотренную для команды компенсацию, повторно читает notion и возвращает `SCHOOL_LOCK_LOST`.
 
 lock применяется только когда mutation меняет глобальный active state:
 
@@ -982,6 +1028,7 @@ notion token никогда не передаётся.
 - `ACTIVE_LESSON_EXISTS` — 409;
 - `ACTIVE_LESSON_STATE_INCONSISTENT` — 409;
 - `SCHOOL_MUTATION_IN_PROGRESS` — 409;
+- `SCHOOL_LOCK_LOST` — 409;
 - `LESSON_TIME_CONFLICT` — 409;
 - `CROSS_WEEK_MOVE_REQUIRES_REVIEW` — 409;
 - `NOTION_RATE_LIMITED` — 503 с безопасным retry hint;
@@ -1026,6 +1073,10 @@ server logs могут содержать:
 deno tests покрывают:
 
 - notion mapper;
+- recursive block mapper для всех поддерживаемых типов;
+- unsupported block fallback без raw payload;
+- opaque cursor pagination до `has_more = false`;
+- recursive children loading с depth/block limits;
 - validation enums;
 - integer understanding;
 - duration bounds;
@@ -1054,7 +1105,9 @@ deno tests покрывают:
 - владелец освобождает;
 - чужой token не освобождает;
 - expired lock перехватывается;
-- ttl вне 5–30 отклоняется;
+- ttl, отличный от 60, отклоняется;
+- действующий owner lease продлевается renew-вызовом;
+- чужой или истёкший token не продлевает lease;
 - anon и authenticated не имеют прямого доступа;
 - service role может вызвать rpc.
 
@@ -1067,9 +1120,14 @@ deno tests покрывают:
 
 ### live verification
 
-после mock tests создаётся одна временная notion-карточка с явным `[тест]` в названии. реальные 18 уроков не изменяются.
+после mock tests создаются две временные notion-карточки:
 
-на тестовой карточке проверяются:
+- `[тест A] school-notion live verification`;
+- `[тест B] school-notion live verification`.
+
+реальные 18 уроков не изменяются. две карточки нужны для проверки active switch, конкурентных start-команд, overlap и компенсации без использования реальных уроков.
+
+на двух тестовых карточках проверяются:
 
 - list/read content;
 - start;
@@ -1088,7 +1146,7 @@ deno tests покрывают:
 - cancel/restore;
 - decision mark/clear.
 
-после проверки тестовая карточка перемещается в trash. затем runtime notion query обязан снова вернуть:
+после проверки обе тестовые карточки перемещаются в trash. затем runtime notion query обязан снова вернуть:
 
 - 18 активных уроков;
 - распределение `9 / 2 / 3 / 2 / 1 / 1`;
@@ -1123,9 +1181,14 @@ deno tests покрывают:
 - `listLessons`;
 - подтверждение 18 lessons и subject distribution;
 - `getLessonContent`;
-- today/week/diary read-only rendering.
+- today/week/diary read-only rendering;
+- recursive block loading и pagination;
+- screenshots desktop и mobile;
+- обязательная остановка и пользовательское подтверждение read-only ui.
 
 ### этап 2: безопасные mutations
+
+этот этап запрещено начинать до явного подтверждения screenshots пользователем.
 
 - migration lock table и rpc;
 - domain validation;
@@ -1145,8 +1208,8 @@ deno tests покрывают:
 
 ### этап 4: live verification и release
 
-- одна временная test page;
-- удаление test page;
+- две временные test pages `[тест A]` и `[тест B]`;
+- удаление обеих test pages;
 - повторное подтверждение 18 lessons;
 - production deployment;
 - smoke test;
@@ -1158,6 +1221,8 @@ deno tests покрывают:
 - страница выглядит как часть существующего dashboard и не перегружена декором;
 - read-only загрузка показывает ровно 18 реальных lessons;
 - содержимое отдельного урока открывается;
+- notion blocks загружаются рекурсивно и полностью по pagination;
+- после read-only ui показаны desktop/mobile screenshots и получено явное подтверждение до начала mutations;
 - notion является единственным источником школьных данных;
 - frontend не содержит notion token, service role или ids secrets;
 - без сессии edge function возвращает 401;
@@ -1165,6 +1230,7 @@ deno tests покрывают:
 - owner получает данные;
 - cors разрешает production origin и не отражает произвольный origin;
 - global active invariant защищён server lock;
+- 60-секундный lease продлевается после каждого успешного notion-step;
 - все status transitions соответствуют матрице;
 - custom duration переживает date-only и reload;
 - move count меняется только при смене дня;
@@ -1173,6 +1239,7 @@ deno tests покрывают:
 - weekly progress считает только completed lessons;
 - persisted decision request не смешивается с derived issues;
 - реальные 18 lessons не используются для destructive tests;
+- live verification использует только `[тест A]` и `[тест B]`;
 - после live test остаются ровно 18 реальных lessons;
 - existing 189 tests и все новые tests проходят;
 - edge function развёрнута с `verify_jwt = true`;
