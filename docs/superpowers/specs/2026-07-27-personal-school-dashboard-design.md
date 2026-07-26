@@ -827,7 +827,9 @@ credentials cookie не используются.
 - query configured data source;
 - retrieve page;
 - retrieve block children;
-- update temporary test page.
+- наличие и type compatibility метода update без сетевого вызова.
+
+live update temporary test pages выполняется только после read-only checkpoint и явного подтверждения пользователя.
 
 если sdk проходит этот тест, версия фиксируется в `deno.json`. если возникает runtime incompatibility, `notion-client.ts` сохраняет тот же интерфейс, но использует обычный server-side `fetch` к официальным endpoints:
 
