@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public;
 
-select plan(36);
+select plan(39);
 
 select has_table(
   'public',
@@ -371,6 +371,40 @@ select ok(
     'execute'
   ),
   'service role can execute exactly the lock rpc surface'
+);
+
+select is(
+  (
+    select count(*)
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'school_mutation_locks'
+      and policyname = 'school_mutation_locks_deny_direct_access'
+  ),
+  1::bigint,
+  'lock table has one explicit deny policy'
+);
+select is(
+  (
+    select qual
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'school_mutation_locks'
+      and policyname = 'school_mutation_locks_deny_direct_access'
+  ),
+  'false',
+  'deny policy never exposes existing lock rows'
+);
+select is(
+  (
+    select with_check
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'school_mutation_locks'
+      and policyname = 'school_mutation_locks_deny_direct_access'
+  ),
+  'false',
+  'deny policy never accepts direct lock writes'
 );
 
 select * from finish();
