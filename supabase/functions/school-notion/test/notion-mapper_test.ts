@@ -235,6 +235,90 @@ if (typeof Deno !== "undefined") {
     );
   });
 
+  Deno.test("numeric canonical duration remains authoritative when outside the allowed range", () => {
+    const lesson = mapNotionPageToLesson(notionLessonPage({
+      date: {
+        end: "2026-08-05T11:00:00+05:00",
+        start: "2026-08-05T10:00:00+05:00",
+        time_zone: null,
+      },
+      durationMinutes: 200,
+    }));
+
+    assertEquals(lesson.durationMinutes, 200, "invalid canonical duration");
+    assertEquals(
+      lesson.schedule.end,
+      "2026-08-05T13:20:00+05:00",
+      "canonical end",
+    );
+    assertEquals(
+      lesson.warnings,
+      [
+        { code: "invalid-duration" },
+        { code: "duration-mismatch" },
+      ],
+      "normalized duration warnings",
+    );
+
+    const matchingRawInterval = mapNotionPageToLesson(notionLessonPage({
+      date: {
+        end: "2026-08-05T13:20:00+05:00",
+        start: "2026-08-05T10:00:00+05:00",
+        time_zone: null,
+      },
+      durationMinutes: 200,
+    }));
+    assertEquals(
+      matchingRawInterval.warnings,
+      [{ code: "invalid-duration" }],
+      "matching invalid duration warning",
+    );
+  });
+
+  Deno.test("mapper fails closed for missing, wrong-typed and unknown-subject properties", () => {
+    const missingProperty = notionLessonPage({ id: "missing-property-page" });
+    delete missingProperty.properties["Урок"];
+    const wrongType = notionLessonPage({ id: "wrong-type-page" });
+    wrongType.properties["Продолжительность, мин"] =
+      wrongType.properties["Модуль"];
+    const unknownSubject = notionLessonPage({
+      id: "unknown-subject-page",
+      subject: "__proto__",
+    });
+    const missingProperties = {
+      ...notionLessonPage({ id: "missing-properties-page" }),
+      properties: undefined,
+    };
+
+    for (
+      const page of [
+        missingProperty,
+        wrongType,
+        unknownSubject,
+        missingProperties,
+      ]
+    ) {
+      let error: unknown;
+      try {
+        mapNotionPageToLesson(page as never);
+      } catch (caught) {
+        error = caught;
+      }
+
+      assert(
+        error instanceof Error &&
+          "code" in error &&
+          error.code === "NOTION_SCHEMA_ERROR",
+        `invalid notion page was mapped: ${page.id}`,
+      );
+      assertEquals(
+        error.message,
+        "notion lesson schema is invalid",
+        "safe schema error message",
+      );
+    }
+  });
+
   Deno.test("learning evidence comes only from status and assessment properties", () => {
     const pageWithInstructionBody = {
       ...notionLessonPage({

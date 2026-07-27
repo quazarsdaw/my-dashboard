@@ -1,6 +1,6 @@
 import { createLessonRepository } from "../lesson-repository.ts";
 import { createLessonService } from "../lesson-service.ts";
-import { routeSchoolCommand } from "../router.ts";
+import { handleRequest, routeSchoolCommand } from "../router.ts";
 import type { QueryLessonsInput, SchoolNotionReadClient } from "../types.ts";
 import {
   ACTIVE_WEEK,
@@ -166,6 +166,95 @@ if (typeof Deno !== "undefined") {
       "University": 1,
     }, "subject distribution");
     assertEquals(result.lessons.length, 18, "lesson result count");
+  });
+
+  Deno.test("schema defects abort the whole response without partial lessons or counts", async () => {
+    const missingProperty = notionLessonPage({ id: "missing-property-page" });
+    delete missingProperty.properties["Урок"];
+    const wrongType = notionLessonPage({ id: "wrong-type-page" });
+    wrongType.properties["Продолжительность, мин"] =
+      wrongType.properties["Модуль"];
+    const unknownSubject = notionLessonPage({
+      id: "unknown-subject-page",
+      subject: "__proto__",
+    });
+
+    for (
+      const defectivePage of [
+        missingProperty,
+        wrongType,
+        unknownSubject,
+      ]
+    ) {
+      const client = fakeClient(() =>
+        Promise.resolve(
+          notionQueryResponse([
+            notionLessonPage({ id: "valid-page-before-defect" }),
+            defectivePage,
+          ]),
+        )
+      );
+      const request = new Request(
+        "https://edge.example/functions/v1/school-notion",
+        {
+          body: JSON.stringify({
+            operation: "listLessons",
+            week: ACTIVE_WEEK.notionValue,
+          }),
+          headers: {
+            authorization: "Bearer owner-session",
+            "content-type": "application/json",
+            origin: "https://dashboard.example",
+          },
+          method: "POST",
+        },
+      );
+      const response = await handleRequest(request, {
+        createRequestId: () => "schema-request-id",
+        createUserClient: () =>
+          Promise.resolve({
+            data: {
+              supabase: {},
+              userClaims: { sub: "owner-id" },
+            },
+            error: null,
+          }),
+        env: {
+          DASHBOARD_ORIGIN: "https://dashboard.example",
+          NOTION_DATA_SOURCE_ID: "server-only-source",
+          NOTION_TOKEN: "server-only-token",
+          SCHOOL_OWNER_USER_ID: "owner-id",
+        },
+        router: (command, context) =>
+          routeSchoolCommand(command, {
+            ...context,
+            notionClient: client,
+          }),
+      });
+      const body = await response.json() as Record<string, unknown>;
+      const serialized = JSON.stringify(body);
+
+      assertEquals(response.status, 502, "schema response status");
+      assertEquals(body.ok, false, "schema response success flag");
+      assertEquals(body.error, "NOTION_SCHEMA_ERROR", "schema error code");
+      assertEquals(
+        body.message,
+        "notion lesson schema is invalid",
+        "schema error message",
+      );
+      assertEquals(body.requestId, "schema-request-id", "schema request id");
+      assert(!("data" in body), "partial data returned");
+      assert(
+        !serialized.includes("valid-page-before-defect"),
+        "partial lesson leaked",
+      );
+      assert(
+        !serialized.includes(defectivePage.id),
+        "defective page id leaked",
+      );
+      assert(!serialized.includes("property-"), "property id leaked");
+      assert(!serialized.includes("__proto__"), "unknown subject leaked");
+    }
   });
 
   Deno.test("listLessons route returns a normalized envelope without raw notion objects", async () => {

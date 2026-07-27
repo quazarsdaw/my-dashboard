@@ -1,3 +1,5 @@
+import { SchoolHttpError } from "./errors.ts";
+import { LESSON_SUBJECTS } from "./types.ts";
 import type {
   LessonListResult,
   LessonRepository,
@@ -18,15 +20,26 @@ export function createLessonService(
           ? { week: command.week }
           : { from: command.from, to: command.to },
       );
+      const subjectCounts = new Map<string, number>(
+        LESSON_SUBJECTS.map((subject) => [subject, 0]),
+      );
+
+      for (const lesson of lessons) {
+        const current = subjectCounts.get(lesson.subject);
+        if (current === undefined) {
+          throw new SchoolHttpError(
+            502,
+            "NOTION_SCHEMA_ERROR",
+            "notion lesson schema is invalid",
+          );
+        }
+        subjectCounts.set(lesson.subject, current + 1);
+      }
+
       const counts = Object.fromEntries(
-        Object.entries(
-          lessons.reduce<Record<string, number>>((result, lesson) => {
-            if (lesson.subject) {
-              result[lesson.subject] = (result[lesson.subject] ?? 0) + 1;
-            }
-            return result;
-          }, {}),
-        ).sort(([left], [right]) => left.localeCompare(right)),
+        [...subjectCounts.entries()]
+          .filter(([, count]) => count > 0)
+          .sort(([left], [right]) => left.localeCompare(right)),
       );
 
       return {

@@ -64,6 +64,19 @@ export type LessonStatus =
 
 export type LessonPriority = "Must" | "Should" | "Could";
 
+export const LESSON_SUBJECTS = Object.freeze(
+  [
+    "Software Engineering",
+    "DevOps & Infrastructure",
+    "English & IELTS",
+    "Mathematics",
+    "University",
+    "Director & Assessment",
+  ] as const,
+);
+
+export type LessonSubject = (typeof LESSON_SUBJECTS)[number];
+
 export type LessonResult =
   | "Зачёт"
   | "Незачёт"
@@ -93,7 +106,7 @@ export type LessonSchedule =
   }>;
 
 export type LessonWarning = Readonly<{
-  code: "duration-mismatch";
+  code: "duration-mismatch" | "invalid-duration";
 }>;
 
 export interface Lesson {
@@ -113,7 +126,7 @@ export interface Lesson {
   result: LessonResult;
   schedule: LessonSchedule;
   status: LessonStatus;
-  subject: string;
+  subject: LessonSubject;
   title: string;
   understanding: 0 | 1 | 2 | 3 | null;
   warnings: LessonWarning[];

@@ -1,4 +1,6 @@
 import type { PageObjectResponse } from "@notionhq/client";
+import { SchoolHttpError } from "./errors.ts";
+import { LESSON_SUBJECTS } from "./types.ts";
 import type {
   Lesson,
   LessonAutonomy,
@@ -6,28 +8,32 @@ import type {
   LessonResult,
   LessonSchedule,
   LessonStatus,
+  LessonSubject,
 } from "./types.ts";
 
-export const READ_PROPERTY_NAMES = Object.freeze(
+export const READ_PROPERTY_SCHEMA = Object.freeze(
   [
-    "Урок",
-    "Предмет",
-    "Модуль",
-    "Начало и окончание",
-    "Статус",
-    "Приоритет",
-    "Неделя",
-    "Результат",
-    "Автономность",
-    "Понимание",
-    "Артефакт",
-    "Краткий комментарий",
-    "Причина пропуска",
-    "Количество переносов",
-    "Продолжительность, мин",
-    "Порядок",
-    "Требует решения",
+    ["Урок", "title"],
+    ["Предмет", "select"],
+    ["Модуль", "rich_text"],
+    ["Начало и окончание", "date"],
+    ["Статус", "select"],
+    ["Приоритет", "select"],
+    ["Неделя", "select"],
+    ["Результат", "select"],
+    ["Автономность", "select"],
+    ["Понимание", "number"],
+    ["Артефакт", "url"],
+    ["Краткий комментарий", "rich_text"],
+    ["Причина пропуска", "select"],
+    ["Количество переносов", "number"],
+    ["Продолжительность, мин", "number"],
+    ["Порядок", "number"],
+    ["Требует решения", "select"],
   ] as const,
+);
+export const READ_PROPERTY_NAMES = Object.freeze(
+  READ_PROPERTY_SCHEMA.map(([name]) => name),
 );
 
 const defaultDurationMinutes = 45;
@@ -64,11 +70,85 @@ const autonomies = new Set<Exclude<LessonAutonomy, null>>([
   "A2",
   "A3",
 ]);
+const lessonSubjects = new Set<string>(LESSON_SUBJECTS);
 
 type UnknownRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function schemaError(): never {
+  throw new SchoolHttpError(
+    502,
+    "NOTION_SCHEMA_ERROR",
+    "notion lesson schema is invalid",
+  );
+}
+
+function assertPropertyValue(
+  value: unknown,
+  expectedType: (typeof READ_PROPERTY_SCHEMA)[number][1],
+): asserts value is UnknownRecord {
+  if (!isRecord(value) || value.type !== expectedType) {
+    return schemaError();
+  }
+
+  if (
+    (expectedType === "title" || expectedType === "rich_text") &&
+    (!Array.isArray(value[expectedType]) ||
+      value[expectedType].some((item) =>
+        !isRecord(item) || typeof item.plain_text !== "string"
+      ))
+  ) {
+    return schemaError();
+  }
+
+  if (
+    expectedType === "select" &&
+    value.select !== null &&
+    (!isRecord(value.select) || typeof value.select.name !== "string")
+  ) {
+    return schemaError();
+  }
+
+  if (
+    expectedType === "number" &&
+    value.number !== null &&
+    (typeof value.number !== "number" || !Number.isFinite(value.number))
+  ) {
+    return schemaError();
+  }
+
+  if (
+    expectedType === "url" &&
+    value.url !== null &&
+    typeof value.url !== "string"
+  ) {
+    return schemaError();
+  }
+
+  if (expectedType === "date" && value.date !== null) {
+    if (
+      !isRecord(value.date) ||
+      typeof value.date.start !== "string" ||
+      value.date.end !== null && typeof value.date.end !== "string" ||
+      value.date.time_zone !== null &&
+        typeof value.date.time_zone !== "string"
+    ) {
+      return schemaError();
+    }
+  }
+}
+
+function assertPageSchema(page: PageObjectResponse): void {
+  if (!isRecord(page.properties)) {
+    return schemaError();
+  }
+
+  for (const [name, expectedType] of READ_PROPERTY_SCHEMA) {
+    assertPropertyValue(page.properties[name], expectedType);
+  }
 }
 
 function property(page: PageObjectResponse, name: string): unknown {
@@ -148,7 +228,7 @@ function timedDifferenceMinutes(date: UnknownRecord | null): number | null {
   }
 
   const difference = (Date.parse(date.end) - Date.parse(date.start)) / 60_000;
-  return validDuration(difference) ? difference : null;
+  return Number.isFinite(difference) ? difference : null;
 }
 
 function resolvedDuration(
@@ -156,12 +236,14 @@ function resolvedDuration(
   durationProperty: unknown,
 ): number {
   const canonical = numberValue(durationProperty);
-  if (validDuration(canonical)) {
+  if (canonical !== null) {
     return canonical;
   }
 
-  return timedDifferenceMinutes(dateValue(dateProperty)) ??
-    defaultDurationMinutes;
+  const legacyDifference = timedDifferenceMinutes(dateValue(dateProperty));
+  return validDuration(legacyDifference)
+    ? legacyDifference
+    : defaultDurationMinutes;
 }
 
 function addMinutesPreservingOffset(start: string, minutes: number): string {
@@ -193,6 +275,8 @@ export function normalizeNotionDate(
   dateProperty: unknown,
   durationProperty: unknown,
 ): LessonSchedule {
+  assertPropertyValue(dateProperty, "date");
+  assertPropertyValue(durationProperty, "number");
   const date = dateValue(dateProperty);
   if (!date) {
     return {
@@ -258,39 +342,93 @@ function normalizeUnderstanding(value: number | null): 0 | 1 | 2 | 3 | null {
     : null;
 }
 
+function normalizeSubject(value: string | null): LessonSubject {
+  if (!value || !lessonSubjects.has(value)) {
+    return schemaError();
+  }
+
+  return value as LessonSubject;
+}
+
+function assertAllowedValues(
+  status: string | null,
+  priority: string | null,
+  result: string | null,
+  autonomy: string | null,
+  understanding: number | null,
+  decisionRequest: string | null,
+): void {
+  if (
+    status !== null && !statuses.has(status as LessonStatus) ||
+    priority !== null && !priorities.has(priority as LessonPriority) ||
+    result !== null &&
+      !results.has(result as Exclude<LessonResult, null>) ||
+    autonomy !== null &&
+      !autonomies.has(autonomy as Exclude<LessonAutonomy, null>) ||
+    understanding !== null &&
+      understanding !== 0 &&
+      understanding !== 1 &&
+      understanding !== 2 &&
+      understanding !== 3 ||
+    decisionRequest !== null && decisionRequest !== "Перенос между неделями"
+  ) {
+    return schemaError();
+  }
+}
+
 function numericOrDefault(value: number | null): number {
   return Number.isFinite(value) && value !== null ? value : 0;
 }
 
 export function mapNotionPageToLesson(page: PageObjectResponse): Lesson {
+  assertPageSchema(page);
   const scheduleProperty = property(page, "Начало и окончание");
   const durationProperty = property(page, "Продолжительность, мин");
   const date = dateValue(scheduleProperty);
   const canonicalDuration = numberValue(durationProperty);
   const durationMinutes = resolvedDuration(scheduleProperty, durationProperty);
-  const status = normalizeStatus(selectValue(property(page, "Статус")));
-  const result = normalizeResult(selectValue(property(page, "Результат")));
-  const autonomy = normalizeAutonomy(
-    selectValue(property(page, "Автономность")),
+  const rawStatus = selectValue(property(page, "Статус"));
+  const rawPriority = selectValue(property(page, "Приоритет"));
+  const rawResult = selectValue(property(page, "Результат"));
+  const rawAutonomy = selectValue(property(page, "Автономность"));
+  const rawUnderstanding = numberValue(property(page, "Понимание"));
+  const rawDecisionRequest = selectValue(property(page, "Требует решения"));
+  assertAllowedValues(
+    rawStatus,
+    rawPriority,
+    rawResult,
+    rawAutonomy,
+    rawUnderstanding,
+    rawDecisionRequest,
   );
-  const understanding = normalizeUnderstanding(
-    numberValue(property(page, "Понимание")),
-  );
+  const status = normalizeStatus(rawStatus);
+  const result = normalizeResult(rawResult);
+  const autonomy = normalizeAutonomy(rawAutonomy);
+  const understanding = normalizeUnderstanding(rawUnderstanding);
   const artifactUrl = urlValue(property(page, "Артефакт"));
   const comment = richTextValue(
     property(page, "Краткий комментарий"),
     "rich_text",
   );
-  const hasDurationMismatch = validDuration(canonicalDuration) &&
+  const hasInvalidDuration = canonicalDuration !== null &&
+    !validDuration(canonicalDuration);
+  const hasDurationMismatch = canonicalDuration !== null &&
     typeof date?.end === "string" &&
     timedDifferenceMinutes(date) !== canonicalDuration;
+  const warnings: Lesson["warnings"] = [];
+
+  if (hasInvalidDuration) {
+    warnings.push({ code: "invalid-duration" });
+  }
+  if (hasDurationMismatch) {
+    warnings.push({ code: "duration-mismatch" });
+  }
 
   return {
     artifactUrl,
     autonomy,
     comment,
-    decisionRequest: selectValue(property(page, "Требует решения")) ===
-        "Перенос между неделями"
+    decisionRequest: rawDecisionRequest === "Перенос между неделями"
       ? "Перенос между неделями"
       : null,
     durationMinutes,
@@ -308,14 +446,14 @@ export function mapNotionPageToLesson(page: PageObjectResponse): Lesson {
       numberValue(property(page, "Количество переносов")),
     ),
     order: numericOrDefault(numberValue(property(page, "Порядок"))),
-    priority: normalizePriority(selectValue(property(page, "Приоритет"))),
+    priority: normalizePriority(rawPriority),
     result,
     schedule: normalizeNotionDate(scheduleProperty, durationProperty),
     status,
-    subject: selectValue(property(page, "Предмет")) ?? "",
+    subject: normalizeSubject(selectValue(property(page, "Предмет"))),
     title: richTextValue(property(page, "Урок"), "title"),
     understanding,
-    warnings: hasDurationMismatch ? [{ code: "duration-mismatch" }] : [],
+    warnings,
     week: selectValue(property(page, "Неделя")) ?? "",
   };
 }
