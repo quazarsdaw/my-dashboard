@@ -77,6 +77,21 @@ export const LESSON_SUBJECTS = Object.freeze(
 
 export type LessonSubject = (typeof LESSON_SUBJECTS)[number];
 
+export const ACTIVE_LESSON_WEEK = "W01 · 3–9 августа 2026" as const;
+
+export const LESSON_MISSED_REASONS = Object.freeze(
+  [
+    "Внешние обстоятельства",
+    "Ошибка планирования",
+    "Низкая энергия",
+    "Избегание сложной задачи",
+    "Задача слишком большая",
+    "Техническая проблема",
+  ] as const,
+);
+
+export type LessonMissedReason = (typeof LESSON_MISSED_REASONS)[number] | null;
+
 export type LessonResult =
   | "Зачёт"
   | "Незачёт"
@@ -118,7 +133,7 @@ export interface Lesson {
   hasLearningEvidence: boolean;
   id: string;
   isFinalized: boolean;
-  missedReason: string | null;
+  missedReason: LessonMissedReason;
   module: string;
   moveCount: number;
   order: number;
@@ -130,7 +145,7 @@ export interface Lesson {
   title: string;
   understanding: 0 | 1 | 2 | 3 | null;
   warnings: LessonWarning[];
-  week: string;
+  week: typeof ACTIVE_LESSON_WEEK;
 }
 
 export type LessonFilter =

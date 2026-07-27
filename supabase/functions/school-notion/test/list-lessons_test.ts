@@ -178,12 +178,47 @@ if (typeof Deno !== "undefined") {
       id: "unknown-subject-page",
       subject: "__proto__",
     });
+    const unknownMissedReason = notionLessonPage({
+      id: "unknown-missed-reason-page",
+      missedReason: "raw missed reason",
+    });
+    const unknownWeek = notionLessonPage({
+      id: "unknown-week-page",
+      week: "W99 · raw week",
+    });
+    const malformedTimedDate = notionLessonPage({
+      date: {
+        end: null,
+        start: "not-an-iso-date",
+        time_zone: null,
+      },
+      id: "malformed-timed-date-page",
+    });
+    const impossibleDateOnly = notionLessonPage({
+      date: {
+        end: null,
+        start: "2026-02-30",
+        time_zone: null,
+      },
+      id: "impossible-date-only-page",
+    });
+    const rawSchemaValues = [
+      "__proto__",
+      "raw missed reason",
+      "W99 · raw week",
+      "not-an-iso-date",
+      "2026-02-30",
+    ];
 
     for (
       const defectivePage of [
         missingProperty,
         wrongType,
         unknownSubject,
+        unknownMissedReason,
+        unknownWeek,
+        malformedTimedDate,
+        impossibleDateOnly,
       ]
     ) {
       const client = fakeClient(() =>
@@ -253,7 +288,12 @@ if (typeof Deno !== "undefined") {
         "defective page id leaked",
       );
       assert(!serialized.includes("property-"), "property id leaked");
-      assert(!serialized.includes("__proto__"), "unknown subject leaked");
+      for (const rawValue of rawSchemaValues) {
+        assert(
+          !serialized.includes(rawValue),
+          `raw schema value leaked: ${rawValue}`,
+        );
+      }
     }
   });
 

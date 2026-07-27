@@ -1,9 +1,14 @@
 import type { PageObjectResponse } from "@notionhq/client";
 import { SchoolHttpError } from "./errors.ts";
-import { LESSON_SUBJECTS } from "./types.ts";
+import {
+  ACTIVE_LESSON_WEEK,
+  LESSON_MISSED_REASONS,
+  LESSON_SUBJECTS,
+} from "./types.ts";
 import type {
   Lesson,
   LessonAutonomy,
+  LessonMissedReason,
   LessonPriority,
   LessonResult,
   LessonSchedule,
@@ -71,6 +76,10 @@ const autonomies = new Set<Exclude<LessonAutonomy, null>>([
   "A3",
 ]);
 const lessonSubjects = new Set<string>(LESSON_SUBJECTS);
+const missedReasons = new Set<string>(LESSON_MISSED_REASONS);
+const dateOnlyPattern = /^(\d{4})-(\d{2})-(\d{2})$/;
+const timedIsoPattern =
+  /^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -84,6 +93,63 @@ function schemaError(): never {
     "NOTION_SCHEMA_ERROR",
     "notion lesson schema is invalid",
   );
+}
+
+function isRealCalendarDate(
+  yearText: string,
+  monthText: string,
+  dayText: string,
+): boolean {
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day;
+}
+
+function isStrictDateOnly(value: string): boolean {
+  const match = value.match(dateOnlyPattern);
+  return match !== null && isRealCalendarDate(match[1], match[2], match[3]);
+}
+
+function isStrictTimedIso(value: string): boolean {
+  const match = value.match(timedIsoPattern);
+  return match !== null &&
+    isRealCalendarDate(match[1], match[2], match[3]) &&
+    Number.isFinite(Date.parse(value));
+}
+
+function assertDatePayload(date: UnknownRecord): void {
+  const start = date.start;
+  const end = date.end;
+  if (typeof start !== "string") {
+    return schemaError();
+  }
+
+  if (isStrictDateOnly(start)) {
+    if (end !== null) {
+      return schemaError();
+    }
+    return;
+  }
+
+  if (!isStrictTimedIso(start)) {
+    return schemaError();
+  }
+
+  if (end !== null) {
+    if (
+      typeof end !== "string" ||
+      !isStrictTimedIso(end) ||
+      start.slice(0, 10) !== end.slice(0, 10) ||
+      Date.parse(end) <= Date.parse(start)
+    ) {
+      return schemaError();
+    }
+  }
 }
 
 function assertPropertyValue(
@@ -138,6 +204,7 @@ function assertPropertyValue(
     ) {
       return schemaError();
     }
+    assertDatePayload(value.date);
   }
 }
 
@@ -288,7 +355,7 @@ export function normalizeNotionDate(
   }
 
   const start = date.start as string;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+  if (isStrictDateOnly(start)) {
     return {
       date: start,
       end: null,
@@ -313,15 +380,19 @@ export function normalizeNotionDate(
 }
 
 function normalizeStatus(value: string | null): LessonStatus {
-  return value && statuses.has(value as LessonStatus)
-    ? value as LessonStatus
-    : "Нераспределён";
+  if (!value || !statuses.has(value as LessonStatus)) {
+    return schemaError();
+  }
+
+  return value as LessonStatus;
 }
 
 function normalizePriority(value: string | null): LessonPriority {
-  return value && priorities.has(value as LessonPriority)
-    ? value as LessonPriority
-    : "Could";
+  if (!value || !priorities.has(value as LessonPriority)) {
+    return schemaError();
+  }
+
+  return value as LessonPriority;
 }
 
 function normalizeResult(value: string | null): LessonResult {
@@ -350,17 +421,38 @@ function normalizeSubject(value: string | null): LessonSubject {
   return value as LessonSubject;
 }
 
+function normalizeMissedReason(value: string | null): LessonMissedReason {
+  if (value !== null && !missedReasons.has(value)) {
+    return schemaError();
+  }
+
+  return value as LessonMissedReason;
+}
+
+function normalizeWeek(
+  value: string | null,
+): typeof ACTIVE_LESSON_WEEK {
+  if (value !== ACTIVE_LESSON_WEEK) {
+    return schemaError();
+  }
+
+  return value;
+}
+
 function assertAllowedValues(
   status: string | null,
   priority: string | null,
+  week: string | null,
   result: string | null,
   autonomy: string | null,
   understanding: number | null,
+  missedReason: string | null,
   decisionRequest: string | null,
 ): void {
   if (
-    status !== null && !statuses.has(status as LessonStatus) ||
-    priority !== null && !priorities.has(priority as LessonPriority) ||
+    status === null || !statuses.has(status as LessonStatus) ||
+    priority === null || !priorities.has(priority as LessonPriority) ||
+    week !== ACTIVE_LESSON_WEEK ||
     result !== null &&
       !results.has(result as Exclude<LessonResult, null>) ||
     autonomy !== null &&
@@ -370,6 +462,7 @@ function assertAllowedValues(
       understanding !== 1 &&
       understanding !== 2 &&
       understanding !== 3 ||
+    missedReason !== null && !missedReasons.has(missedReason) ||
     decisionRequest !== null && decisionRequest !== "Перенос между неделями"
   ) {
     return schemaError();
@@ -389,16 +482,20 @@ export function mapNotionPageToLesson(page: PageObjectResponse): Lesson {
   const durationMinutes = resolvedDuration(scheduleProperty, durationProperty);
   const rawStatus = selectValue(property(page, "Статус"));
   const rawPriority = selectValue(property(page, "Приоритет"));
+  const rawWeek = selectValue(property(page, "Неделя"));
   const rawResult = selectValue(property(page, "Результат"));
   const rawAutonomy = selectValue(property(page, "Автономность"));
   const rawUnderstanding = numberValue(property(page, "Понимание"));
+  const rawMissedReason = selectValue(property(page, "Причина пропуска"));
   const rawDecisionRequest = selectValue(property(page, "Требует решения"));
   assertAllowedValues(
     rawStatus,
     rawPriority,
+    rawWeek,
     rawResult,
     rawAutonomy,
     rawUnderstanding,
+    rawMissedReason,
     rawDecisionRequest,
   );
   const status = normalizeStatus(rawStatus);
@@ -440,7 +537,7 @@ export function mapNotionPageToLesson(page: PageObjectResponse): Lesson {
       artifactUrl !== null && artifactUrl.trim().length > 0,
     id: page.id,
     isFinalized: finalizedStatuses.has(status),
-    missedReason: selectValue(property(page, "Причина пропуска")),
+    missedReason: normalizeMissedReason(rawMissedReason),
     module: richTextValue(property(page, "Модуль"), "rich_text"),
     moveCount: numericOrDefault(
       numberValue(property(page, "Количество переносов")),
@@ -454,6 +551,6 @@ export function mapNotionPageToLesson(page: PageObjectResponse): Lesson {
     title: richTextValue(property(page, "Урок"), "title"),
     understanding,
     warnings,
-    week: selectValue(property(page, "Неделя")) ?? "",
+    week: normalizeWeek(rawWeek),
   };
 }

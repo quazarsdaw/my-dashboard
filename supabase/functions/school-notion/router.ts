@@ -3,6 +3,7 @@ import { buildCorsHeaders } from "./cors.ts";
 import { normalizeError, SchoolHttpError } from "./errors.ts";
 import { createLessonRepository } from "./lesson-repository.ts";
 import { createLessonService } from "./lesson-service.ts";
+import { ACTIVE_LESSON_WEEK } from "./types.ts";
 import type {
   HandlerDependencies,
   ListLessonsCommand,
@@ -13,7 +14,7 @@ import type {
 const allowedMethods = new Set(["OPTIONS", "POST"]);
 const activeWeek = Object.freeze({
   endDate: "2026-08-09",
-  notionValue: "W01 · 3–9 августа 2026",
+  notionValue: ACTIVE_LESSON_WEEK,
   startDate: "2026-08-03",
 });
 

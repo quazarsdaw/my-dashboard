@@ -37,7 +37,7 @@ if (typeof Deno !== "undefined") {
       decisionRequest: "Перенос между неделями",
       durationMinutes: 45,
       id: "lesson-domain-id",
-      missedReason: "болезнь",
+      missedReason: "Техническая проблема",
       module: "модуль 1",
       moveCount: 2,
       order: 300,
@@ -60,7 +60,7 @@ if (typeof Deno !== "undefined") {
       hasLearningEvidence: true,
       id: "lesson-domain-id",
       isFinalized: true,
-      missedReason: "болезнь",
+      missedReason: "Техническая проблема",
       module: "модуль 1",
       moveCount: 2,
       order: 300,
@@ -105,7 +105,7 @@ if (typeof Deno !== "undefined") {
       durationMinutes: null,
       missedReason: null,
       result: null,
-      status: null,
+      status: "Нераспределён",
       understanding: null,
     }));
 
@@ -275,7 +275,7 @@ if (typeof Deno !== "undefined") {
     );
   });
 
-  Deno.test("mapper fails closed for missing, wrong-typed and unknown-subject properties", () => {
+  Deno.test("mapper fails closed for missing, wrong-typed and out-of-domain properties", () => {
     const missingProperty = notionLessonPage({ id: "missing-property-page" });
     delete missingProperty.properties["Урок"];
     const wrongType = notionLessonPage({ id: "wrong-type-page" });
@@ -284,6 +284,78 @@ if (typeof Deno !== "undefined") {
     const unknownSubject = notionLessonPage({
       id: "unknown-subject-page",
       subject: "__proto__",
+    });
+    const unknownMissedReason = notionLessonPage({
+      id: "unknown-missed-reason-page",
+      missedReason: "raw missed reason",
+    });
+    const unknownWeek = notionLessonPage({
+      id: "unknown-week-page",
+      week: "W99 · raw week",
+    });
+    const nullStatus = notionLessonPage({
+      id: "null-status-page",
+      status: null,
+    });
+    const nullPriority = notionLessonPage({
+      id: "null-priority-page",
+      priority: null,
+    });
+    const nullWeek = notionLessonPage({
+      id: "null-week-page",
+      week: null,
+    });
+    const unknownResult = notionLessonPage({
+      id: "unknown-result-page",
+      result: "raw result",
+    });
+    const unknownAutonomy = notionLessonPage({
+      autonomy: "A99",
+      id: "unknown-autonomy-page",
+    });
+    const unknownDecision = notionLessonPage({
+      decisionRequest: "raw decision",
+      id: "unknown-decision-page",
+    });
+    const malformedTimedDate = notionLessonPage({
+      date: {
+        end: null,
+        start: "not-an-iso-date",
+        time_zone: null,
+      },
+      id: "malformed-timed-date-page",
+    });
+    const impossibleDateOnly = notionLessonPage({
+      date: {
+        end: null,
+        start: "2026-02-30",
+        time_zone: null,
+      },
+      id: "impossible-date-only-page",
+    });
+    const impossibleTimedDate = notionLessonPage({
+      date: {
+        end: null,
+        start: "2026-02-30T10:00:00+05:00",
+        time_zone: null,
+      },
+      id: "impossible-timed-date-page",
+    });
+    const crossDayEnd = notionLessonPage({
+      date: {
+        end: "2026-08-06T00:15:00+05:00",
+        start: "2026-08-05T23:45:00+05:00",
+        time_zone: null,
+      },
+      id: "cross-day-end-page",
+    });
+    const zeroDurationEnd = notionLessonPage({
+      date: {
+        end: "2026-08-05T10:00:00+05:00",
+        start: "2026-08-05T10:00:00+05:00",
+        time_zone: null,
+      },
+      id: "zero-duration-end-page",
     });
     const missingProperties = {
       ...notionLessonPage({ id: "missing-properties-page" }),
@@ -295,6 +367,19 @@ if (typeof Deno !== "undefined") {
         missingProperty,
         wrongType,
         unknownSubject,
+        unknownMissedReason,
+        unknownWeek,
+        nullStatus,
+        nullPriority,
+        nullWeek,
+        unknownResult,
+        unknownAutonomy,
+        unknownDecision,
+        malformedTimedDate,
+        impossibleDateOnly,
+        impossibleTimedDate,
+        crossDayEnd,
+        zeroDurationEnd,
         missingProperties,
       ]
     ) {
