@@ -277,11 +277,11 @@ test('school page loads shared dashboard dependencies before read-only school sc
   });
 });
 
-test('school page cache-busts continuous zoom assets together', () => {
+test('school page cache-busts release candidate assets together', () => {
   const html = read('school.html');
-  assert.ok(html.includes('school-core.js?v=5'));
-  assert.ok(html.includes('school.css?v=8'));
-  assert.ok(html.includes('school.js?v=8'));
+  assert.ok(html.includes('school-core.js?v=6'));
+  assert.ok(html.includes('school.css?v=9'));
+  assert.ok(html.includes('school.js?v=9'));
 });
 
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
@@ -901,6 +901,95 @@ test('drop transition matrix blocks finalized cards and requires explicit status
   assert.equal(SchoolUi.isLessonDraggable({ status: 'Пропущен' }), true);
 });
 
+test('all-day drop computes a sparse order before or after the hovered lesson', () => {
+  const lessons = [
+    {
+      id: 'first',
+      order: 100,
+      status: 'Запланирован',
+      schedule: { kind: 'date-only', date: '2026-08-03' }
+    },
+    {
+      id: 'second',
+      order: 200,
+      status: 'Запланирован',
+      schedule: { kind: 'date-only', date: '2026-08-03' }
+    },
+    {
+      id: 'third',
+      order: 300,
+      status: 'Запланирован',
+      schedule: { kind: 'date-only', date: '2026-08-03' }
+    }
+  ];
+
+  assert.equal(
+    SchoolUi.allDayDropPlacement({ top: 100, height: 60 }, 129),
+    'before'
+  );
+  assert.equal(
+    SchoolUi.allDayDropPlacement({ top: 100, height: 60 }, 130),
+    'after'
+  );
+  assert.equal(
+    SchoolUi.allDayDropOrder(
+      SchoolCore,
+      lessons,
+      '2026-08-03',
+      'third',
+      'second',
+      'before'
+    ),
+    150
+  );
+  assert.equal(
+    SchoolUi.allDayDropOrder(
+      SchoolCore,
+      lessons,
+      '2026-08-03',
+      'first',
+      'second',
+      'after'
+    ),
+    250
+  );
+});
+
+test('all-day drop reorders in place but keeps cross-day and missed transitions explicit', () => {
+  const planned = {
+    id: 'planned',
+    status: 'Запланирован',
+    schedule: { kind: 'date-only', date: '2026-08-03' }
+  };
+  assert.deepEqual(
+    SchoolUi.commandForAllDayDrop(planned, '2026-08-03', 150),
+    {
+      kind: 'command',
+      command: {
+        operation: 'reorderLesson',
+        lessonId: 'planned',
+        order: 150
+      }
+    }
+  );
+  assert.deepEqual(
+    SchoolUi.commandForAllDayDrop(planned, '2026-08-04', 150),
+    SchoolUi.commandForDrop(
+      planned,
+      { kind: 'date-only', date: '2026-08-04' },
+      150
+    )
+  );
+  assert.equal(
+    SchoolUi.commandForAllDayDrop({
+      id: 'missed',
+      status: 'Пропущен',
+      schedule: { kind: 'date-only', date: '2026-08-03' }
+    }, '2026-08-03', 150).kind,
+    'restore-confirm'
+  );
+});
+
 test('overlap choices retry only with an explicit command change', () => {
   const command = {
     operation: 'moveLesson',
@@ -1239,6 +1328,15 @@ test('card signals and decision partitions preserve the approved priority', () =
     moveCount: 1,
     warnings: []
   }, false).some((label) => label.includes('перенос')), false);
+  assert.deepEqual(
+    SchoolUi.lessonSignalLabels({
+      status: 'Запланирован',
+      decisionRequest: null,
+      moveCount: 0,
+      warnings: []
+    }, false, true),
+    ['Между уроками нет запланированного перерыва']
+  );
 
   const persisted = [{ id: 'request' }];
   const groups = SchoolUi.partitionDecisionItems({
@@ -1247,13 +1345,18 @@ test('card signals and decision partitions preserve the approved priority', () =
       { code: 'overdue-planned' },
       { code: 'multiple-active' },
       { code: 'duration-mismatch' },
-      { code: 'overlap' }
+      { code: 'overlap' },
+      { code: 'short-break', lessonIds: ['first', 'next'], gapMinutes: 4 }
     ]
   });
   assert.deepEqual(groups, {
     importantIssues: [{ code: 'multiple-active' }, { code: 'duration-mismatch' }],
     persisted,
-    remainingIssues: [{ code: 'overdue-planned' }, { code: 'overlap' }]
+    remainingIssues: [
+      { code: 'overdue-planned' },
+      { code: 'overlap' },
+      { code: 'short-break', lessonIds: ['first', 'next'], gapMinutes: 4 }
+    ]
   });
 });
 
@@ -1495,6 +1598,8 @@ test('school source installs drag, touch-safe fallback and isolated optimistic q
   assert.ok(source.includes('.mutate('));
   assert.ok(source.includes("addEventListener('dragstart"));
   assert.ok(source.includes("addEventListener('drop"));
+  assert.ok(source.includes('school-all-day-drop-before'));
+  assert.ok(source.includes('school-all-day-drop-after'));
   assert.ok(source.includes('Разрешить состояние'));
   assert.ok(source.includes('Оставить в W01'));
   assert.ok(source.includes("operation: 'resolveActiveLessons'"));

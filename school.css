@@ -578,6 +578,24 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 
 .school-day-all .school-lesson-card { margin-bottom: 6px; padding: 10px; }
 .school-day-all .school-card-title { font-size: 11px; }
+.school-day-all .school-lesson-card.school-all-day-drop-before,
+.school-day-all .school-lesson-card.school-all-day-drop-after {
+  position: relative;
+}
+.school-day-all .school-lesson-card.school-all-day-drop-before::before,
+.school-day-all .school-lesson-card.school-all-day-drop-after::after {
+  position: absolute;
+  right: 4px;
+  left: 4px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--school-accent);
+  box-shadow: 0 0 10px rgba(125, 211, 252, 0.48);
+  content: '';
+  pointer-events: none;
+}
+.school-day-all .school-lesson-card.school-all-day-drop-before::before { top: -5px; }
+.school-day-all .school-lesson-card.school-all-day-drop-after::after { bottom: -5px; }
 
 .school-time-shell {
   display: grid;

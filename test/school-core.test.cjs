@@ -451,3 +451,41 @@ test('reports a soft break warning only when the positive gap is under five minu
   );
   assert.deepEqual(SchoolCore.findShortBreaks([first, fiveMinutes]), []);
 });
+
+test('includes a short break as a derived runtime issue in the weekly read model', () => {
+  const first = lesson({
+    id: 'first',
+    order: 100,
+    schedule: {
+      kind: 'timed',
+      date: '2026-08-03',
+      start: '2026-08-03T14:00:00+05:00',
+      end: '2026-08-03T14:45:00+05:00'
+    }
+  });
+  const next = lesson({
+    id: 'next',
+    order: 200,
+    schedule: {
+      kind: 'timed',
+      date: '2026-08-03',
+      start: '2026-08-03T14:49:00+05:00',
+      end: '2026-08-03T15:34:00+05:00'
+    }
+  });
+
+  const model = SchoolCore.buildReadModel([first, next], {
+    now: '2026-08-03T10:00:00+05:00',
+    timeZone: 'Asia/Yekaterinburg',
+    activeWeek: 'W01'
+  });
+
+  assert.deepEqual(
+    model.runtimeIssues.filter((issue) => issue.code === 'short-break'),
+    [{
+      code: 'short-break',
+      gapMinutes: 4,
+      lessonIds: ['first', 'next']
+    }]
+  );
+});

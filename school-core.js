@@ -409,6 +409,9 @@
         }
       }
     }
+    findShortBreaks(included).forEach(function (warning) {
+      issues.push(warning);
+    });
     return issues;
   }
 

@@ -45,7 +45,8 @@
     'invalid-date': 'Некорректная дата урока',
     'duplicate-order': 'Повторяется порядок уроков внутри дня',
     'overdue-planned': 'Урок просрочен',
-    overlap: 'Уроки пересекаются по времени'
+    overlap: 'Уроки пересекаются по времени',
+    'short-break': 'Между уроками нет запланированного перерыва'
   };
 
   function isRecord(value) {
@@ -543,7 +544,7 @@
     return laidOut;
   }
 
-  function lessonSignalLabels(lesson, hasConflict) {
+  function lessonSignalLabels(lesson, hasConflict, hasShortBreak) {
     var signals = [];
     if (lesson.status === 'В процессе') signals.push('Текущий урок');
     if (lesson.decisionRequest) signals.push('Запрошен перенос в другую неделю');
@@ -552,6 +553,7 @@
       if (warning && ISSUE_LABELS[warning.code]) signals.push(ISSUE_LABELS[warning.code]);
     });
     if (hasConflict) signals.push('Конфликт времени');
+    if (hasShortBreak) signals.push(ISSUE_LABELS['short-break']);
     return signals;
   }
 
@@ -602,7 +604,7 @@
     return '';
   }
 
-  function appendLessonDetails(card, documentRef, lesson, conflictIds, isSaving) {
+  function appendLessonDetails(card, documentRef, lesson, conflictIds, isSaving, shortBreakIds) {
     if (lesson.status === 'Отменён') card.className += ' is-canceled';
     card.appendChild(element(documentRef, 'span', 'school-card-subject', lesson.subject));
     card.appendChild(element(documentRef, 'strong', 'school-card-title', lesson.title));
@@ -615,7 +617,11 @@
     meta.appendChild(element(documentRef, 'span', 'school-priority', lesson.priority));
     card.appendChild(meta);
 
-    var signals = lessonSignalLabels(lesson, Boolean(conflictIds && conflictIds.has(lesson.id)));
+    var signals = lessonSignalLabels(
+      lesson,
+      Boolean(conflictIds && conflictIds.has(lesson.id)),
+      Boolean(shortBreakIds && shortBreakIds.has(lesson.id))
+    );
     if (isSaving) signals.unshift('сохраняется');
     if (signals.length) {
       var warningRoot = element(documentRef, 'span', 'school-card-signals');
@@ -626,7 +632,7 @@
     }
   }
 
-  function makeLessonCard(documentRef, lesson, openLesson, conflictIds, configureCard, pendingLessonIds) {
+  function makeLessonCard(documentRef, lesson, openLesson, conflictIds, configureCard, pendingLessonIds, shortBreakIds) {
     var card = element(documentRef, 'button', 'school-lesson-card');
     card.type = 'button';
     card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
@@ -636,7 +642,8 @@
       documentRef,
       lesson,
       conflictIds,
-      Boolean(pendingLessonIds && pendingLessonIds.has(lesson.id))
+      Boolean(pendingLessonIds && pendingLessonIds.has(lesson.id)),
+      shortBreakIds
     );
     if (typeof configureCard === 'function') configureCard(card, lesson);
     return card;
@@ -656,6 +663,67 @@
     if (destination.kind === 'date-only') return destination.date;
     if (destination.kind === 'timed') return text(destination.start).slice(0, 10);
     return null;
+  }
+
+  function allDayDropPlacement(rect, clientY) {
+    rect = isRecord(rect) ? rect : {};
+    var top = Number(rect.top) || 0;
+    var height = Number(rect.height);
+    if (!Number.isFinite(height) && Number.isFinite(Number(rect.bottom))) {
+      height = Number(rect.bottom) - top;
+    }
+    if (!Number.isFinite(height) || height < 0) height = 0;
+    return Number(clientY) < top + height / 2 ? 'before' : 'after';
+  }
+
+  function allDayDropOrder(core, entries, date, draggedId, targetId, placement) {
+    var candidates = (Array.isArray(entries) ? entries : []).filter(function (lesson) {
+      return lesson && lesson.id !== draggedId && lesson.schedule &&
+        lesson.schedule.kind === 'date-only' && lesson.schedule.date === date;
+    });
+    candidates = core.sortLessonsForDay(candidates);
+    var targetIndex = candidates.findIndex(function (lesson) {
+      return lesson.id === targetId;
+    });
+    if (targetIndex === -1) {
+      var lastOrder = candidates.reduce(function (maximum, lesson) {
+        return Math.max(maximum, Number(lesson.order) || 0);
+      }, 0);
+      return lastOrder ? lastOrder + 100 : 100;
+    }
+    var previous;
+    var next;
+    if (placement === 'after') {
+      previous = candidates[targetIndex] || null;
+      next = candidates[targetIndex + 1] || null;
+    } else {
+      previous = candidates[targetIndex - 1] || null;
+      next = candidates[targetIndex] || null;
+    }
+    return core.orderForDrop(
+      previous ? previous.order : null,
+      next ? next.order : null
+    );
+  }
+
+  function commandForAllDayDrop(lesson, date, order) {
+    if (
+      lesson &&
+      lesson.schedule &&
+      lesson.schedule.kind === 'date-only' &&
+      lesson.schedule.date === date &&
+      ['Нераспределён', 'Запланирован', 'В процессе'].indexOf(lesson.status) !== -1
+    ) {
+      return {
+        kind: 'command',
+        command: {
+          operation: 'reorderLesson',
+          lessonId: lesson.id,
+          order: order
+        }
+      };
+    }
+    return commandForDrop(lesson, { kind: 'date-only', date: date }, order);
   }
 
   function commandForDrop(lesson, destination, order) {
@@ -761,6 +829,7 @@
     var timelineGeometryRegistry = null;
     var draggedLessonId = null;
     var activeTimelineDragPreview = null;
+    var activeAllDayDropPreview = null;
     var transparentDragImage = null;
     var actionResolver = null;
     var actionPreviousFocus = null;
@@ -1036,9 +1105,13 @@
       var currentDay = localDateKey(now());
       if (WEEK_DAYS.some(function (day) { return day.date === currentDay; })) mobileDay = currentDay;
       var conflictIds = new Set();
+      var shortBreakIds = new Set();
       (model.runtimeIssues || []).forEach(function (issue) {
         if (issue.code === 'overlap') {
           (issue.lessonIds || []).forEach(function (lessonId) { conflictIds.add(lessonId); });
+        }
+        if (issue.code === 'short-break') {
+          (issue.lessonIds || []).forEach(function (lessonId) { shortBreakIds.add(lessonId); });
         }
       });
       var timedLessons = lessons.filter(function (lesson) {
@@ -1100,14 +1173,17 @@
         (scheduledByDay[day.date] || []).filter(function (lesson) {
           return lesson.schedule.kind === 'date-only';
         }).forEach(function (lesson) {
-          dayColumn.appendChild(makeLessonCard(
+          var allDayCard = makeLessonCard(
             documentRef,
             lesson,
             openLesson,
             conflictIds,
             configureDraggable,
-            pendingLessonIds
-          ));
+            pendingLessonIds,
+            shortBreakIds
+          );
+          configureAllDayDropTarget(allDayCard, day.date, lesson);
+          dayColumn.appendChild(allDayCard);
         });
         configureDropZone(dayColumn, day.date, 'date-only');
         allDayGrid.appendChild(dayColumn);
@@ -1184,7 +1260,8 @@
             documentRef,
             lesson,
             conflictIds,
-            pendingLessonIds.has(lesson.id)
+            pendingLessonIds.has(lesson.id),
+            shortBreakIds
           );
           configureDraggable(card, lesson);
           timeDay.appendChild(card);
@@ -1220,7 +1297,8 @@
             openLesson,
             conflictIds,
             configureDraggable,
-            pendingLessonIds
+            pendingLessonIds,
+            shortBreakIds
           ));
         });
         details.appendChild(list);
@@ -2001,6 +2079,7 @@
       card.addEventListener('dragstart', function (event) {
         finishTimelineZoom();
         clearTimelineDragPreview();
+        clearAllDayDropPreview();
         resetTimelineDragMeta();
         draggedLessonId = lesson.id;
         card.classList.add('is-dragging');
@@ -2014,7 +2093,92 @@
         draggedLessonId = null;
         card.classList.remove('is-dragging');
         clearTimelineDragPreview();
+        clearAllDayDropPreview();
         resetTimelineDragMeta();
+      });
+    }
+
+    function clearAllDayDropPreview() {
+      if (!activeAllDayDropPreview) return;
+      activeAllDayDropPreview.node.classList.remove('school-all-day-drop-before');
+      activeAllDayDropPreview.node.classList.remove('school-all-day-drop-after');
+      activeAllDayDropPreview = null;
+    }
+
+    function configureAllDayDropTarget(card, day, targetLesson) {
+      if (!card) return;
+      card.addEventListener('dragover', function (event) {
+        var lesson = draggedLesson(event);
+        if (!lesson || lesson.id === targetLesson.id) {
+          if (typeof event.stopPropagation === 'function') event.stopPropagation();
+          clearAllDayDropPreview();
+          return;
+        }
+        event.preventDefault();
+        if (typeof event.stopPropagation === 'function') event.stopPropagation();
+        var rect = typeof card.getBoundingClientRect === 'function'
+          ? card.getBoundingClientRect()
+          : { top: 0, height: 0 };
+        var placement = allDayDropPlacement(rect, event.clientY);
+        if (
+          activeAllDayDropPreview &&
+          activeAllDayDropPreview.node === card &&
+          activeAllDayDropPreview.placement === placement
+        ) {
+          return;
+        }
+        clearAllDayDropPreview();
+        card.classList.add(
+          placement === 'before'
+            ? 'school-all-day-drop-before'
+            : 'school-all-day-drop-after'
+        );
+        activeAllDayDropPreview = {
+          day: day,
+          node: card,
+          placement: placement,
+          targetLessonId: targetLesson.id
+        };
+      });
+      card.addEventListener('dragleave', function (event) {
+        if (typeof event.stopPropagation === 'function') event.stopPropagation();
+        if (activeAllDayDropPreview && activeAllDayDropPreview.node === card) {
+          clearAllDayDropPreview();
+        }
+      });
+      card.addEventListener('drop', function (event) {
+        event.preventDefault();
+        if (typeof event.stopPropagation === 'function') event.stopPropagation();
+        var lesson = draggedLesson(event);
+        if (!lesson || lesson.id === targetLesson.id) {
+          draggedLessonId = null;
+          clearAllDayDropPreview();
+          return;
+        }
+        var rect = typeof card.getBoundingClientRect === 'function'
+          ? card.getBoundingClientRect()
+          : { top: 0, height: 0 };
+        var placement = activeAllDayDropPreview &&
+            activeAllDayDropPreview.node === card
+          ? activeAllDayDropPreview.placement
+          : allDayDropPlacement(rect, event.clientY);
+        var order = allDayDropOrder(
+          core,
+          lessons,
+          day,
+          lesson.id,
+          targetLesson.id,
+          placement
+        );
+        draggedLessonId = null;
+        clearAllDayDropPreview();
+        clearTimelineDragPreview();
+        resetTimelineDragMeta();
+        runDropTransition(
+          commandForAllDayDrop(lesson, day, order)
+        ).catch(function () {
+          setMutationMessage('Не удалось изменить порядок уроков.');
+        });
       });
     }
 
@@ -2100,6 +2264,7 @@
           );
         }
         clearTimelineDragPreview();
+        clearAllDayDropPreview();
         resetTimelineDragMeta();
         var order = orderAtEnd(
           destinationDate(destination),
@@ -2635,9 +2800,12 @@
     ACTIVE_WEEK: ACTIVE_WEEK,
     TIME_ZONE: TIME_ZONE,
     WEEK_DAYS: WEEK_DAYS,
+    allDayDropOrder: allDayDropOrder,
+    allDayDropPlacement: allDayDropPlacement,
     applyTimelineGeometry: applyTimelineGeometry,
     createController: createController,
     commandAfterOverlapChoice: commandAfterOverlapChoice,
+    commandForAllDayDrop: commandForAllDayDrop,
     commandForDrop: commandForDrop,
     decisionQueueCommand: decisionQueueCommand,
     diaryResult: diaryResult,
