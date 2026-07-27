@@ -1106,6 +1106,44 @@ test('failed batch revalidation is visible globally and can be retried', async (
   assert.equal(listCalls, 3);
 });
 
+test('a stale manual retry cannot overwrite a newer mutation revalidation', async () => {
+  const olderRetry = deferred();
+  const newerRevalidation = deferred();
+  const newerStarted = deferred();
+  let listCalls = 0;
+  const controller = SchoolUi.createController({
+    api: {
+      async listLessons() {
+        listCalls += 1;
+        if (listCalls === 1) return [{ id: 'lesson-1', status: 'Запланирован', version: 0 }];
+        if (listCalls === 2) return olderRetry.promise;
+        newerStarted.resolve();
+        return newerRevalidation.promise;
+      },
+      async mutate() {
+        return { id: 'lesson-1' };
+      }
+    },
+    core: loadingCore(),
+    mutationQueue: SchoolMutationQueue,
+    document: null
+  });
+
+  await controller.load();
+  const retry = controller.retryRevalidation();
+  await controller.runMutation(
+    { operation: 'moveLesson', lessonId: 'lesson-1' },
+    (lessons) => lessons
+  );
+  await newerStarted.promise;
+  newerRevalidation.resolve([{ id: 'lesson-1', status: 'Запланирован', version: 1 }]);
+  await controller.whenMutationsIdle();
+  olderRetry.resolve([{ id: 'lesson-1', status: 'Запланирован', version: 0 }]);
+  await retry;
+
+  assert.equal(controller.getLessons()[0].version, 1);
+});
+
 test('opening lessons is generation guarded and installs one dialog key handler', async () => {
   const first = deferred();
   const second = deferred();

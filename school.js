@@ -643,6 +643,7 @@
     var dialogGeneration = 0;
     var currentContentLessonId = null;
     var mutationSequence = 0;
+    var revalidationGeneration = 0;
     var timelineZoomIndex = 0;
     var timelineAnchorFrame = null;
     var pendingTimelineAnchor = null;
@@ -1289,7 +1290,16 @@
     }
 
     async function revalidateAfterMutation() {
-      confirmedLessons = await api.listLessons({ week: ACTIVE_WEEK });
+      var generation = ++revalidationGeneration;
+      var latestLessons;
+      try {
+        latestLessons = await api.listLessons({ week: ACTIVE_WEEK });
+      } catch (error) {
+        if (generation !== revalidationGeneration) return readModel;
+        throw error;
+      }
+      if (generation !== revalidationGeneration) return readModel;
+      confirmedLessons = latestLessons;
       var model = rebuildVisibleLessons();
       setSyncBanner('', false);
       return model;
