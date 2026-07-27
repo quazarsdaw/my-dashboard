@@ -263,6 +263,39 @@ test('snaps drag positions to 15 minutes without coupling them to duration steps
   assert.equal(SchoolCore.changeDurationBySteps(180, 1), 180);
 });
 
+test('exposes the four approved timeline zoom levels', () => {
+  assert.deepEqual(
+    [0, 1, 2, 3].map(SchoolCore.timelineZoomLevel),
+    [
+      { index: 0, label: '×1 · шаг 15 минут', pixelsPerHour: 60, snapMinutes: 15 },
+      { index: 1, label: '×1.5 · шаг 10 минут', pixelsPerHour: 90, snapMinutes: 10 },
+      { index: 2, label: '×2 · шаг 5 минут', pixelsPerHour: 120, snapMinutes: 5 },
+      { index: 3, label: '×3 · шаг 5 минут', pixelsPerHour: 180, snapMinutes: 5 }
+    ]
+  );
+});
+
+test('snaps timeline minutes with the active zoom precision', () => {
+  assert.equal(SchoolCore.snapMinuteOfDay(14 * 60 + 7, 15), 14 * 60);
+  assert.equal(SchoolCore.snapMinuteOfDay(14 * 60 + 7, 10), 14 * 60 + 10);
+  assert.equal(SchoolCore.snapMinuteOfDay(14 * 60 + 7, 5), 14 * 60 + 5);
+});
+
+test('converts minutes and vertical coordinates without losing the anchor', () => {
+  const y = SchoolCore.timelineYForMinute(14 * 60 + 5, 9 * 60, 120);
+  assert.equal(y, 610);
+  assert.equal(
+    SchoolCore.timelineMinuteAtY(y, 9 * 60, 120, 5),
+    14 * 60 + 5
+  );
+});
+
+test('clamps wheel zoom to the supported range', () => {
+  assert.equal(SchoolCore.nextTimelineZoomIndex(0, -1), 0);
+  assert.equal(SchoolCore.nextTimelineZoomIndex(0, 1), 1);
+  assert.equal(SchoolCore.nextTimelineZoomIndex(3, 1), 3);
+});
+
 test('derives timed end from the saved duration and preserves date-only duration', () => {
   assert.deepEqual(
     SchoolCore.scheduleForDestination(

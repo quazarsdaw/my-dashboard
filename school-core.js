@@ -19,6 +19,12 @@
   });
   var DRAG_SNAP_MINUTES = 15;
   var DURATION_STEP_MINUTES = 5;
+  var TIMELINE_ZOOM_LEVELS = Object.freeze([
+    Object.freeze({ index: 0, label: '×1 · шаг 15 минут', pixelsPerHour: 60, snapMinutes: 15 }),
+    Object.freeze({ index: 1, label: '×1.5 · шаг 10 минут', pixelsPerHour: 90, snapMinutes: 10 }),
+    Object.freeze({ index: 2, label: '×2 · шаг 5 минут', pixelsPerHour: 120, snapMinutes: 5 }),
+    Object.freeze({ index: 3, label: '×3 · шаг 5 минут', pixelsPerHour: 180, snapMinutes: 5 })
+  ]);
 
   function isRecord(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -72,11 +78,32 @@
     return local + offset[0];
   }
 
-  function snapMinuteOfDay(value) {
+  function timelineZoomLevel(index) {
+    var normalized = Number.isInteger(index) ? index : 0;
+    return TIMELINE_ZOOM_LEVELS[Math.max(0, Math.min(TIMELINE_ZOOM_LEVELS.length - 1, normalized))];
+  }
+
+  function nextTimelineZoomIndex(index, direction) {
+    return timelineZoomLevel(Number(index) + (direction > 0 ? 1 : -1)).index;
+  }
+
+  function timelineYForMinute(minute, startMinute, pixelsPerHour) {
+    return (Number(minute) - Number(startMinute)) / 60 * Number(pixelsPerHour);
+  }
+
+  function timelineMinuteAtY(y, startMinute, pixelsPerHour, snapMinutes) {
+    return snapMinuteOfDay(
+      Number(startMinute) + Number(y) / Number(pixelsPerHour) * 60,
+      snapMinutes
+    );
+  }
+
+  function snapMinuteOfDay(value, stepMinutes) {
     var minutes = Number(value);
+    var step = Number.isInteger(stepMinutes) && stepMinutes > 0 ? stepMinutes : DRAG_SNAP_MINUTES;
     if (!Number.isFinite(minutes)) return 0;
-    return Math.max(0, Math.min(24 * 60 - DRAG_SNAP_MINUTES,
-      Math.round(minutes / DRAG_SNAP_MINUTES) * DRAG_SNAP_MINUTES));
+    return Math.max(0, Math.min(24 * 60 - step,
+      Math.round(minutes / step) * step));
   }
 
   function changeDurationBySteps(duration, stepDelta) {
@@ -354,6 +381,10 @@
     computeRuntimeIssues: computeRuntimeIssues,
     buildReadModel: buildReadModel,
     snapMinuteOfDay: snapMinuteOfDay,
+    timelineZoomLevel: timelineZoomLevel,
+    nextTimelineZoomIndex: nextTimelineZoomIndex,
+    timelineYForMinute: timelineYForMinute,
+    timelineMinuteAtY: timelineMinuteAtY,
     changeDurationBySteps: changeDurationBySteps,
     scheduleForDestination: scheduleForDestination,
     orderForDrop: orderForDrop,
