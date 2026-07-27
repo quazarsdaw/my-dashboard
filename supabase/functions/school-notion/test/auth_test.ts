@@ -1,3 +1,4 @@
+import { SchoolHttpError } from "../errors.ts";
 import { handleRequest } from "../router.ts";
 import { ACTIVE_LESSON_WEEK } from "../types.ts";
 
@@ -263,5 +264,41 @@ if (typeof Deno !== "undefined") {
       "environment value leaked",
     );
     assert(!text.includes("sensitive-stack"), "stack leaked");
+  });
+
+  Deno.test("normalized active conflict exposes only the safe lesson summary", async () => {
+    const response = await handleRequest(
+      request("POST", { authorization: `Bearer ${authorizationToken}` }),
+      dependencies({
+        router: () => {
+          throw new SchoolHttpError(
+            409,
+            "ACTIVE_LESSON_EXISTS",
+            "another lesson is already active",
+            {
+              activeLesson: {
+                id: "active-id",
+                subject: "Mathematics",
+                title: "active title",
+              },
+              error: authorizationToken,
+              requestId: baseEnv.NOTION_TOKEN,
+            },
+          );
+        },
+      }),
+    );
+    const body = await readJson(response);
+    const serialized = JSON.stringify(body);
+
+    assertEquals(response.status, 409, "active conflict status");
+    assertEquals(body.error, "ACTIVE_LESSON_EXISTS", "active conflict code");
+    assertEquals(
+      (body.activeLesson as Record<string, unknown>).id,
+      "active-id",
+      "safe active lesson id",
+    );
+    assert(!serialized.includes(authorizationToken), "reserved error leaked");
+    assert(!serialized.includes(baseEnv.NOTION_TOKEN), "request id leaked");
   });
 }

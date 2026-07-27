@@ -1,16 +1,72 @@
+import { createActiveLessonService } from "./active-lesson-service.ts";
 import { authorizeRequest } from "./auth.ts";
 import { buildCorsHeaders } from "./cors.ts";
 import { normalizeError, SchoolHttpError } from "./errors.ts";
-import { createLessonRepository } from "./lesson-repository.ts";
+import {
+  createActiveLessonRepository,
+  createLessonRepository,
+} from "./lesson-repository.ts";
 import { createLessonService } from "./lesson-service.ts";
+import { createSchoolLockService } from "./lock-service.ts";
 import { parseSchoolCommand } from "./validation.ts";
 import type {
   HandlerDependencies,
   RouterContext,
   SchoolCommand,
+  SchoolLockRpcClient,
+  SchoolNotionMutationClient,
+  SchoolNotionReadClient,
 } from "./types.ts";
 
 const allowedMethods = new Set(["OPTIONS", "POST"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requireMutationClient(
+  client: SchoolNotionReadClient,
+): SchoolNotionMutationClient {
+  if (
+    !("updatePage" in client) ||
+    typeof client.updatePage !== "function"
+  ) {
+    throw new SchoolHttpError(
+      500,
+      "SERVER_MISCONFIGURED",
+      "server configuration is invalid",
+    );
+  }
+
+  return client as SchoolNotionMutationClient;
+}
+
+function createLockRpcClient(value: unknown): SchoolLockRpcClient {
+  if (!isRecord(value) || typeof value.rpc !== "function") {
+    throw new SchoolHttpError(
+      500,
+      "SERVER_MISCONFIGURED",
+      "server configuration is invalid",
+    );
+  }
+
+  const rpc = value.rpc;
+  return Object.freeze({
+    async rpc(
+      name: string,
+      args: Readonly<Record<string, unknown>>,
+    ) {
+      const result = await Reflect.apply(rpc, value, [name, args]);
+      if (!isRecord(result)) {
+        return { data: null, error: true };
+      }
+      return {
+        data: result.data,
+        error: result.error,
+      };
+    },
+  });
+}
 
 function withHeaders(response: Response, headers: Headers): Response {
   const responseHeaders = new Headers(response.headers);
@@ -30,17 +86,6 @@ export function routeSchoolCommand(
   command: SchoolCommand,
   context: RouterContext,
 ): Promise<Response> {
-  if (
-    command.operation !== "listLessons" &&
-    command.operation !== "getLessonContent"
-  ) {
-    throw new SchoolHttpError(
-      400,
-      "INVALID_COMMAND",
-      "command operation is not allowed",
-    );
-  }
-
   if (!context.notionClient) {
     throw new SchoolHttpError(
       500,
@@ -49,14 +94,27 @@ export function routeSchoolCommand(
     );
   }
 
-  const repository = createLessonRepository(
-    context.notionClient,
-    context.notionDataSourceId,
-  );
-  const service = createLessonService(repository, context.notionClient);
+  if (
+    command.operation === "getLessonContent" ||
+    command.operation === "listLessons"
+  ) {
+    const repository = createLessonRepository(
+      context.notionClient,
+      context.notionDataSourceId,
+    );
+    const service = createLessonService(repository, context.notionClient);
 
-  if (command.operation === "getLessonContent") {
-    return service.getLessonContent(command.lessonId).then((data) =>
+    if (command.operation === "getLessonContent") {
+      return service.getLessonContent(command.lessonId).then((data) =>
+        Response.json({
+          data,
+          ok: true,
+          requestId: context.requestId,
+        })
+      );
+    }
+
+    return service.listLessons(command).then((data) =>
       Response.json({
         data,
         ok: true,
@@ -65,7 +123,55 @@ export function routeSchoolCommand(
     );
   }
 
-  return service.listLessons(command).then((data) =>
+  if (
+    command.operation !== "startLesson" &&
+    command.operation !== "switchActiveLesson" &&
+    command.operation !== "resolveActiveLessons" &&
+    command.operation !== "reopenLesson"
+  ) {
+    throw new SchoolHttpError(
+      400,
+      "INVALID_COMMAND",
+      "command operation is not allowed",
+    );
+  }
+
+  const mutationClient = requireMutationClient(context.notionClient);
+  const activeRepository = createActiveLessonRepository(
+    mutationClient,
+    context.notionDataSourceId,
+  );
+  const lockService = createSchoolLockService(
+    createLockRpcClient(context.auth.supabaseAdmin),
+  );
+  const activeService = createActiveLessonService(
+    activeRepository,
+    lockService,
+  );
+
+  let operation;
+  switch (command.operation) {
+    case "startLesson":
+      operation = activeService.startLesson(context.userId, command);
+      break;
+    case "switchActiveLesson":
+      operation = activeService.switchActiveLesson(
+        context.userId,
+        command,
+      );
+      break;
+    case "resolveActiveLessons":
+      operation = activeService.resolveActiveLessons(
+        context.userId,
+        command,
+      );
+      break;
+    case "reopenLesson":
+      operation = activeService.reopenLesson(context.userId, command);
+      break;
+  }
+
+  return operation.then((data) =>
     Response.json({
       data,
       ok: true,

@@ -77,6 +77,7 @@ export async function authorizeRequest(
 
   return {
     supabase: result.data.supabase,
+    supabaseAdmin: result.data.supabaseAdmin,
     userClaims,
     userId,
   };

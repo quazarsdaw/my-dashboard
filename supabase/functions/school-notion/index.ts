@@ -1,5 +1,5 @@
 import { createSupabaseContext } from "@supabase/server";
-import { createSchoolNotionReadClient } from "./notion-client.ts";
+import { createSchoolNotionMutationClient } from "./notion-client.ts";
 import { handleRequest, routeSchoolCommand } from "./router.ts";
 import type { SchoolEnvironment } from "./types.ts";
 
@@ -24,7 +24,7 @@ export default {
       router: (command, context) =>
         routeSchoolCommand(command, {
           ...context,
-          notionClient: createSchoolNotionReadClient(env),
+          notionClient: createSchoolNotionMutationClient(env),
         }),
     });
   },

@@ -1,33 +1,15 @@
 import { SchoolHttpError } from "./errors.ts";
+import type {
+  ActiveLessonLease,
+  SchoolLockRpcClient,
+  SchoolLockService,
+} from "./types.ts";
 
 export const SCHOOL_LOCK_TTL_SECONDS = 60;
 
 const ACQUIRE_ATTEMPTS = 3;
 const MIN_RETRY_DELAY_MS = 20;
 const RETRY_JITTER_MS = 40;
-
-type RpcResult = Readonly<{
-  data: unknown;
-  error: unknown;
-}>;
-
-export interface SchoolLockRpcClient {
-  rpc(
-    name: string,
-    args: Readonly<Record<string, unknown>>,
-  ): Promise<RpcResult>;
-}
-
-export interface ActiveLessonLease {
-  renew(): Promise<void>;
-}
-
-export interface SchoolLockService {
-  withActiveLessonLock<T>(
-    ownerId: string,
-    operation: (lease: ActiveLessonLease) => T | Promise<T>,
-  ): Promise<T>;
-}
 
 type LockServiceDependencies = Readonly<{
   createToken?: () => string;
@@ -51,7 +33,9 @@ function lostError(): SchoolHttpError {
   );
 }
 
-function assertBooleanRpcResult(result: RpcResult): boolean {
+function assertBooleanRpcResult(
+  result: Awaited<ReturnType<SchoolLockRpcClient["rpc"]>>,
+): boolean {
   if (result.error || typeof result.data !== "boolean") {
     throw unavailableError();
   }

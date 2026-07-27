@@ -70,7 +70,10 @@ if (typeof Deno !== "undefined") {
       }
       return Promise.resolve(response);
     });
-    const repository = createLessonRepository(client);
+    const repository = createLessonRepository(
+      client,
+      "server-only-data-source-id",
+    );
 
     const lessons = await repository.listLessons({
       filter: { property: "Урок", title: { contains: "caller-controlled" } },
@@ -120,10 +123,13 @@ if (typeof Deno !== "undefined") {
 
   Deno.test("repository builds an inclusive ISO range only from validated fields", async () => {
     const calls: QueryLessonsInput[] = [];
-    const repository = createLessonRepository(fakeClient((input) => {
-      calls.push(input);
-      return Promise.resolve(notionQueryResponse([]));
-    }));
+    const repository = createLessonRepository(
+      fakeClient((input) => {
+        calls.push(input);
+        return Promise.resolve(notionQueryResponse([]));
+      }),
+      "server-only-data-source-id",
+    );
 
     await repository.listLessons({
       from: "2026-08-04",
@@ -149,6 +155,7 @@ if (typeof Deno !== "undefined") {
       fakeClient(() =>
         Promise.resolve(notionQueryResponse([...notionLessonPages]))
       ),
+      "server-only-data-source-id",
     );
     const service = createLessonService(repository);
 
@@ -268,7 +275,7 @@ if (typeof Deno !== "undefined") {
           }),
         env: {
           DASHBOARD_ORIGIN: "https://dashboard.example",
-          NOTION_DATA_SOURCE_ID: "server-only-source",
+          NOTION_DATA_SOURCE_ID: "server-only-data-source-id",
           NOTION_TOKEN: "server-only-token",
           SCHOOL_OWNER_USER_ID: "owner-id",
         },

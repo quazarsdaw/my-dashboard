@@ -20,6 +20,7 @@ export type CreateUserClient = (
 
 export interface AuthContext {
   supabase: unknown;
+  supabaseAdmin?: unknown;
   userClaims: Readonly<Record<string, unknown>>;
   userId: string;
 }
@@ -61,6 +62,29 @@ export interface SchoolNotionMutationClient extends SchoolNotionReadClient {
     pageId: string,
     properties: NotionUpdateProperties,
   ): Promise<NotionPageUpdateResponse>;
+}
+
+export type SchoolLockRpcResult = Readonly<{
+  data: unknown;
+  error: unknown;
+}>;
+
+export interface SchoolLockRpcClient {
+  rpc(
+    name: string,
+    args: Readonly<Record<string, unknown>>,
+  ): Promise<SchoolLockRpcResult>;
+}
+
+export interface ActiveLessonLease {
+  renew(): Promise<void>;
+}
+
+export interface SchoolLockService {
+  withActiveLessonLock<T>(
+    ownerId: string,
+    operation: (lease: ActiveLessonLease) => T | Promise<T>,
+  ): Promise<T>;
 }
 
 export const LESSON_STATUSES = Object.freeze(
@@ -477,6 +501,46 @@ export type SchoolCommand =
   | ClearLearningEvidenceCommand
   | RequestCrossWeekMoveCommand
   | ClearDecisionRequestCommand;
+
+export interface ActiveLessonRepository {
+  getLesson(lessonId: string): Promise<Lesson>;
+  listActiveLessons(
+    renewBeforeNextPage?: () => Promise<void>,
+  ): Promise<Lesson[]>;
+  updateLesson(
+    command: SchoolCommand,
+    currentLesson: Lesson,
+  ): Promise<Lesson>;
+}
+
+export interface ActiveLessonService {
+  reopenLesson(
+    ownerId: string,
+    command: ReopenLessonCommand,
+  ): Promise<Lesson>;
+  resolveActiveLessons(
+    ownerId: string,
+    command: ResolveActiveLessonsCommand,
+  ): Promise<
+    Readonly<{
+      activeLesson: Lesson;
+      pausedLessons: Lesson[];
+    }>
+  >;
+  startLesson(
+    ownerId: string,
+    command: StartLessonCommand,
+  ): Promise<Lesson>;
+  switchActiveLesson(
+    ownerId: string,
+    command: SwitchActiveLessonCommand,
+  ): Promise<
+    Readonly<{
+      activeLesson: Lesson;
+      previousLesson: Lesson;
+    }>
+  >;
+}
 
 export interface LessonListResult {
   counts: Readonly<Record<string, number>>;
