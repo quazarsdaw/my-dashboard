@@ -202,12 +202,22 @@ if (typeof Deno !== "undefined") {
       },
       id: "impossible-date-only-page",
     });
+    const derivedCrossDay = notionLessonPage({
+      date: {
+        end: null,
+        start: "2026-08-05T23:45:00+05:00",
+        time_zone: null,
+      },
+      durationMinutes: 45,
+      id: "derived-cross-day-page",
+    });
     const rawSchemaValues = [
       "__proto__",
       "raw missed reason",
       "W99 · raw week",
       "not-an-iso-date",
       "2026-02-30",
+      "2026-08-05T23:45:00+05:00",
     ];
 
     for (
@@ -219,6 +229,7 @@ if (typeof Deno !== "undefined") {
         unknownWeek,
         malformedTimedDate,
         impossibleDateOnly,
+        derivedCrossDay,
       ]
     ) {
       const client = fakeClient(() =>

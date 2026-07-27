@@ -190,6 +190,47 @@ if (typeof Deno !== "undefined") {
     );
   });
 
+  Deno.test("derived timed end must stay after start on the same calendar day", () => {
+    const crossingMidnight = notionLessonPage({
+      date: {
+        end: null,
+        start: "2026-08-05T23:45:00+05:00",
+        time_zone: null,
+      },
+      durationMinutes: 45,
+      id: "derived-cross-day-page",
+    });
+    let error: unknown;
+    try {
+      mapNotionPageToLesson(crossingMidnight);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert(
+      error instanceof Error &&
+        "code" in error &&
+        error.code === "NOTION_SCHEMA_ERROR",
+      "derived cross-day end was accepted",
+    );
+
+    const validNearMidnight = mapNotionPageToLesson(notionLessonPage({
+      date: {
+        end: null,
+        start: "2026-08-05T23:30:00+05:00",
+        time_zone: null,
+      },
+      durationMinutes: 15,
+      id: "valid-near-midnight-page",
+    }));
+    assertEquals(validNearMidnight.schedule, {
+      date: "2026-08-05",
+      end: "2026-08-05T23:45:00+05:00",
+      kind: "timed",
+      start: "2026-08-05T23:30:00+05:00",
+    }, "valid near-midnight schedule");
+  });
+
   Deno.test("canonical duration controls timed end and legacy records use bounded fallback", () => {
     const canonical = mapNotionPageToLesson(notionLessonPage({
       date: {

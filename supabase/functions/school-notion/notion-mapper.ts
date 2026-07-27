@@ -370,6 +370,13 @@ export function normalizeNotionDate(
   const end = rawEnd && rawDifference === durationMinutes
     ? rawEnd
     : addMinutesPreservingOffset(start, durationMinutes);
+  if (
+    !isStrictTimedIso(end) ||
+    end.slice(0, 10) !== start.slice(0, 10) ||
+    Date.parse(end) <= Date.parse(start)
+  ) {
+    return schemaError();
+  }
 
   return {
     date: start.slice(0, 10),
