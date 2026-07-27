@@ -402,6 +402,53 @@
     };
   }
 
+  function makeTimelineDragPreviewNodes(documentRef, lesson, preview) {
+    var previewNode = element(documentRef, 'div', 'school-time-drag-preview');
+    previewNode.style.top = preview.top + 'px';
+    previewNode.style.height = preview.height + 'px';
+    previewNode.setAttribute('aria-hidden', 'true');
+    previewNode.appendChild(element(documentRef, 'span', 'school-card-subject', lesson.subject));
+    previewNode.appendChild(element(documentRef, 'strong', 'school-card-title', lesson.title));
+    previewNode.appendChild(element(
+      documentRef,
+      'span',
+      'school-card-meta',
+      scheduleRange(preview.schedule.start, preview.schedule.end)
+    ));
+
+    var lineNode = element(documentRef, 'span', 'school-time-snap-line');
+    lineNode.style.top = preview.top + 'px';
+    lineNode.setAttribute('aria-hidden', 'true');
+    return {
+      previewNode: previewNode,
+      lineNode: lineNode
+    };
+  }
+
+  function setTransparentDragImage(event, dragImageNode) {
+    if (
+      !dragImageNode ||
+      !event ||
+      !event.dataTransfer ||
+      typeof event.dataTransfer.setDragImage !== 'function'
+    ) {
+      return false;
+    }
+    event.dataTransfer.setDragImage(dragImageNode, 0, 0);
+    return true;
+  }
+
+  function timelineDropDestination(activePreview, node, lessonId, fallbackDestination) {
+    if (
+      activePreview &&
+      activePreview.node === node &&
+      activePreview.lessonId === lessonId
+    ) {
+      return activePreview.destination;
+    }
+    return fallbackDestination;
+  }
+
   function layoutTimedLessons(entries, pixelsPerHour) {
     var scale = Number.isFinite(Number(pixelsPerHour)) && Number(pixelsPerHour) > 0
       ? Number(pixelsPerHour)
@@ -662,6 +709,8 @@
     var timelineAnchorFrame = null;
     var pendingTimelineAnchor = null;
     var draggedLessonId = null;
+    var activeTimelineDragPreview = null;
+    var transparentDragImage = null;
     var actionResolver = null;
     var actionPreviousFocus = null;
     var queue = queueApi.create({
@@ -1706,6 +1755,66 @@
       return runDropTransition(transition);
     }
 
+    function resetTimelineDragMeta() {
+      var preview = byId('schoolWeekTimeMeta');
+      if (preview) preview.textContent = preview.getAttribute('data-default-text') || preview.textContent;
+    }
+
+    function removeDragPreviewNode(node) {
+      if (node && node.parentNode && typeof node.parentNode.removeChild === 'function') {
+        node.parentNode.removeChild(node);
+      }
+    }
+
+    function clearTimelineDragPreview() {
+      if (!activeTimelineDragPreview) return;
+      removeDragPreviewNode(activeTimelineDragPreview.previewNode);
+      removeDragPreviewNode(activeTimelineDragPreview.lineNode);
+      activeTimelineDragPreview = null;
+    }
+
+    function ensureTransparentDragImage() {
+      if (transparentDragImage || !documentRef || !documentRef.body) return transparentDragImage;
+      transparentDragImage = element(documentRef, 'span', 'school-drag-image');
+      transparentDragImage.setAttribute('aria-hidden', 'true');
+      documentRef.body.appendChild(transparentDragImage);
+      return transparentDragImage;
+    }
+
+    function renderTimelineDragPreview(node, lesson, day, clientY, rect, bounds, zoomLevel) {
+      var preview = timelineDragPreview(
+        core,
+        lesson,
+        day,
+        clientY,
+        rect,
+        bounds,
+        zoomLevel
+      );
+      if (
+        activeTimelineDragPreview &&
+        activeTimelineDragPreview.node === node &&
+        activeTimelineDragPreview.lessonId === lesson.id &&
+        activeTimelineDragPreview.destination.start === preview.destination.start
+      ) {
+        return activeTimelineDragPreview.preview;
+      }
+
+      clearTimelineDragPreview();
+      var nodes = makeTimelineDragPreviewNodes(documentRef, lesson, preview);
+      node.appendChild(nodes.lineNode);
+      node.appendChild(nodes.previewNode);
+      activeTimelineDragPreview = {
+        node: node,
+        lessonId: lesson.id,
+        destination: preview.destination,
+        preview: preview,
+        previewNode: nodes.previewNode,
+        lineNode: nodes.lineNode
+      };
+      return preview;
+    }
+
     function configureDraggable(card, lesson) {
       var saving = pendingLessonIds.has(lesson.id);
       var draggable = isLessonDraggable(lesson) && !saving;
@@ -1716,18 +1825,21 @@
       card.setAttribute('data-lesson-id', lesson.id);
       if (!draggable) return;
       card.addEventListener('dragstart', function (event) {
+        clearTimelineDragPreview();
+        resetTimelineDragMeta();
         draggedLessonId = lesson.id;
         card.classList.add('is-dragging');
         if (event.dataTransfer) {
           event.dataTransfer.effectAllowed = 'move';
           event.dataTransfer.setData('text/plain', lesson.id);
+          setTransparentDragImage(event, ensureTransparentDragImage());
         }
       });
       card.addEventListener('dragend', function () {
         draggedLessonId = null;
         card.classList.remove('is-dragging');
-        var preview = byId('schoolWeekTimeMeta');
-        if (preview) preview.textContent = preview.getAttribute('data-default-text') || preview.textContent;
+        clearTimelineDragPreview();
+        resetTimelineDragMeta();
       });
     }
 
@@ -1745,26 +1857,47 @@
         if (!draggedLesson(event)) return;
         event.preventDefault();
         node.classList.add('school-drop-active');
-        if (kind !== 'timed' || !bounds || typeof node.getBoundingClientRect !== 'function') return;
+        if (kind !== 'timed' || !bounds || typeof node.getBoundingClientRect !== 'function') {
+          clearTimelineDragPreview();
+          resetTimelineDragMeta();
+          return;
+        }
         var rect = node.getBoundingClientRect();
-        var destination = timelineDestination(core, day, event.clientY, rect, bounds, zoomLevel);
         var lesson = draggedLesson(event);
-        var previewSchedule = core.scheduleForDestination(
-          destination,
-          lesson.durationMinutes
+        var dragPreview = renderTimelineDragPreview(
+          node,
+          lesson,
+          day,
+          event.clientY,
+          rect,
+          bounds,
+          zoomLevel
         );
-        var preview = byId('schoolWeekTimeMeta');
-        if (preview) preview.textContent = scheduleRange(previewSchedule.start, previewSchedule.end);
+        var previewMeta = byId('schoolWeekTimeMeta');
+        if (previewMeta) {
+          previewMeta.textContent = scheduleRange(
+            dragPreview.schedule.start,
+            dragPreview.schedule.end
+          );
+        }
       });
       node.addEventListener('dragleave', function () {
         node.classList.remove('school-drop-active');
+        if (activeTimelineDragPreview && activeTimelineDragPreview.node === node) {
+          clearTimelineDragPreview();
+          resetTimelineDragMeta();
+        }
       });
       node.addEventListener('drop', function (event) {
         event.preventDefault();
         node.classList.remove('school-drop-active');
         var lesson = draggedLesson(event);
         draggedLessonId = null;
-        if (!lesson) return;
+        if (!lesson) {
+          clearTimelineDragPreview();
+          resetTimelineDragMeta();
+          return;
+        }
         var destination;
         if (kind === 'unscheduled') {
           destination = { kind: 'unscheduled' };
@@ -1774,8 +1907,23 @@
           var rect = typeof node.getBoundingClientRect === 'function'
             ? node.getBoundingClientRect()
             : { top: 0 };
-          destination = timelineDestination(core, day, event.clientY, rect, bounds, zoomLevel);
+          var fallbackDestination = timelineDestination(
+            core,
+            day,
+            event.clientY,
+            rect,
+            bounds,
+            zoomLevel
+          );
+          destination = timelineDropDestination(
+            activeTimelineDragPreview,
+            node,
+            lesson.id,
+            fallbackDestination
+          );
         }
+        clearTimelineDragPreview();
+        resetTimelineDragMeta();
         var order = orderAtEnd(
           destinationDate(destination),
           destination.kind
@@ -2312,11 +2460,14 @@
     layoutTimedLessons: layoutTimedLessons,
     isLessonDraggable: isLessonDraggable,
     lessonSignalLabels: lessonSignalLabels,
+    makeTimelineDragPreviewNodes: makeTimelineDragPreviewNodes,
     partitionDecisionItems: partitionDecisionItems,
     renderContentBlocks: renderContentBlocks,
     safeHttpsUrl: safeHttpsUrl,
     selectTodayFocus: selectTodayFocus,
+    setTransparentDragImage: setTransparentDragImage,
     timelineDragPreview: timelineDragPreview,
-    timelineDestination: timelineDestination
+    timelineDestination: timelineDestination,
+    timelineDropDestination: timelineDropDestination
   });
 });

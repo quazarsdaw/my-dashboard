@@ -18,6 +18,7 @@ function fakeDocument() {
       attributes: {},
       children: [],
       className: '',
+      style: {},
       textContent: '',
       appendChild(child) {
         this.children.push(child);
@@ -276,6 +277,12 @@ test('school page loads shared dashboard dependencies before read-only school sc
   });
 });
 
+test('school page cache-busts the magnetic preview controller and styles together', () => {
+  const html = read('school.html');
+  assert.ok(html.includes('school.css?v=7'));
+  assert.ok(html.includes('school.js?v=7'));
+});
+
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
   const html = read('school.html');
   const source = read('school.js');
@@ -348,6 +355,76 @@ test('timeline drag preview snaps geometry and schedule to the active zoom step'
   assert.equal(preview.schedule.end, '2026-08-03T10:50:00+05:00');
   assert.equal(preview.top, 130);
   assert.equal(preview.height, 90);
+});
+
+test('builds a snapped preview card and line from the destination shown to the user', () => {
+  const documentRef = fakeDocument();
+  const lesson = {
+    title: 'technical reading baseline',
+    subject: 'english & ielts'
+  };
+  const nodes = SchoolUi.makeTimelineDragPreviewNodes(documentRef, lesson, {
+    top: 130,
+    height: 90,
+    schedule: {
+      start: '2026-08-03T10:05:00+05:00',
+      end: '2026-08-03T10:50:00+05:00'
+    }
+  });
+
+  assert.equal(nodes.previewNode.className, 'school-time-drag-preview');
+  assert.equal(nodes.previewNode.style.top, '130px');
+  assert.equal(nodes.previewNode.style.height, '90px');
+  assert.equal(nodes.previewNode.children[0].textContent, 'english & ielts');
+  assert.equal(nodes.previewNode.children[1].textContent, 'technical reading baseline');
+  assert.equal(nodes.previewNode.children[2].textContent, '10:05–10:50');
+  assert.equal(nodes.lineNode.className, 'school-time-snap-line');
+  assert.equal(nodes.lineNode.style.top, '130px');
+});
+
+test('passes a transparent element to the browser drag image contract', () => {
+  const dragImageNode = {};
+  let received = null;
+  const applied = SchoolUi.setTransparentDragImage({
+    dataTransfer: {
+      setDragImage(node, x, y) {
+        received = { node, x, y };
+      }
+    }
+  }, dragImageNode);
+
+  assert.equal(applied, true);
+  assert.deepEqual(received, { node: dragImageNode, x: 0, y: 0 });
+});
+
+test('drop reuses the snapped destination shown for the same lesson and column', () => {
+  const column = {};
+  const shownDestination = {
+    kind: 'timed',
+    start: '2026-08-03T10:05:00+05:00'
+  };
+  const fallbackDestination = {
+    kind: 'timed',
+    start: '2026-08-03T10:10:00+05:00'
+  };
+  const activePreview = {
+    node: column,
+    lessonId: 'lesson-a',
+    destination: shownDestination
+  };
+
+  assert.equal(
+    SchoolUi.timelineDropDestination(activePreview, column, 'lesson-a', fallbackDestination),
+    shownDestination
+  );
+  assert.equal(
+    SchoolUi.timelineDropDestination(activePreview, {}, 'lesson-a', fallbackDestination),
+    fallbackDestination
+  );
+  assert.equal(
+    SchoolUi.timelineDropDestination(activePreview, column, 'lesson-b', fallbackDestination),
+    fallbackDestination
+  );
 });
 
 test('short lesson cards keep a compact 44px visual minimum at every zoom level', () => {

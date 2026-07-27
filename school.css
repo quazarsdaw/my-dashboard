@@ -396,6 +396,16 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
   background-color: rgba(125, 211, 252, 0.045);
 }
 
+.school-drag-image {
+  position: fixed;
+  top: -10px;
+  left: -10px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .school-card-subject {
   display: block;
   overflow: hidden;
@@ -635,7 +645,66 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
   transition: top 120ms ease, height 120ms ease;
 }
 
-.school-time-card.is-dragging { transition: none; }
+.school-time-card.is-dragging,
+.school-lesson-card.is-dragging {
+  opacity: 0.38;
+  transition: none;
+}
+
+.school-time-drag-preview {
+  position: absolute;
+  right: 5px;
+  left: 5px;
+  z-index: 4;
+  min-height: 44px;
+  overflow: hidden;
+  padding: 7px 8px;
+  border: 1px solid var(--school-accent);
+  border-radius: 8px;
+  background: rgba(41, 45, 53, 0.96);
+  box-shadow:
+    0 0 0 2px rgba(125, 211, 252, 0.14),
+    0 7px 18px rgba(0, 0, 0, 0.24);
+  color: var(--school-text);
+  pointer-events: none;
+}
+
+.school-time-drag-preview .school-card-subject {
+  font-size: 6.5px;
+  line-height: 1;
+}
+
+.school-time-drag-preview .school-card-title {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 8.5px;
+  line-height: 1.12;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.school-time-drag-preview .school-card-meta {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--school-accent);
+  font-size: 7px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.school-time-snap-line {
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  border-top: 2px solid var(--school-accent);
+  box-shadow: 0 0 8px rgba(125, 211, 252, 0.35);
+  pointer-events: none;
+}
+
 .school-today-focus.is-saving,
 .school-lesson-card.is-saving,
 .school-time-card.is-saving {
