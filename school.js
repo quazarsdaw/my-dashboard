@@ -308,6 +308,16 @@
     return lesson.result || lesson.status;
   }
 
+  function diaryScores(lesson) {
+    if (lesson.status === 'Пропущен') return { autonomy: '', understanding: '' };
+    return {
+      autonomy: lesson.autonomy || '',
+      understanding: lesson.understanding === null || lesson.understanding === undefined
+        ? ''
+        : String(lesson.understanding) + '/3'
+    };
+  }
+
   function groupDiaryLessons(entries) {
     var byDate = {};
     (Array.isArray(entries) ? entries : []).filter(function (lesson) {
@@ -363,7 +373,8 @@
   function layoutTimedLessons(entries) {
     var sorted = (Array.isArray(entries) ? entries : []).slice().sort(function (left, right) {
       return timeMinutes(left.schedule.start) - timeMinutes(right.schedule.start)
-        || timeMinutes(left.schedule.end) - timeMinutes(right.schedule.end)
+        || (Number.isFinite(Number(left.order)) ? Number(left.order) : 0)
+          - (Number.isFinite(Number(right.order)) ? Number(right.order) : 0)
         || text(left.id).localeCompare(text(right.id));
     });
     var laneEnds = [];
@@ -381,19 +392,21 @@
 
     sorted.forEach(function (lesson) {
       var start = timeMinutes(lesson.schedule.start);
-      var end = timeMinutes(lesson.schedule.end);
+      var actualEnd = timeMinutes(lesson.schedule.end);
+      if (actualEnd < start) actualEnd += 24 * 60;
+      var visualEnd = Math.max(actualEnd, start + 44);
       if (group.length && start >= groupEnd) finishGroup();
       var lane = laneEnds.findIndex(function (laneEnd) { return laneEnd <= start; });
       if (lane === -1) {
         lane = laneEnds.length;
-        laneEnds.push(end);
+        laneEnds.push(visualEnd);
       } else {
-        laneEnds[lane] = end;
+        laneEnds[lane] = visualEnd;
       }
-      var item = { lesson: lesson, lane: lane, laneCount: 0 };
+      var item = { lesson: lesson, lane: lane, laneCount: 0, visualEnd: visualEnd };
       group.push(item);
       laidOut.push(item);
-      groupEnd = Math.max(groupEnd, end);
+      groupEnd = Math.max(groupEnd, visualEnd);
     });
     if (group.length) finishGroup();
     return laidOut;
@@ -403,7 +416,7 @@
     var signals = [];
     if (lesson.status === 'В процессе') signals.push('Текущий урок');
     if (lesson.decisionRequest) signals.push('Запрошен перенос в другую неделю');
-    if (lesson.moveCount > 0) signals.push('Переносов: ' + lesson.moveCount);
+    if (lesson.moveCount >= 2) signals.push('переносился ' + lesson.moveCount + ' раза');
     (Array.isArray(lesson.warnings) ? lesson.warnings : []).forEach(function (warning) {
       if (warning && ISSUE_LABELS[warning.code]) signals.push(ISSUE_LABELS[warning.code]);
     });
@@ -731,11 +744,10 @@
         layoutTimedLessons(dayTimed).forEach(function (layout) {
           var lesson = layout.lesson;
           var start = timeMinutes(lesson.schedule.start);
-          var end = timeMinutes(lesson.schedule.end);
           var card = element(documentRef, 'button', 'school-time-card');
           card.type = 'button';
           card.style.top = Math.max(0, start - bounds.startHour * 60) + 'px';
-          card.style.height = Math.max(44, end - start) + 'px';
+          card.style.height = (layout.visualEnd - start) + 'px';
           card.style.left = 'calc(' + (layout.lane * 100 / layout.laneCount) + '% + 4px)';
           card.style.width = 'calc(' + (100 / layout.laneCount) + '% - 8px)';
           card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
@@ -785,6 +797,7 @@
         });
         section.appendChild(headings);
         group.lessons.forEach(function (lesson) {
+          var scores = diaryScores(lesson);
           var row = element(documentRef, 'button', 'school-diary-row');
           row.type = 'button';
           row.setAttribute('aria-label', 'Открыть запись: ' + lesson.title);
@@ -798,12 +811,12 @@
             'school-diary-result' + (lesson.status === 'Пропущен' ? ' is-missed' : ''),
             diaryResult(lesson)
           ));
-          row.appendChild(element(documentRef, 'span', 'school-diary-score', lesson.autonomy || ''));
+          row.appendChild(element(documentRef, 'span', 'school-diary-score', scores.autonomy));
           row.appendChild(element(
             documentRef,
             'span',
             'school-diary-score',
-            lesson.understanding === null ? '' : String(lesson.understanding) + '/3'
+            scores.understanding
           ));
           section.appendChild(row);
         });
@@ -1031,6 +1044,7 @@
     WEEK_DAYS: WEEK_DAYS,
     createController: createController,
     diaryResult: diaryResult,
+    diaryScores: diaryScores,
     getWeekTimeBounds: getWeekTimeBounds,
     groupDiaryLessons: groupDiaryLessons,
     layoutTimedLessons: layoutTimedLessons,

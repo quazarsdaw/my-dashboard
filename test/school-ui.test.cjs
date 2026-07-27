@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
+const SchoolCore = require('../school-core.js');
 const SchoolUi = require('../school.js');
 
 function read(file) {
@@ -364,6 +365,16 @@ test('diary groups rows by planned date and keeps missed reason instead of an em
     ['2026-08-03', ['missed']]
   ]);
   assert.equal(SchoolUi.diaryResult(groups[1].lessons[0]), 'Пропущен · Низкая энергия');
+  assert.deepEqual(SchoolUi.diaryScores({
+    status: 'Пропущен',
+    autonomy: 'A3',
+    understanding: 3
+  }), { autonomy: '', understanding: '' });
+  assert.deepEqual(SchoolUi.diaryScores({
+    status: 'Выполнен',
+    autonomy: 'A2',
+    understanding: 2
+  }), { autonomy: 'A2', understanding: '2/3' });
 });
 
 test('week time bounds expand to actual lessons and overlapping lessons receive stable lanes', () => {
@@ -418,6 +429,95 @@ test('week time bounds expand to actual lessons and overlapping lessons receive 
   );
 });
 
+test('same-start timed lessons sort by numeric order and stable id before duration', () => {
+  const lessons = [
+    {
+      id: 'later-order',
+      order: 300,
+      schedule: {
+        kind: 'timed',
+        start: '2026-08-03T14:00:00+05:00',
+        end: '2026-08-03T14:15:00+05:00'
+      }
+    },
+    {
+      id: 'z-stable',
+      order: 100,
+      schedule: {
+        kind: 'timed',
+        start: '2026-08-03T14:00:00+05:00',
+        end: '2026-08-03T15:30:00+05:00'
+      }
+    },
+    {
+      id: 'a-stable',
+      order: 100,
+      schedule: {
+        kind: 'timed',
+        start: '2026-08-03T14:00:00+05:00',
+        end: '2026-08-03T15:00:00+05:00'
+      }
+    }
+  ];
+
+  assert.deepEqual(
+    SchoolUi.layoutTimedLessons(lessons).map((item) => item.lesson.id),
+    ['a-stable', 'z-stable', 'later-order']
+  );
+});
+
+test('adjacent short lessons use separate visual lanes without becoming an actual conflict', () => {
+  const lessons = [
+    {
+      id: 'first',
+      order: 100,
+      schedule: {
+        kind: 'timed',
+        start: '2026-08-03T14:00:00+05:00',
+        end: '2026-08-03T14:15:00+05:00'
+      }
+    },
+    {
+      id: 'second',
+      order: 200,
+      schedule: {
+        kind: 'timed',
+        start: '2026-08-03T14:15:00+05:00',
+        end: '2026-08-03T14:30:00+05:00'
+      }
+    }
+  ];
+
+  assert.deepEqual(
+    SchoolUi.layoutTimedLessons(lessons).map((item) => ({
+      id: item.lesson.id,
+      lane: item.lane,
+      laneCount: item.laneCount,
+      visualEnd: item.visualEnd
+    })),
+    [
+      { id: 'first', lane: 0, laneCount: 2, visualEnd: 14 * 60 + 44 },
+      { id: 'second', lane: 1, laneCount: 2, visualEnd: 14 * 60 + 15 + 44 }
+    ]
+  );
+
+  const issues = SchoolCore.computeRuntimeIssues(
+    lessons.map((entry) => ({
+      ...entry,
+      title: entry.id,
+      subject: 'Software Engineering',
+      status: 'Запланирован',
+      priority: 'Must',
+      week: 'W01',
+      durationMinutes: 15,
+      warnings: []
+    })),
+    '2026-08-03T10:00:00+05:00',
+    'Asia/Yekaterinburg'
+  );
+  assert.equal(issues.some((issue) => issue.code === 'overlap'), false);
+});
+
 test('card signals and decision partitions preserve the approved priority', () => {
   assert.deepEqual(SchoolUi.lessonSignalLabels({
     id: 'active',
@@ -428,10 +528,16 @@ test('card signals and decision partitions preserve the approved priority', () =
   }, true), [
     'Текущий урок',
     'Запрошен перенос в другую неделю',
-    'Переносов: 2',
+    'переносился 2 раза',
     'Время окончания не совпадает с продолжительностью',
     'Конфликт времени'
   ]);
+  assert.equal(SchoolUi.lessonSignalLabels({
+    status: 'Запланирован',
+    decisionRequest: null,
+    moveCount: 1,
+    warnings: []
+  }, false).some((label) => label.includes('перенос')), false);
 
   const persisted = [{ id: 'request' }];
   const groups = SchoolUi.partitionDecisionItems({
