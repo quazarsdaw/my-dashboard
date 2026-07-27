@@ -270,6 +270,250 @@
     throw validationError();
   }
 
+  function normalizeLessonId(value) {
+    if (
+      typeof value !== 'string' ||
+      value.length === 0 ||
+      value.trim() !== value
+    ) {
+      throw validationError();
+    }
+    return value;
+  }
+
+  function normalizeDestination(value, allowUnscheduled) {
+    if (!isRecord(value) || typeof value.kind !== 'string') throw validationError();
+    if (value.kind === 'date-only' && isIsoDate(value.date)) {
+      return { kind: 'date-only', date: value.date };
+    }
+    if (
+      value.kind === 'timed' &&
+      typeof value.start === 'string' &&
+      Number.isFinite(Date.parse(value.start))
+    ) {
+      return { kind: 'timed', start: value.start };
+    }
+    if (allowUnscheduled && value.kind === 'unscheduled') {
+      return { kind: 'unscheduled' };
+    }
+    throw validationError();
+  }
+
+  function optionalBoolean(command, name, normalized) {
+    if (!Object.prototype.hasOwnProperty.call(command, name)) return;
+    if (typeof command[name] !== 'boolean') throw validationError();
+    normalized[name] = command[name];
+  }
+
+  function optionalString(command, name, normalized, allowNull) {
+    if (!Object.prototype.hasOwnProperty.call(command, name)) return;
+    if (allowNull && command[name] === null) {
+      normalized[name] = null;
+      return;
+    }
+    if (typeof command[name] !== 'string') throw validationError();
+    normalized[name] = command[name];
+  }
+
+  function normalizeMutationCommand(command) {
+    if (!isRecord(command) || typeof command.operation !== 'string') throw validationError();
+    var operation = command.operation;
+    if (operation === 'switchActiveLesson') {
+      return {
+        operation: operation,
+        previousLessonId: normalizeLessonId(command.previousLessonId),
+        newLessonId: normalizeLessonId(command.newLessonId)
+      };
+    }
+    if (operation === 'resolveActiveLessons') {
+      return {
+        operation: operation,
+        keepLessonId: normalizeLessonId(command.keepLessonId)
+      };
+    }
+
+    var lessonId = normalizeLessonId(command.lessonId);
+    var simple = [
+      'startLesson',
+      'reopenLesson',
+      'restoreCancelledLesson',
+      'correctMissedStatus',
+      'requestCrossWeekMove',
+      'clearDecisionRequest'
+    ];
+    if (simple.indexOf(operation) !== -1) {
+      return { operation: operation, lessonId: lessonId };
+    }
+
+    if (
+      operation === 'moveLesson' ||
+      operation === 'pauseAndMoveLesson' ||
+      operation === 'restoreMissedLesson'
+    ) {
+      if (!Number.isFinite(command.order)) throw validationError();
+      var moved = {
+        operation: operation,
+        lessonId: lessonId,
+        destination: normalizeDestination(
+          command.destination,
+          operation === 'pauseAndMoveLesson'
+        ),
+        order: command.order
+      };
+      optionalBoolean(command, 'allowOverlap', moved);
+      return moved;
+    }
+
+    if (operation === 'unscheduleLesson' || operation === 'reorderLesson') {
+      if (!Number.isFinite(command.order)) throw validationError();
+      return {
+        operation: operation,
+        lessonId: lessonId,
+        order: command.order
+      };
+    }
+
+    if (operation === 'changeLessonDuration') {
+      if (
+        !Number.isInteger(command.durationMinutes) ||
+        command.durationMinutes < 15 ||
+        command.durationMinutes > 180
+      ) {
+        throw validationError();
+      }
+      var duration = {
+        operation: operation,
+        lessonId: lessonId,
+        durationMinutes: command.durationMinutes
+      };
+      optionalBoolean(command, 'allowOverlap', duration);
+      return duration;
+    }
+
+    if (operation === 'completeLesson') {
+      if (typeof command.status !== 'string') throw validationError();
+      var assessment = {
+        operation: operation,
+        lessonId: lessonId,
+        status: command.status
+      };
+      optionalString(command, 'result', assessment, false);
+      optionalString(command, 'autonomy', assessment, false);
+      optionalString(command, 'missedReason', assessment, false);
+      optionalString(command, 'comment', assessment, false);
+      optionalString(command, 'artifactUrl', assessment, true);
+      if (Object.prototype.hasOwnProperty.call(command, 'understanding')) {
+        if (!Number.isInteger(command.understanding)) throw validationError();
+        assessment.understanding = command.understanding;
+      }
+      return assessment;
+    }
+
+    if (operation === 'cancelLesson') {
+      var cancellation = { operation: operation, lessonId: lessonId };
+      optionalBoolean(command, 'confirmLearningEvidence', cancellation);
+      return cancellation;
+    }
+    if (operation === 'clearLearningEvidence') {
+      if (command.confirm !== true) throw validationError();
+      return {
+        operation: operation,
+        lessonId: lessonId,
+        confirm: true
+      };
+    }
+
+    throw validationError();
+  }
+
+  function normalizeCommand(command) {
+    if (!isRecord(command)) throw validationError();
+    if (command.operation === 'listLessons' || command.operation === 'getLessonContent') {
+      return normalizeReadCommand(command);
+    }
+    return normalizeMutationCommand(command);
+  }
+
+  function safeText(value, maximum) {
+    return typeof value === 'string' &&
+      value.length > 0 &&
+      Array.from(value).length <= maximum;
+  }
+
+  function safeLessonSummary(value, timed) {
+    if (
+      !isRecord(value) ||
+      !safeText(value.id, 128) ||
+      !safeText(value.title, 500) ||
+      !safeText(value.subject, 100)
+    ) {
+      return null;
+    }
+    var summary = {
+      id: value.id,
+      title: value.title,
+      subject: value.subject
+    };
+    if (timed) {
+      if (
+        !safeText(value.start, 64) ||
+        !safeText(value.end, 64) ||
+        !Number.isFinite(Date.parse(value.start)) ||
+        !Number.isFinite(Date.parse(value.end))
+      ) {
+        return null;
+      }
+      summary.start = value.start;
+      summary.end = value.end;
+    }
+    return summary;
+  }
+
+  function safeScalarDetails(value) {
+    if (!isRecord(value)) return undefined;
+    var result = {};
+    Object.keys(value).slice(0, 20).forEach(function (key) {
+      var item = value[key];
+      if (
+        typeof item === 'boolean' ||
+        Number.isFinite(item) ||
+        (typeof item === 'string' && Array.from(item).length <= 500)
+      ) {
+        result[key] = item;
+      }
+    });
+    return Object.keys(result).length ? result : undefined;
+  }
+
+  function safeFailureDetails(value) {
+    var details = safeScalarDetails(value.details) || {};
+    if (value.activeLesson !== undefined) {
+      var activeLesson = safeLessonSummary(value.activeLesson, false);
+      if (!activeLesson) return null;
+      details.activeLesson = activeLesson;
+    }
+    if (value.activeLessons !== undefined) {
+      if (!Array.isArray(value.activeLessons) || value.activeLessons.length > 100) return null;
+      var activeLessons = value.activeLessons.map(function (item) {
+        return safeLessonSummary(item, false);
+      });
+      if (activeLessons.some(function (item) { return !item; })) return null;
+      details.activeLessons = activeLessons;
+    }
+    if (value.conflicts !== undefined) {
+      if (!Array.isArray(value.conflicts) || value.conflicts.length > 100) return null;
+      var conflicts = value.conflicts.map(function (item) {
+        return safeLessonSummary(item, true);
+      });
+      if (conflicts.some(function (item) { return !item; })) return null;
+      details.conflicts = conflicts;
+    }
+    if (typeof value.status === 'string' && Array.from(value.status).length <= 100) {
+      details.status = value.status;
+    }
+    return Object.keys(details).length ? details : undefined;
+  }
+
   function isSafeFailureEnvelope(value) {
     if (
       !isRecord(value) ||
@@ -284,7 +528,10 @@
       value.requestId.length > 128 ||
       value.requestId.trim() !== value.requestId ||
       (value.details !== undefined && !isRecord(value.details)) ||
-      (value.status !== undefined && !Number.isInteger(value.status))
+      (value.status !== undefined &&
+        !Number.isInteger(value.status) &&
+        typeof value.status !== 'string') ||
+      safeFailureDetails(value) === null
     ) {
       return false;
     }
@@ -296,7 +543,10 @@
         'message',
         'requestId',
         'details',
-        'status'
+        'status',
+        'activeLesson',
+        'activeLessons',
+        'conflicts'
       ].indexOf(key) !== -1;
     });
   }
@@ -392,12 +642,12 @@
       status: status,
       message: body && typeof body.message === 'string' ? body.message : fallbackMessage(status),
       requestId: body && typeof body.requestId === 'string' ? body.requestId : null,
-      details: body && isRecord(body.details) ? body.details : undefined
+      details: body ? safeFailureDetails(body) : undefined
     });
   }
 
   async function invoke(command) {
-    var normalized = normalizeReadCommand(command);
+    var normalized = normalizeCommand(command);
     var auth = await waitForAuth();
     var result;
 
@@ -474,11 +724,24 @@
     return success.data;
   }
 
+  async function mutate(command) {
+    var success = await invoke(normalizeMutationCommand(command));
+    if (!isRecord(success.data)) {
+      throw clientError(
+        'INVALID_RESPONSE',
+        502,
+        'сервис школы вернул некорректный результат изменения'
+      );
+    }
+    return success.data;
+  }
+
   return Object.freeze({
     SchoolClientError: SchoolClientError,
     waitForAuth: waitForAuth,
     listLessons: listLessons,
     getLessonContent: getLessonContent,
+    mutate: mutate,
     invoke: invoke,
     toSchoolError: toSchoolError
   });

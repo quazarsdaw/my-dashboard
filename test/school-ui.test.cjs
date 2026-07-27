@@ -213,7 +213,7 @@ test('shared navigation places school between tracker and menu in eight columns'
   assert.ok(topbar.includes("if (p.indexOf('school') !== -1) return 'school';"));
 });
 
-test('controller calls only the two read-only school api methods', () => {
+test('controller loads and opens lesson content without mutating before user action', () => {
   const calls = [];
   const controller = SchoolUi.createController({
     api: {
@@ -225,8 +225,8 @@ test('controller calls only the two read-only school api methods', () => {
         calls.push(['getLessonContent', id]);
         return { lesson: { id }, blocks: [] };
       },
-      startLesson() {
-        throw new Error('write method must never be called');
+      mutate() {
+        throw new Error('mutation requires explicit user action');
       }
     },
     core: {
@@ -254,6 +254,191 @@ test('controller calls only the two read-only school api methods', () => {
       ['getLessonContent', 'lesson-1']
     ]);
   });
+});
+
+test('controller rolls back optimistic lessons when mutation fails', async () => {
+  const initial = [{ id: 'lesson-1', status: 'Запланирован' }];
+  const rendered = [];
+  const controller = SchoolUi.createController({
+    api: {
+      async listLessons() {
+        return initial;
+      },
+      async mutate() {
+        const error = new Error('conflict');
+        error.code = 'LESSON_TIME_CONFLICT';
+        error.status = 409;
+        throw error;
+      }
+    },
+    core: {
+      buildReadModel(lessons) {
+        rendered.push(lessons.map((lesson) => lesson.status));
+        return {
+          lessons,
+          today: [],
+          weekDays: {},
+          diary: [],
+          progress: { completed: 0, total: 1, partial: 0, missed: 0 },
+          activeLessons: [],
+          nextLesson: null,
+          persistedDecisions: [],
+          runtimeIssues: []
+        };
+      }
+    },
+    document: null
+  });
+  await controller.load();
+
+  await assert.rejects(
+    controller.runMutation(
+      { operation: 'startLesson', lessonId: 'lesson-1' },
+      (lessons) => lessons.map((lesson) => ({ ...lesson, status: 'В процессе' }))
+    ),
+    (error) => error.code === 'LESSON_TIME_CONFLICT'
+  );
+
+  assert.deepEqual(rendered, [
+    ['Запланирован'],
+    ['В процессе'],
+    ['Запланирован']
+  ]);
+  assert.deepEqual(controller.getLessons(), initial);
+});
+
+test('successful mutation revalidates from notion and rechecks active lessons', async () => {
+  const calls = [];
+  const lists = [
+    [{ id: 'lesson-1', status: 'Запланирован' }],
+    [{ id: 'lesson-1', status: 'В процессе' }]
+  ];
+  const controller = SchoolUi.createController({
+    api: {
+      async listLessons() {
+        calls.push('list');
+        return lists.shift();
+      },
+      async mutate(command) {
+        calls.push(command.operation);
+        return { id: 'lesson-1', status: 'В процессе' };
+      }
+    },
+    core: {
+      buildReadModel(lessons) {
+        return {
+          today: [],
+          weekDays: {},
+          diary: [],
+          progress: { completed: 0, total: 1, partial: 0, missed: 0 },
+          activeLessons: lessons.filter((lesson) => lesson.status === 'В процессе'),
+          nextLesson: null,
+          persistedDecisions: [],
+          runtimeIssues: []
+        };
+      }
+    },
+    document: null
+  });
+  await controller.load();
+  await controller.runMutation(
+    { operation: 'startLesson', lessonId: 'lesson-1' },
+    (lessons) => lessons.map((lesson) => ({ ...lesson, status: 'В процессе' }))
+  );
+
+  assert.deepEqual(calls, ['list', 'startLesson', 'list']);
+  assert.deepEqual(controller.getReadModel().activeLessons.map((lesson) => lesson.id), ['lesson-1']);
+});
+
+test('drop transition matrix blocks finalized cards and requires explicit status commands', () => {
+  const timed = {
+    kind: 'timed',
+    start: '2026-08-04T14:15:00+05:00'
+  };
+
+  assert.deepEqual(
+    SchoolUi.commandForDrop({
+      id: 'planned',
+      status: 'Запланирован',
+      schedule: { kind: 'date-only', date: '2026-08-03' }
+    }, timed, 150),
+    {
+      kind: 'command',
+      command: {
+        operation: 'moveLesson',
+        lessonId: 'planned',
+        destination: timed,
+        order: 150
+      }
+    }
+  );
+  assert.equal(
+    SchoolUi.commandForDrop({
+      id: 'active',
+      status: 'В процессе',
+      schedule: { kind: 'date-only', date: '2026-08-03' }
+    }, timed, 150).kind,
+    'pause-confirm'
+  );
+  assert.equal(
+    SchoolUi.commandForDrop({
+      id: 'missed',
+      status: 'Пропущен',
+      schedule: { kind: 'date-only', date: '2026-08-03' }
+    }, timed, 150).kind,
+    'restore-confirm'
+  );
+  ['Выполнен', 'Частично выполнен', 'Отменён'].forEach((status) => {
+    assert.equal(
+      SchoolUi.commandForDrop({
+        id: status,
+        status,
+        schedule: { kind: 'date-only', date: '2026-08-03' }
+      }, timed, 150).kind,
+      'blocked'
+    );
+    assert.equal(SchoolUi.isLessonDraggable({ status }), false);
+  });
+  assert.equal(SchoolUi.isLessonDraggable({ status: 'Пропущен' }), true);
+});
+
+test('overlap choices retry only with an explicit command change', () => {
+  const command = {
+    operation: 'moveLesson',
+    lessonId: 'lesson-1',
+    destination: {
+      kind: 'timed',
+      start: '2026-08-03T14:00:00+05:00'
+    },
+    order: 100
+  };
+  const error = {
+    code: 'LESSON_TIME_CONFLICT',
+    details: {
+      conflicts: [{
+        end: '2026-08-03T15:15:00+05:00'
+      }]
+    }
+  };
+
+  assert.deepEqual(
+    SchoolUi.commandAfterOverlapChoice(command, error, 'allow'),
+    { ...command, allowOverlap: true }
+  );
+  assert.deepEqual(
+    SchoolUi.commandAfterOverlapChoice(command, error, 'after'),
+    {
+      ...command,
+      destination: {
+        kind: 'timed',
+        start: '2026-08-03T15:15:00+05:00'
+      }
+    }
+  );
+  assert.equal(
+    SchoolUi.commandAfterOverlapChoice(command, error, 'change'),
+    null
+  );
 });
 
 test('content renderer creates text nodes and keeps unsafe links inert', () => {
@@ -573,6 +758,35 @@ test('card signals and decision partitions preserve the approved priority', () =
   });
 });
 
+test('decision queue commands only clear persisted requests or resolve an explicit active lesson', () => {
+  assert.deepEqual(SchoolUi.decisionQueueCommand(
+    { id: 'requested', decisionRequest: 'Перенос между неделями' },
+    true,
+    'clear'
+  ), {
+    operation: 'clearDecisionRequest',
+    lessonId: 'requested'
+  });
+  assert.deepEqual(SchoolUi.decisionQueueCommand(
+    { code: 'multiple-active', lessonIds: ['active-a', 'active-b'] },
+    false,
+    'active-b'
+  ), {
+    operation: 'resolveActiveLessons',
+    keepLessonId: 'active-b'
+  });
+  assert.equal(SchoolUi.decisionQueueCommand(
+    { code: 'multiple-active', lessonIds: ['active-a', 'active-b'] },
+    false,
+    'unknown'
+  ), null);
+  assert.equal(SchoolUi.decisionQueueCommand(
+    { code: 'overdue-planned', lessonId: 'late' },
+    false,
+    'clear'
+  ), null);
+});
+
 test('opening lessons is generation guarded and installs one dialog key handler', async () => {
   const first = deferred();
   const second = deferred();
@@ -655,16 +869,22 @@ test('school controller contains focus trap, escape close and restore behavior',
   assert.ok(source.includes('aria-hidden'));
 });
 
-test('school source is read-only and does not install drag or optimistic behavior', () => {
+test('school source installs drag, touch-safe fallback and optimistic rollback behavior', () => {
   const source = read('school.js');
+  const html = read('school.html');
 
   assert.ok(source.includes('.listLessons('));
   assert.ok(source.includes('.getLessonContent('));
-  assert.ok(!source.includes('.startLesson('));
-  assert.ok(!source.includes('.moveLesson('));
-  assert.ok(!source.includes('.completeLesson('));
-  assert.ok(!source.includes("addEventListener('drag"));
-  assert.ok(!source.includes("addEventListener('drop"));
-  assert.ok(!source.includes('optimistic'));
+  assert.ok(source.includes('.mutate('));
+  assert.ok(source.includes("addEventListener('dragstart"));
+  assert.ok(source.includes("addEventListener('drop"));
+  assert.ok(source.includes('Разрешить состояние'));
+  assert.ok(source.includes('Оставить в W01'));
+  assert.ok(source.includes("operation: 'resolveActiveLessons'"));
+  assert.ok(source.includes('optimisticReducer'));
+  assert.ok(source.includes('revalidateAfterMutation'));
+  assert.ok(source.includes('rollback'));
+  assert.ok(html.includes('id="schoolActionDialog"'));
+  assert.ok(html.includes('id="schoolScheduleControls"'));
   assert.ok(!source.includes('.innerHTML'));
 });

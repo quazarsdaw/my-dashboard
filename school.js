@@ -294,6 +294,10 @@
     return timeText(schedule.start) + '–' + timeText(schedule.end);
   }
 
+  function scheduleRange(start, end) {
+    return timeText(start) + '–' + timeText(end);
+  }
+
   function selectTodayFocus(model) {
     var active = model && Array.isArray(model.activeLessons) ? model.activeLessons : [];
     if (active.length === 1) return active[0];
@@ -437,6 +441,33 @@
     };
   }
 
+  function decisionQueueCommand(item, persisted, choice) {
+    if (
+      persisted &&
+      item &&
+      typeof item.id === 'string' &&
+      choice === 'clear'
+    ) {
+      return {
+        operation: 'clearDecisionRequest',
+        lessonId: item.id
+      };
+    }
+    if (
+      !persisted &&
+      item &&
+      item.code === 'multiple-active' &&
+      Array.isArray(item.lessonIds) &&
+      item.lessonIds.indexOf(choice) !== -1
+    ) {
+      return {
+        operation: 'resolveActiveLessons',
+        keepLessonId: choice
+      };
+    }
+    return null;
+  }
+
   function statusClass(status) {
     if (status === 'Выполнен') return ' is-done';
     if (status === 'Пропущен') return ' is-missed';
@@ -467,13 +498,103 @@
     }
   }
 
-  function makeLessonCard(documentRef, lesson, openLesson, conflictIds) {
+  function makeLessonCard(documentRef, lesson, openLesson, conflictIds, configureCard) {
     var card = element(documentRef, 'button', 'school-lesson-card');
     card.type = 'button';
     card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
     card.addEventListener('click', function () { openLesson(lesson.id); });
     appendLessonDetails(card, documentRef, lesson, conflictIds);
+    if (typeof configureCard === 'function') configureCard(card, lesson);
     return card;
+  }
+
+  function isLessonDraggable(lesson) {
+    return Boolean(lesson) && [
+      'Нераспределён',
+      'Запланирован',
+      'В процессе',
+      'Пропущен'
+    ].indexOf(lesson.status) !== -1;
+  }
+
+  function destinationDate(destination) {
+    if (!destination) return null;
+    if (destination.kind === 'date-only') return destination.date;
+    if (destination.kind === 'timed') return text(destination.start).slice(0, 10);
+    return null;
+  }
+
+  function commandForDrop(lesson, destination, order) {
+    if (!lesson || !destination) return { kind: 'blocked' };
+    if (['Выполнен', 'Частично выполнен', 'Отменён'].indexOf(lesson.status) !== -1) {
+      return { kind: 'blocked', status: lesson.status };
+    }
+    if (lesson.status === 'Пропущен') {
+      return {
+        kind: 'restore-confirm',
+        command: {
+          operation: 'restoreMissedLesson',
+          lessonId: lesson.id,
+          destination: destination,
+          order: order
+        }
+      };
+    }
+    if (lesson.status === 'В процессе') {
+      var currentDate = lesson.schedule ? lesson.schedule.date : null;
+      if (destination.kind === 'unscheduled' || destinationDate(destination) !== currentDate) {
+        return {
+          kind: 'pause-confirm',
+          command: {
+            operation: 'pauseAndMoveLesson',
+            lessonId: lesson.id,
+            destination: destination,
+            order: order
+          }
+        };
+      }
+    }
+    if (destination.kind === 'unscheduled') {
+      return {
+        kind: 'command',
+        command: {
+          operation: 'unscheduleLesson',
+          lessonId: lesson.id,
+          order: order
+        }
+      };
+    }
+    return {
+      kind: 'command',
+      command: {
+        operation: 'moveLesson',
+        lessonId: lesson.id,
+        destination: destination,
+        order: order
+      }
+    };
+  }
+
+  function commandAfterOverlapChoice(command, error, choice) {
+    if (!command || !error || error.code !== 'LESSON_TIME_CONFLICT') return null;
+    if (choice === 'allow') return Object.assign({}, command, { allowOverlap: true });
+    if (choice !== 'after') return null;
+    var conflicts = error.details && Array.isArray(error.details.conflicts)
+      ? error.details.conflicts
+      : [];
+    var end = conflicts.map(function (item) { return text(item && item.end); })
+      .filter(Boolean).sort().pop();
+    if (!end || !command.destination || command.destination.kind !== 'timed') return null;
+    return Object.assign({}, command, {
+      destination: {
+        kind: 'timed',
+        start: end
+      }
+    });
+  }
+
+  function cloneLessons(lessons) {
+    return JSON.parse(JSON.stringify(Array.isArray(lessons) ? lessons : []));
   }
 
   function createController(options) {
@@ -491,6 +612,10 @@
     var dialogKeyHandler = null;
     var dialogGeneration = 0;
     var currentContentLessonId = null;
+    var mutationPending = false;
+    var draggedLessonId = null;
+    var actionResolver = null;
+    var actionPreviousFocus = null;
 
     function byId(id) {
       return documentRef ? documentRef.getElementById(id) : null;
@@ -557,6 +682,36 @@
           var affected = ids.map(lessonTitle).filter(Boolean).join(' · ');
           if (affected) row.appendChild(element(documentRef, 'span', '', affected));
         }
+        var actions = element(documentRef, 'div', 'school-decision-actions');
+        if (persisted) {
+          appendAction(actions, 'Оставить в W01', 'is-primary', function () {
+            var clearCommand = decisionQueueCommand(item, true, 'clear');
+            return clearCommand ? mutateWithDialogs(clearCommand) : null;
+          });
+        } else if (item.code === 'multiple-active') {
+          appendAction(actions, 'Разрешить состояние', 'is-primary', async function () {
+            var activeOptions = (item.lessonIds || []).map(function (lessonId) {
+              return {
+                label: 'Оставить: ' + (lessonTitle(lessonId) || 'урок'),
+                value: lessonId,
+                primary: true
+              };
+            });
+            activeOptions.push({ label: 'Отмена', value: 'cancel' });
+            var selected = await askAction(
+              'Выберите один текущий урок',
+              'Остальные активные уроки вернутся в статус «Запланирован».',
+              activeOptions
+            );
+            var resolveCommand = decisionQueueCommand(item, false, selected);
+            return resolveCommand ? mutateWithDialogs(resolveCommand) : null;
+          });
+        } else if (item.lessonId) {
+          appendAction(actions, 'Открыть урок', '', function () {
+            return openLesson(item.lessonId);
+          });
+        }
+        if (actions.children && actions.children.length) row.appendChild(actions);
         group.appendChild(row);
       });
       return group;
@@ -642,7 +797,15 @@
       var remaining = today.filter(function (lesson) { return lesson.id !== focus.id; });
       if (remaining.length) {
         var list = element(documentRef, 'div', 'school-today-list');
-        remaining.forEach(function (lesson) { list.appendChild(makeLessonCard(documentRef, lesson, openLesson)); });
+        remaining.forEach(function (lesson) {
+          list.appendChild(makeLessonCard(
+            documentRef,
+            lesson,
+            openLesson,
+            null,
+            configureDraggable
+          ));
+        });
         rootNode.appendChild(list);
       }
     }
@@ -680,8 +843,10 @@
       var bounds = getWeekTimeBounds(timedLessons);
       var weekMeta = byId('schoolWeekTimeMeta');
       if (weekMeta) {
-        weekMeta.textContent = String(bounds.startHour).padStart(2, '0') + ':00–'
+        var weekMetaText = String(bounds.startHour).padStart(2, '0') + ':00–'
           + String(bounds.endHour).padStart(2, '0') + ':00 · Asia/Yekaterinburg';
+        weekMeta.textContent = weekMetaText;
+        weekMeta.setAttribute('data-default-text', weekMetaText);
       }
 
       WEEK_DAYS.forEach(function (day) {
@@ -713,8 +878,15 @@
         (scheduledByDay[day.date] || []).filter(function (lesson) {
           return lesson.schedule.kind === 'date-only';
         }).forEach(function (lesson) {
-          dayColumn.appendChild(makeLessonCard(documentRef, lesson, openLesson, conflictIds));
+          dayColumn.appendChild(makeLessonCard(
+            documentRef,
+            lesson,
+            openLesson,
+            conflictIds,
+            configureDraggable
+          ));
         });
+        configureDropZone(dayColumn, day.date, 'date-only');
         allDayGrid.appendChild(dayColumn);
       });
       shell.appendChild(allDayGrid);
@@ -753,8 +925,10 @@
           card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
           card.addEventListener('click', function () { openLesson(lesson.id); });
           appendLessonDetails(card, documentRef, lesson, conflictIds);
+          configureDraggable(card, lesson);
           timeDay.appendChild(card);
         });
+        configureDropZone(timeDay, day.date, 'timed', bounds);
         columns.appendChild(timeDay);
       });
       timeShell.appendChild(columns);
@@ -769,9 +943,16 @@
         details.appendChild(element(documentRef, 'summary', '', 'Нераспределённые · ' + unscheduled.length));
         var list = element(documentRef, 'div', 'school-unscheduled-list');
         unscheduled.forEach(function (lesson) {
-          list.appendChild(makeLessonCard(documentRef, lesson, openLesson, conflictIds));
+          list.appendChild(makeLessonCard(
+            documentRef,
+            lesson,
+            openLesson,
+            conflictIds,
+            configureDraggable
+          ));
         });
         details.appendChild(list);
+        configureDropZone(details, null, 'unscheduled');
         rootNode.appendChild(details);
       }
       setMobileDay(mobileDay);
@@ -838,6 +1019,726 @@
       return model;
     }
 
+    function buildModel() {
+      readModel = core.buildReadModel(lessons, {
+        activeWeek: ACTIVE_WEEK,
+        now: now(),
+        timeZone: TIME_ZONE
+      });
+      return render(readModel);
+    }
+
+    async function revalidateAfterMutation() {
+      lessons = await api.listLessons({ week: ACTIVE_WEEK });
+      return buildModel();
+    }
+
+    async function runMutation(command, optimisticReducer) {
+      if (mutationPending) {
+        var pendingError = new Error('другая операция школы ещё выполняется');
+        pendingError.code = 'SCHOOL_MUTATION_IN_PROGRESS';
+        pendingError.status = 409;
+        throw pendingError;
+      }
+      var rollback = cloneLessons(lessons);
+      mutationPending = true;
+      if (documentRef && byId('schoolApp')) {
+        byId('schoolApp').setAttribute('data-mutation-pending', 'true');
+      }
+      try {
+        if (typeof optimisticReducer === 'function') {
+          lessons = optimisticReducer(cloneLessons(lessons));
+          buildModel();
+        }
+        var result = await api.mutate(command);
+        await revalidateAfterMutation();
+        return result;
+      } catch (error) {
+        lessons = rollback;
+        if (lessons.length) buildModel();
+        throw error;
+      } finally {
+        mutationPending = false;
+        if (documentRef && byId('schoolApp')) {
+          byId('schoolApp').removeAttribute('data-mutation-pending');
+        }
+      }
+    }
+
+    function optimisticLessons(command) {
+      return function (items) {
+        return items.map(function (lesson) {
+          var matches = lesson.id === command.lessonId ||
+            command.operation === 'switchActiveLesson' &&
+              (lesson.id === command.previousLessonId || lesson.id === command.newLessonId) ||
+            command.operation === 'resolveActiveLessons' &&
+              lesson.status === 'В процессе';
+          if (!matches) return lesson;
+          var next = Object.assign({}, lesson);
+          if (command.operation === 'startLesson' || command.operation === 'reopenLesson') {
+            next.status = 'В процессе';
+          } else if (command.operation === 'switchActiveLesson') {
+            next.status = lesson.id === command.newLessonId ? 'В процессе' : 'Запланирован';
+          } else if (command.operation === 'resolveActiveLessons') {
+            next.status = lesson.id === command.keepLessonId ? 'В процессе' : 'Запланирован';
+          } else if (command.operation === 'completeLesson') {
+            next.status = command.status;
+            next.result = command.status === 'Пропущен'
+              ? null
+              : (command.status === 'Частично выполнен' ? 'Требует повторения' : (command.result || 'Зачёт'));
+            next.autonomy = command.status === 'Пропущен' ? null : command.autonomy;
+            next.understanding = command.status === 'Пропущен' ? null : command.understanding;
+            next.missedReason = command.status === 'Пропущен' ? command.missedReason : null;
+            if (command.comment !== undefined) next.comment = command.comment;
+            if (command.artifactUrl !== undefined) next.artifactUrl = command.artifactUrl;
+          } else if (command.operation === 'cancelLesson') {
+            next.status = 'Отменён';
+            next.decisionRequest = null;
+          } else if (command.operation === 'restoreCancelledLesson' || command.operation === 'correctMissedStatus') {
+            next.status = 'Запланирован';
+            if (command.operation === 'correctMissedStatus') next.missedReason = null;
+          } else if (command.operation === 'clearLearningEvidence') {
+            next.result = null;
+            next.autonomy = null;
+            next.understanding = null;
+            next.comment = '';
+            next.artifactUrl = null;
+          } else if (
+            command.operation === 'moveLesson' ||
+            command.operation === 'pauseAndMoveLesson' ||
+            command.operation === 'restoreMissedLesson'
+          ) {
+            var previousDate = lesson.schedule && lesson.schedule.date;
+            next.schedule = core.scheduleForDestination(command.destination, lesson.durationMinutes);
+            next.order = command.order;
+            next.status = next.schedule.kind === 'unscheduled'
+              ? 'Нераспределён'
+              : (command.operation === 'moveLesson' && lesson.status === 'В процессе'
+                ? 'В процессе'
+                : 'Запланирован');
+            if (previousDate && next.schedule.date && previousDate !== next.schedule.date) {
+              next.moveCount = (lesson.moveCount || 0) + 1;
+            }
+            if (command.operation === 'restoreMissedLesson') {
+              next.result = null;
+              next.autonomy = null;
+              next.understanding = null;
+              next.missedReason = null;
+            }
+          } else if (command.operation === 'unscheduleLesson') {
+            next.schedule = { kind: 'unscheduled', date: null, start: null, end: null };
+            next.status = 'Нераспределён';
+            next.order = command.order;
+          } else if (command.operation === 'changeLessonDuration') {
+            next.durationMinutes = command.durationMinutes;
+            if (lesson.schedule && lesson.schedule.kind === 'timed') {
+              next.schedule = core.scheduleForDestination({
+                kind: 'timed',
+                start: lesson.schedule.start
+              }, command.durationMinutes);
+            }
+          } else if (command.operation === 'reorderLesson') {
+            next.order = command.order;
+          } else if (command.operation === 'requestCrossWeekMove') {
+            next.decisionRequest = 'Перенос между неделями';
+          } else if (command.operation === 'clearDecisionRequest') {
+            next.decisionRequest = null;
+          }
+          return next;
+        });
+      };
+    }
+
+    function actionDialogOpen() {
+      var actionDialog = byId('schoolActionDialog');
+      return Boolean(actionDialog && !actionDialog.hidden);
+    }
+
+    function closeActionDialog(choice) {
+      var dialog = byId('schoolActionDialog');
+      if (dialog) {
+        dialog.hidden = true;
+        dialog.setAttribute('aria-hidden', 'true');
+      }
+      var resolve = actionResolver;
+      actionResolver = null;
+      if (resolve) resolve(choice || 'cancel');
+      var lessonDialog = byId('schoolLessonDialog');
+      if (!lessonDialog || lessonDialog.hidden) {
+        setBackgroundInert(false);
+        if (actionPreviousFocus && typeof actionPreviousFocus.focus === 'function') {
+          actionPreviousFocus.focus();
+        }
+        actionPreviousFocus = null;
+      }
+      if (
+        dialogKeyHandler &&
+        (!lessonDialog || lessonDialog.hidden) &&
+        documentRef
+      ) {
+        documentRef.removeEventListener('keydown', dialogKeyHandler);
+        dialogKeyHandler = null;
+      }
+    }
+
+    function askAction(title, message, actions, details) {
+      if (!documentRef || !byId('schoolActionDialog')) return Promise.resolve('cancel');
+      if (actionResolver) closeActionDialog('cancel');
+      byId('schoolActionTitle').textContent = title;
+      byId('schoolActionMessage').textContent = message || '';
+      byId('schoolActionDetails').textContent = details || '';
+      var actionRoot = byId('schoolActionButtons');
+      clearNode(actionRoot);
+      return new Promise(function (resolve) {
+        actionResolver = resolve;
+        (actions || []).forEach(function (action) {
+          var button = element(
+            documentRef,
+            'button',
+            (action.primary ? 'is-primary' : '') + (action.danger ? ' is-danger' : ''),
+            action.label
+          );
+          button.type = 'button';
+          button.addEventListener('click', function () {
+            closeActionDialog(action.value);
+          });
+          actionRoot.appendChild(button);
+        });
+        var dialog = byId('schoolActionDialog');
+        var lessonDialog = byId('schoolLessonDialog');
+        if (!lessonDialog || lessonDialog.hidden) {
+          actionPreviousFocus = documentRef.activeElement;
+          setBackgroundInert(true);
+        }
+        dialog.hidden = false;
+        dialog.setAttribute('aria-hidden', 'false');
+        installDialogKeys(dialog);
+        var first = actionRoot.firstChild;
+        if (first && typeof first.focus === 'function') first.focus();
+      });
+    }
+
+    function setMutationMessage(value) {
+      var node = byId('schoolContentState');
+      if (node) node.textContent = value || '';
+    }
+
+    async function mutateWithDialogs(command) {
+      try {
+        setMutationMessage('Сохраняю изменения…');
+        var result = await runMutation(command, optimisticLessons(command));
+        setMutationMessage('Сохранено в Notion.');
+        if (currentContentLessonId) renderLessonControls(
+          lessons.find(function (lesson) { return lesson.id === currentContentLessonId; })
+        );
+        return result;
+      } catch (error) {
+        setMutationMessage('');
+        if (!documentRef) throw error;
+        if (error && error.code === 'ACTIVE_LESSON_EXISTS' && error.details && error.details.activeLesson) {
+          var active = error.details.activeLesson;
+          var activeChoice = await askAction(
+            'Сейчас уже идёт урок: ' + active.title,
+            'Одновременно активным может быть только один урок.',
+            [
+              { label: 'Продолжить текущий', value: 'continue', primary: true },
+              { label: 'Приостановить и начать новый', value: 'switch' },
+              { label: 'Отмена', value: 'cancel' }
+            ]
+          );
+          if (activeChoice === 'continue') return openLesson(active.id);
+          if (activeChoice === 'switch') {
+            return mutateWithDialogs({
+              operation: 'switchActiveLesson',
+              previousLessonId: active.id,
+              newLessonId: command.lessonId
+            });
+          }
+          return null;
+        }
+        if (error && error.code === 'LESSON_TIME_CONFLICT') {
+          var conflicts = error.details && Array.isArray(error.details.conflicts)
+            ? error.details.conflicts
+            : [];
+          var conflictText = conflicts.map(function (item) {
+            return scheduleRange(item.start, item.end) + ' — ' + item.title;
+          }).join('\n');
+          var overlapChoice = await askAction(
+            'Это время пересекается с другим уроком',
+            'Выберите другое время, поставьте урок после пересечения или сохраните осознанно.',
+            [
+              { label: 'Выбрать другое время', value: 'change', primary: true },
+              { label: 'Поставить после него', value: 'after' },
+              { label: 'Всё равно сохранить', value: 'allow', danger: true }
+            ],
+            conflictText
+          );
+          var retryCommand = commandAfterOverlapChoice(command, error, overlapChoice);
+          return retryCommand ? mutateWithDialogs(retryCommand) : null;
+        }
+        if (error && error.code === 'CROSS_WEEK_MOVE_REQUIRES_REVIEW') {
+          var crossWeekChoice = await askAction(
+            'Перенос между учебными неделями пока выполняется через недельную ревизию',
+            'Дата урока останется без изменений.',
+            [
+              { label: 'Вернуть обратно', value: 'cancel', primary: true },
+              { label: 'Отметить для переноса', value: 'mark' }
+            ]
+          );
+          return crossWeekChoice === 'mark'
+            ? mutateWithDialogs({
+              operation: 'requestCrossWeekMove',
+              lessonId: command.lessonId
+            })
+            : null;
+        }
+        if (error && error.code === 'SCHOOL_MUTATION_IN_PROGRESS') {
+          var retry = await askAction(
+            'Изменение ещё сохраняется',
+            'Другая операция с активным уроком ещё выполняется.',
+            [
+              { label: 'Повторить', value: 'retry', primary: true },
+              { label: 'Отмена', value: 'cancel' }
+            ]
+          );
+          return retry === 'retry' ? mutateWithDialogs(command) : null;
+        }
+        setMutationMessage('Не удалось сохранить изменение.');
+        throw error;
+      }
+    }
+
+    function currentLesson() {
+      return lessons.find(function (lesson) {
+        return lesson.id === currentContentLessonId;
+      }) || null;
+    }
+
+    function controlValue(id) {
+      var node = byId(id);
+      return node && typeof node.value === 'string' ? node.value : '';
+    }
+
+    function selectedDestination(forceDateOnly) {
+      var date = controlValue('schoolLessonDate');
+      var time = controlValue('schoolLessonTime');
+      if (!date) return null;
+      if (forceDateOnly || !time) return { kind: 'date-only', date: date };
+      return {
+        kind: 'timed',
+        start: date + 'T' + time + ':00+05:00'
+      };
+    }
+
+    function appendAction(rootNode, label, className, action) {
+      if (!rootNode) return;
+      var button = element(documentRef, 'button', className || '', label);
+      button.type = 'button';
+      button.addEventListener('click', function () {
+        Promise.resolve().then(action).catch(function () {
+          setMutationMessage('Не удалось выполнить действие.');
+        });
+      });
+      rootNode.appendChild(button);
+    }
+
+    async function runDropTransition(transition) {
+      if (!transition || transition.kind === 'blocked') {
+        var status = transition && transition.status;
+        var title = status === 'Отменён' ? 'Урок отменён' : 'Урок уже завершён';
+        var blockedChoice = await askAction(
+          title,
+          status === 'Отменён'
+            ? 'Сначала верните урок в расписание.'
+            : 'Дата результата является частью истории дневника.',
+          status === 'Отменён'
+            ? [
+              { label: 'Вернуть в расписание', value: 'restore', primary: true },
+              { label: 'Отмена', value: 'cancel' }
+            ]
+            : [
+              { label: 'Открыть запись', value: 'open', primary: true },
+              { label: 'Вернуть к редактированию', value: 'reopen' },
+              { label: 'Отмена', value: 'cancel' }
+            ]
+        );
+        var blockedLesson = currentLesson();
+        if (!blockedLesson && transition && transition.lessonId) {
+          blockedLesson = lessons.find(function (item) { return item.id === transition.lessonId; });
+        }
+        if (blockedChoice === 'open' && blockedLesson) return openLesson(blockedLesson.id);
+        if (blockedChoice === 'reopen' && blockedLesson) {
+          return mutateWithDialogs({ operation: 'reopenLesson', lessonId: blockedLesson.id });
+        }
+        if (blockedChoice === 'restore' && blockedLesson) {
+          return mutateWithDialogs({ operation: 'restoreCancelledLesson', lessonId: blockedLesson.id });
+        }
+        return null;
+      }
+      if (transition.kind === 'pause-confirm') {
+        var pauseChoice = await askAction(
+          'Урок сейчас находится в процессе',
+          'Чтобы перенести его на другой день или в нераспределённые, сначала приостановите урок.',
+          [
+            { label: 'Оставить активным', value: 'cancel', primary: true },
+            { label: 'Приостановить и перенести', value: 'pause' },
+            { label: 'Отмена', value: 'cancel' }
+          ]
+        );
+        return pauseChoice === 'pause'
+          ? mutateWithDialogs(transition.command)
+          : null;
+      }
+      if (transition.kind === 'restore-confirm') {
+        if (transition.command.destination.kind === 'unscheduled') return null;
+        var restoreChoice = await askAction(
+          'Вернуть пропущенный урок в расписание?',
+          'Причина пропуска и старые оценочные поля будут очищены по правилам школы.',
+          [
+            { label: 'Перенести и вернуть', value: 'restore', primary: true },
+            { label: 'Отмена', value: 'cancel' }
+          ]
+        );
+        return restoreChoice === 'restore'
+          ? mutateWithDialogs(transition.command)
+          : null;
+      }
+      return mutateWithDialogs(transition.command);
+    }
+
+    function orderAtEnd(date, scheduleKind) {
+      var sameZone = lessons.filter(function (lesson) {
+        if (!lesson.schedule || lesson.schedule.kind !== scheduleKind) return false;
+        return scheduleKind === 'unscheduled' || lesson.schedule.date === date;
+      });
+      var last = sameZone.reduce(function (maximum, lesson) {
+        return Math.max(maximum, Number(lesson.order) || 0);
+      }, 0);
+      return last ? last + 100 : 100;
+    }
+
+    async function moveLessonTo(lesson, destination, order) {
+      var transition = commandForDrop(lesson, destination, order);
+      if (transition.kind === 'blocked') {
+        transition = Object.assign({}, transition, {
+          lessonId: lesson.id
+        });
+      }
+      return runDropTransition(transition);
+    }
+
+    function configureDraggable(card, lesson) {
+      var draggable = isLessonDraggable(lesson);
+      card.draggable = draggable;
+      card.className += draggable ? ' is-draggable' : ' is-locked';
+      card.setAttribute('data-lesson-id', lesson.id);
+      if (!draggable) return;
+      card.addEventListener('dragstart', function (event) {
+        draggedLessonId = lesson.id;
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', lesson.id);
+        }
+      });
+      card.addEventListener('dragend', function () {
+        draggedLessonId = null;
+        var preview = byId('schoolWeekTimeMeta');
+        if (preview) preview.textContent = preview.getAttribute('data-default-text') || preview.textContent;
+      });
+    }
+
+    function draggedLesson(event) {
+      var id = draggedLessonId;
+      if (!id && event && event.dataTransfer) {
+        id = event.dataTransfer.getData('text/plain');
+      }
+      return lessons.find(function (lesson) { return lesson.id === id; }) || null;
+    }
+
+    function configureDropZone(node, day, kind, bounds) {
+      if (!node) return;
+      node.addEventListener('dragover', function (event) {
+        if (!draggedLesson(event)) return;
+        event.preventDefault();
+        node.classList.add('school-drop-active');
+        if (kind !== 'timed' || !bounds || typeof node.getBoundingClientRect !== 'function') return;
+        var rect = node.getBoundingClientRect();
+        var rawMinutes = bounds.startHour * 60 + (event.clientY - rect.top);
+        var snapped = core.snapMinuteOfDay(rawMinutes);
+        var lesson = draggedLesson(event);
+        var start = day + 'T' + String(Math.floor(snapped / 60)).padStart(2, '0')
+          + ':' + String(snapped % 60).padStart(2, '0') + ':00+05:00';
+        var previewSchedule = core.scheduleForDestination(
+          { kind: 'timed', start: start },
+          lesson.durationMinutes
+        );
+        var preview = byId('schoolWeekTimeMeta');
+        if (preview) preview.textContent = scheduleRange(previewSchedule.start, previewSchedule.end);
+      });
+      node.addEventListener('dragleave', function () {
+        node.classList.remove('school-drop-active');
+      });
+      node.addEventListener('drop', function (event) {
+        event.preventDefault();
+        node.classList.remove('school-drop-active');
+        var lesson = draggedLesson(event);
+        draggedLessonId = null;
+        if (!lesson) return;
+        var destination;
+        if (kind === 'unscheduled') {
+          destination = { kind: 'unscheduled' };
+        } else if (kind === 'date-only') {
+          destination = { kind: 'date-only', date: day };
+        } else {
+          var rect = typeof node.getBoundingClientRect === 'function'
+            ? node.getBoundingClientRect()
+            : { top: 0 };
+          var rawMinutes = bounds.startHour * 60 + (event.clientY - rect.top);
+          var snapped = core.snapMinuteOfDay(rawMinutes);
+          destination = {
+            kind: 'timed',
+            start: day + 'T' + String(Math.floor(snapped / 60)).padStart(2, '0')
+              + ':' + String(snapped % 60).padStart(2, '0') + ':00+05:00'
+          };
+        }
+        var order = orderAtEnd(
+          destinationDate(destination),
+          destination.kind
+        );
+        moveLessonTo(lesson, destination, order).catch(function () {
+          setMutationMessage('Не удалось перенести урок.');
+        });
+      });
+    }
+
+    function renderCancelledHistory(lesson) {
+      var details = byId('schoolCancelledHistory');
+      var content = byId('schoolCancelledHistoryContent');
+      if (!details || !content) return;
+      clearNode(content);
+      var values = [
+        ['Результат', lesson.result],
+        ['Автономность', lesson.autonomy],
+        ['Понимание', lesson.understanding === null ? '' : lesson.understanding + '/3'],
+        ['Комментарий', lesson.comment],
+        ['Артефакт', lesson.artifactUrl]
+      ].filter(function (entry) { return entry[1] !== null && entry[1] !== ''; });
+      details.hidden = lesson.status !== 'Отменён' || values.length === 0;
+      values.forEach(function (entry) {
+        content.appendChild(element(documentRef, 'p', '', entry[0] + ': ' + entry[1]));
+      });
+    }
+
+    function assessmentCommand(lesson, status) {
+      var command = {
+        operation: 'completeLesson',
+        lessonId: lesson.id,
+        status: status
+      };
+      if (status === 'Пропущен') {
+        command.missedReason = controlValue('schoolLessonMissedReason');
+        var missedComment = controlValue('schoolLessonComment').trim();
+        if (missedComment) command.comment = missedComment;
+        return command;
+      }
+      command.autonomy = controlValue('schoolLessonAutonomy');
+      command.understanding = Number(controlValue('schoolLessonUnderstanding'));
+      if (status === 'Выполнен') command.result = controlValue('schoolLessonResult') || 'Зачёт';
+      var comment = controlValue('schoolLessonComment').trim();
+      var artifact = controlValue('schoolLessonArtifact').trim();
+      if (comment) command.comment = comment;
+      if (artifact) command.artifactUrl = artifact;
+      return command;
+    }
+
+    async function cancelLessonWithConfirmation(lesson) {
+      var evidence = Boolean(lesson.hasLearningEvidence);
+      var first = await askAction(
+        evidence ? 'По этому уроку уже начата работа' : 'Отменить урок?',
+        evidence
+          ? 'Существующие результаты сохранятся как история до отмены.'
+          : 'Запись останется в Notion и будет приглушена в календаре.',
+        evidence
+          ? [
+            { label: 'Продолжить урок', value: 'continue', primary: true },
+            { label: 'Сохранить как частично выполненный', value: 'partial' },
+            { label: 'Всё равно отменить', value: 'cancel-anyway', danger: true },
+            { label: 'Назад', value: 'back' }
+          ]
+          : [
+            { label: 'Отменить урок', value: 'cancel', danger: true },
+            { label: 'Назад', value: 'back', primary: true }
+          ]
+      );
+      if (first === 'continue') return openLesson(lesson.id);
+      if (first === 'partial') {
+        return mutateWithDialogs(assessmentCommand(lesson, 'Частично выполнен'));
+      }
+      if (first !== 'cancel' && first !== 'cancel-anyway') return null;
+      if (evidence) {
+        var second = await askAction(
+          'Точно отменить урок?',
+          'Оценочные данные не будут удалены, но исчезнут из обычного дневника.',
+          [
+            { label: 'Да, отменить', value: 'confirm', danger: true },
+            { label: 'Назад', value: 'back', primary: true }
+          ]
+        );
+        if (second !== 'confirm') return null;
+      }
+      return mutateWithDialogs({
+        operation: 'cancelLesson',
+        lessonId: lesson.id,
+        confirmLearningEvidence: evidence
+      });
+    }
+
+    function renderLessonControls(lesson) {
+      if (!documentRef || !lesson) return;
+      var dateSelect = byId('schoolLessonDate');
+      if (dateSelect) {
+        clearNode(dateSelect);
+        WEEK_DAYS.forEach(function (day) {
+          var option = element(documentRef, 'option', '', day.short + ' · ' + day.label);
+          option.value = day.date;
+          dateSelect.appendChild(option);
+        });
+        dateSelect.value = lesson.schedule.date || mobileDay || WEEK_DAYS[0].date;
+      }
+      var timeInput = byId('schoolLessonTime');
+      if (timeInput) {
+        timeInput.value = lesson.schedule.kind === 'timed'
+          ? timeText(lesson.schedule.start)
+          : '';
+      }
+      if (byId('schoolLessonDuration')) {
+        byId('schoolLessonDuration').textContent = lesson.durationMinutes + ' минут';
+      }
+      if (byId('schoolLessonResult')) byId('schoolLessonResult').value = lesson.result || 'Зачёт';
+      if (byId('schoolLessonAutonomy')) byId('schoolLessonAutonomy').value = lesson.autonomy || 'A2';
+      if (byId('schoolLessonUnderstanding')) {
+        byId('schoolLessonUnderstanding').value = lesson.understanding === null
+          ? '2'
+          : String(lesson.understanding);
+      }
+      if (byId('schoolLessonMissedReason')) {
+        byId('schoolLessonMissedReason').value = lesson.missedReason || 'Внешние обстоятельства';
+      }
+      if (byId('schoolLessonComment')) byId('schoolLessonComment').value = lesson.comment || '';
+      if (byId('schoolLessonArtifact')) byId('schoolLessonArtifact').value = lesson.artifactUrl || '';
+
+      var scheduleControls = byId('schoolScheduleControls');
+      if (scheduleControls) {
+        scheduleControls.hidden = ['Выполнен', 'Частично выполнен', 'Отменён'].indexOf(lesson.status) !== -1;
+      }
+      var assessmentControls = byId('schoolAssessmentControls');
+      if (assessmentControls) assessmentControls.hidden = lesson.status === 'Отменён';
+
+      var actionRoot = byId('schoolLessonActions');
+      clearNode(actionRoot);
+      if (lesson.status === 'Нераспределён') {
+        appendAction(actionRoot, 'Назначить и начать', 'is-primary', async function () {
+          var destination = selectedDestination(true);
+          if (!destination) return;
+          await mutateWithDialogs({
+            operation: 'moveLesson',
+            lessonId: lesson.id,
+            destination: destination,
+            order: orderAtEnd(destination.date, 'date-only')
+          });
+          await mutateWithDialogs({ operation: 'startLesson', lessonId: lesson.id });
+        });
+      } else if (lesson.status === 'Запланирован') {
+        appendAction(actionRoot, 'Начать урок', 'is-primary', function () {
+          return mutateWithDialogs({ operation: 'startLesson', lessonId: lesson.id });
+        });
+        appendAction(actionRoot, 'Отменить', 'is-danger', function () {
+          return cancelLessonWithConfirmation(lesson);
+        });
+      } else if (lesson.status === 'В процессе') {
+        appendAction(actionRoot, 'Выполнен', 'is-primary', function () {
+          return mutateWithDialogs(assessmentCommand(lesson, 'Выполнен'));
+        });
+        appendAction(actionRoot, 'Частично выполнен', '', function () {
+          return mutateWithDialogs(assessmentCommand(lesson, 'Частично выполнен'));
+        });
+        appendAction(actionRoot, 'Пропущен', 'is-danger', function () {
+          return mutateWithDialogs(assessmentCommand(lesson, 'Пропущен'));
+        });
+        appendAction(actionRoot, 'Отменить', 'is-danger', function () {
+          return cancelLessonWithConfirmation(lesson);
+        });
+      } else if (lesson.status === 'Выполнен' || lesson.status === 'Частично выполнен') {
+        appendAction(actionRoot, 'Вернуть к редактированию', 'is-primary', function () {
+          return mutateWithDialogs({ operation: 'reopenLesson', lessonId: lesson.id });
+        });
+      } else if (lesson.status === 'Пропущен') {
+        appendAction(actionRoot, 'Перенести урок', 'is-primary', function () {
+          var destination = selectedDestination(false);
+          if (!destination) return null;
+          return runDropTransition({
+            kind: 'restore-confirm',
+            command: {
+              operation: 'restoreMissedLesson',
+              lessonId: lesson.id,
+              destination: destination,
+              order: orderAtEnd(destinationDate(destination), destination.kind)
+            }
+          });
+        });
+        appendAction(actionRoot, 'Исправить статус', '', function () {
+          return mutateWithDialogs({ operation: 'correctMissedStatus', lessonId: lesson.id });
+        });
+      } else if (lesson.status === 'Отменён') {
+        appendAction(actionRoot, 'Вернуть в расписание', 'is-primary', async function () {
+          await mutateWithDialogs({ operation: 'restoreCancelledLesson', lessonId: lesson.id });
+          if (!lesson.hasLearningEvidence) return;
+          var restoredChoice = await askAction(
+            'У урока сохранились результаты предыдущей работы',
+            'Можно продолжить с ними или отдельно очистить и начать заново.',
+            [
+              { label: 'Продолжить с сохранёнными данными', value: 'continue', primary: true },
+              { label: 'Начать заново', value: 'reset', danger: true }
+            ]
+          );
+          if (restoredChoice === 'reset') {
+            var resetConfirm = await askAction(
+              'Очистить результаты предыдущей работы?',
+              'Будут удалены результат, автономность, понимание, комментарий и артефакт.',
+              [
+                { label: 'Очистить', value: 'confirm', danger: true },
+                { label: 'Назад', value: 'back', primary: true }
+              ]
+            );
+            if (resetConfirm === 'confirm') {
+              await mutateWithDialogs({
+                operation: 'clearLearningEvidence',
+                lessonId: lesson.id,
+                confirm: true
+              });
+            }
+          }
+        });
+      }
+
+      if (lesson.status !== 'Отменён') {
+        appendAction(
+          actionRoot,
+          lesson.decisionRequest ? 'Снять отметку переноса' : 'Отметить для переноса',
+          '',
+          function () {
+            return mutateWithDialogs({
+              operation: lesson.decisionRequest
+                ? 'clearDecisionRequest'
+                : 'requestCrossWeekMove',
+              lessonId: lesson.id
+            });
+          }
+        );
+      }
+      renderCancelledHistory(lesson);
+    }
+
     function selectView(view) {
       if (['today', 'week', 'diary'].indexOf(view) === -1) return false;
       currentView = view;
@@ -883,6 +1784,8 @@
       setBackgroundInert(false);
       clearNode(byId('schoolLessonMeta'));
       clearNode(byId('schoolLessonContent'));
+      clearNode(byId('schoolLessonActions'));
+      closeActionDialog('cancel');
       if (byId('schoolLessonTitle')) byId('schoolLessonTitle').textContent = 'Урок';
       if (byId('schoolLessonSubject')) byId('schoolLessonSubject').textContent = '';
       if (byId('schoolContentState')) byId('schoolContentState').textContent = '';
@@ -895,11 +1798,16 @@
       dialogKeyHandler = function (event) {
         if (event.key === 'Escape') {
           event.preventDefault();
+          if (actionDialogOpen()) {
+            closeActionDialog('cancel');
+            return;
+          }
           closeDialog();
           return;
         }
         if (event.key !== 'Tab') return;
-        var focusable = Array.from(dialog.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])'))
+        var focusRoot = actionDialogOpen() ? byId('schoolActionDialog') : dialog;
+        var focusable = Array.from(focusRoot.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])'))
           .filter(function (node) { return !node.disabled && !node.hidden; });
         if (!focusable.length) return;
         var first = focusable[0];
@@ -940,6 +1848,7 @@
           byId('schoolLessonSubject').textContent = lesson ? lesson.subject : '';
           clearNode(byId('schoolLessonMeta'));
           if (lesson) renderLessonMeta(lesson);
+          if (lesson) renderLessonControls(lesson);
           clearNode(byId('schoolLessonContent'));
           byId('schoolContentState').textContent = 'Загружаю содержание урока…';
           installDialogKeys(dialog);
@@ -981,12 +1890,7 @@
           setState('empty', 'Уроков пока нет', 'В выбранной учебной неделе нет доступных уроков.');
           return null;
         }
-        readModel = core.buildReadModel(lessons, {
-          activeWeek: ACTIVE_WEEK,
-          now: now(),
-          timeZone: TIME_ZONE
-        });
-        render(readModel);
+        buildModel();
         return readModel;
       } catch (error) {
         var state = stateFromError(error);
@@ -1009,14 +1913,75 @@
       if (dialog) dialog.addEventListener('click', function (event) {
         if (event.target === dialog) closeDialog();
       });
+      var actionDialog = byId('schoolActionDialog');
+      if (actionDialog) actionDialog.addEventListener('click', function (event) {
+        if (event.target === actionDialog) closeActionDialog('cancel');
+      });
+
+      var applySchedule = byId('schoolApplySchedule');
+      if (applySchedule) applySchedule.addEventListener('click', function () {
+        var lesson = currentLesson();
+        var destination = selectedDestination(false);
+        if (!lesson || !destination) return;
+        moveLessonTo(
+          lesson,
+          destination,
+          orderAtEnd(destinationDate(destination), destination.kind)
+        ).catch(function () { setMutationMessage('Не удалось сохранить время.'); });
+      });
+      var setDateOnly = byId('schoolSetDateOnly');
+      if (setDateOnly) setDateOnly.addEventListener('click', function () {
+        var lesson = currentLesson();
+        var destination = selectedDestination(true);
+        if (!lesson || !destination) return;
+        moveLessonTo(
+          lesson,
+          destination,
+          orderAtEnd(destination.date, destination.kind)
+        ).catch(function () { setMutationMessage('Не удалось сохранить день.'); });
+      });
+      var setUnscheduled = byId('schoolSetUnscheduled');
+      if (setUnscheduled) setUnscheduled.addEventListener('click', function () {
+        var lesson = currentLesson();
+        if (!lesson) return;
+        moveLessonTo(
+          lesson,
+          { kind: 'unscheduled' },
+          orderAtEnd(null, 'unscheduled')
+        ).catch(function () { setMutationMessage('Не удалось снять урок с расписания.'); });
+      });
+
+      [
+        ['schoolDurationDown', -1],
+        ['schoolDurationUp', 1]
+      ].forEach(function (entry) {
+        var button = byId(entry[0]);
+        if (!button) return;
+        button.addEventListener('click', function () {
+          var lesson = currentLesson();
+          if (!lesson) return;
+          var duration = core.changeDurationBySteps(lesson.durationMinutes, entry[1]);
+          mutateWithDialogs({
+            operation: 'changeLessonDuration',
+            lessonId: lesson.id,
+            durationMinutes: duration
+          }).catch(function () {
+            setMutationMessage('Не удалось изменить продолжительность.');
+          });
+        });
+      });
     }
 
     return Object.freeze({
       bind: bind,
       closeDialog: closeDialog,
+      getLessons: function () { return cloneLessons(lessons); },
+      getReadModel: function () { return readModel; },
       load: load,
       openLesson: openLesson,
+      revalidateAfterMutation: revalidateAfterMutation,
       render: render,
+      runMutation: runMutation,
       selectView: selectView
     });
   }
@@ -1043,11 +2008,15 @@
     TIME_ZONE: TIME_ZONE,
     WEEK_DAYS: WEEK_DAYS,
     createController: createController,
+    commandAfterOverlapChoice: commandAfterOverlapChoice,
+    commandForDrop: commandForDrop,
+    decisionQueueCommand: decisionQueueCommand,
     diaryResult: diaryResult,
     diaryScores: diaryScores,
     getWeekTimeBounds: getWeekTimeBounds,
     groupDiaryLessons: groupDiaryLessons,
     layoutTimedLessons: layoutTimedLessons,
+    isLessonDraggable: isLessonDraggable,
     lessonSignalLabels: lessonSignalLabels,
     partitionDecisionItems: partitionDecisionItems,
     renderContentBlocks: renderContentBlocks,

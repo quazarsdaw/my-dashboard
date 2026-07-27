@@ -96,9 +96,100 @@
         <button class="school-drawer-close" id="schoolLessonClose" type="button" aria-label="Закрыть урок">×</button>
       </header>
       <div class="school-drawer-meta" id="schoolLessonMeta"></div>
+      <section class="school-drawer-controls" id="schoolScheduleControls" aria-label="Управление уроком">
+        <div class="school-schedule-fields">
+          <label>
+            <span>День</span>
+            <select id="schoolLessonDate"></select>
+          </label>
+          <label>
+            <span>Время</span>
+            <input id="schoolLessonTime" type="time" step="900">
+          </label>
+          <div class="school-duration-control">
+            <span>Продолжительность</span>
+            <div>
+              <button id="schoolDurationDown" type="button" aria-label="Уменьшить продолжительность">−</button>
+              <output id="schoolLessonDuration">45 минут</output>
+              <button id="schoolDurationUp" type="button" aria-label="Увеличить продолжительность">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="school-control-actions">
+          <button id="schoolApplySchedule" type="button">Сохранить время</button>
+          <button id="schoolSetDateOnly" type="button">Без времени</button>
+          <button id="schoolSetUnscheduled" type="button">В нераспределённые</button>
+        </div>
+      </section>
+      <section class="school-assessment" id="schoolAssessmentControls" aria-label="Результат урока">
+        <div class="school-assessment-grid">
+          <label>
+            <span>Результат</span>
+            <select id="schoolLessonResult">
+              <option value="Зачёт">Зачёт</option>
+              <option value="Незачёт">Незачёт</option>
+              <option value="Требует повторения">Требует повторения</option>
+            </select>
+          </label>
+          <label>
+            <span>Автономность</span>
+            <select id="schoolLessonAutonomy">
+              <option value="A0">A0</option>
+              <option value="A1">A1</option>
+              <option value="A2" selected>A2</option>
+              <option value="A3">A3</option>
+            </select>
+          </label>
+          <label>
+            <span>Понимание</span>
+            <select id="schoolLessonUnderstanding">
+              <option value="0">0/3</option>
+              <option value="1">1/3</option>
+              <option value="2" selected>2/3</option>
+              <option value="3">3/3</option>
+            </select>
+          </label>
+          <label>
+            <span>Причина пропуска</span>
+            <select id="schoolLessonMissedReason">
+              <option value="Внешние обстоятельства">Внешние обстоятельства</option>
+              <option value="Ошибка планирования">Ошибка планирования</option>
+              <option value="Низкая энергия">Низкая энергия</option>
+              <option value="Избегание сложной задачи">Избегание сложной задачи</option>
+              <option value="Задача слишком большая">Задача слишком большая</option>
+              <option value="Техническая проблема">Техническая проблема</option>
+            </select>
+          </label>
+        </div>
+        <label class="school-wide-field">
+          <span>Краткий комментарий</span>
+          <textarea id="schoolLessonComment" rows="3" maxlength="1000"></textarea>
+        </label>
+        <label class="school-wide-field">
+          <span>Артефакт · HTTPS</span>
+          <input id="schoolLessonArtifact" type="url" inputmode="url" maxlength="2048"
+            placeholder="https://…">
+        </label>
+      </section>
+      <div class="school-lesson-actions" id="schoolLessonActions"></div>
+      <details class="school-cancelled-history" id="schoolCancelledHistory" hidden>
+        <summary>Данные, сохранённые до отмены</summary>
+        <div id="schoolCancelledHistoryContent"></div>
+      </details>
       <div class="school-content-state" id="schoolContentState" aria-live="polite"></div>
       <article class="school-lesson-content" id="schoolLessonContent"></article>
     </aside>
+  </div>
+
+  <div class="school-action-backdrop" id="schoolActionDialog" role="dialog" aria-modal="true"
+    aria-labelledby="schoolActionTitle" aria-hidden="true" hidden>
+    <section class="school-action-dialog" tabindex="-1">
+      <p class="school-section-kicker">Подтверждение</p>
+      <h2 id="schoolActionTitle">Подтвердите действие</h2>
+      <p id="schoolActionMessage"></p>
+      <div class="school-action-details" id="schoolActionDetails"></div>
+      <div class="school-action-buttons" id="schoolActionButtons"></div>
+    </section>
   </div>
 </body>
 </html>

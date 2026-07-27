@@ -357,7 +357,170 @@ for (const scenario of [
   });
 }
 
-test('invoke accepts only the two read-only operations', async () => {
+test('mutation transport sends only the whitelisted domain command fields', async () => {
+  const bodies = [];
+  installSignedInSync(async (_name, options) => {
+    bodies.push(options.body);
+    return successEnvelope({ id: 'lesson-1', status: 'В процессе' });
+  });
+
+  const result = await SchoolApi.mutate({
+    operation: 'startLesson',
+    lessonId: 'lesson-1',
+    NOTION_TOKEN: 'must-not-leak',
+    properties: { Статус: { select: { name: 'В процессе' } } },
+    status: 'В процессе'
+  });
+
+  assert.deepEqual(result, { id: 'lesson-1', status: 'В процессе' });
+  assert.deepEqual(bodies, [{
+    operation: 'startLesson',
+    lessonId: 'lesson-1'
+  }]);
+  assert.equal(JSON.stringify(bodies).includes('must-not-leak'), false);
+});
+
+test('mutation transport normalizes nested move and assessment commands', async () => {
+  const bodies = [];
+  installSignedInSync(async (_name, options) => {
+    bodies.push(options.body);
+    return successEnvelope({ id: 'lesson-1' });
+  });
+
+  await SchoolApi.mutate({
+    operation: 'moveLesson',
+    lessonId: 'lesson-1',
+    destination: {
+      kind: 'timed',
+      start: '2026-08-03T14:15:00+05:00',
+      end: 'must-be-derived-on-server'
+    },
+    order: 150,
+    allowOverlap: true,
+    rawNotionPayload: { token: 'secret' }
+  });
+  await SchoolApi.mutate({
+    operation: 'completeLesson',
+    lessonId: 'lesson-1',
+    status: 'Выполнен',
+    result: 'Незачёт',
+    autonomy: 'A2',
+    understanding: 2,
+    comment: 'итог',
+    artifactUrl: 'https://example.com/result',
+    extra: 'ignored'
+  });
+
+  assert.deepEqual(bodies, [
+    {
+      operation: 'moveLesson',
+      lessonId: 'lesson-1',
+      destination: {
+        kind: 'timed',
+        start: '2026-08-03T14:15:00+05:00'
+      },
+      order: 150,
+      allowOverlap: true
+    },
+    {
+      operation: 'completeLesson',
+      lessonId: 'lesson-1',
+      status: 'Выполнен',
+      result: 'Незачёт',
+      autonomy: 'A2',
+      understanding: 2,
+      comment: 'итог',
+      artifactUrl: 'https://example.com/result'
+    }
+  ]);
+});
+
+test('safe conflict summaries are exposed to dialogs without transport secrets', async () => {
+  const response = new Response(JSON.stringify({
+    ok: false,
+    error: 'LESSON_TIME_CONFLICT',
+    message: 'lesson time overlaps another lesson',
+    requestId: 'request-conflict',
+    conflicts: [{
+      id: 'english',
+      title: 'English baseline',
+      subject: 'English & IELTS',
+      start: '2026-08-03T14:30:00+05:00',
+      end: '2026-08-03T15:15:00+05:00'
+    }]
+  }), {
+    status: 409,
+    headers: { 'content-type': 'application/json' }
+  });
+  const transportError = new Error('authorization bearer secret');
+  transportError.context = response;
+  installSignedInSync(async () => ({ data: null, error: transportError }));
+
+  await assert.rejects(
+    SchoolApi.mutate({
+      operation: 'moveLesson',
+      lessonId: 'lesson-1',
+      destination: {
+        kind: 'timed',
+        start: '2026-08-03T14:00:00+05:00'
+      },
+      order: 100
+    }),
+    (error) => {
+      assert.equal(error.code, 'LESSON_TIME_CONFLICT');
+      assert.deepEqual(error.details.conflicts, [{
+        id: 'english',
+        title: 'English baseline',
+        subject: 'English & IELTS',
+        start: '2026-08-03T14:30:00+05:00',
+        end: '2026-08-03T15:15:00+05:00'
+      }]);
+      assert.equal(JSON.stringify(error).includes('bearer'), false);
+      return true;
+    }
+  );
+});
+
+test('active lesson conflict exposes only the safe lesson summary needed by the switch dialog', async () => {
+  const response = new Response(JSON.stringify({
+    ok: false,
+    error: 'ACTIVE_LESSON_EXISTS',
+    message: 'another lesson is active',
+    requestId: 'request-active',
+    activeLesson: {
+      id: 'active-lesson',
+      title: 'Current lesson',
+      subject: 'Mathematics',
+      notionToken: 'must-not-pass'
+    }
+  }), {
+    status: 409,
+    headers: { 'content-type': 'application/json' }
+  });
+  const transportError = new Error('authorization bearer secret');
+  transportError.context = response;
+  installSignedInSync(async () => ({ data: null, error: transportError }));
+
+  await assert.rejects(
+    SchoolApi.mutate({
+      operation: 'startLesson',
+      lessonId: 'next-lesson'
+    }),
+    (error) => {
+      assert.equal(error.code, 'ACTIVE_LESSON_EXISTS');
+      assert.deepEqual(error.details.activeLesson, {
+        id: 'active-lesson',
+        title: 'Current lesson',
+        subject: 'Mathematics'
+      });
+      assert.equal(JSON.stringify(error).includes('must-not-pass'), false);
+      assert.equal(JSON.stringify(error).includes('bearer'), false);
+      return true;
+    }
+  );
+});
+
+test('invoke rejects unsupported operations before calling the edge function', async () => {
   let callCount = 0;
   installSignedInSync(async () => {
     callCount += 1;
@@ -365,7 +528,7 @@ test('invoke accepts only the two read-only operations', async () => {
   });
 
   await assert.rejects(
-    SchoolApi.invoke({ operation: 'startLesson', lessonId: 'lesson-1' }),
+    SchoolApi.invoke({ operation: 'deleteNotionPage', lessonId: 'lesson-1' }),
     (error) => error.code === 'VALIDATION_ERROR'
   );
   assert.equal(callCount, 0);

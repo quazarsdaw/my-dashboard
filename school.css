@@ -35,6 +35,14 @@ body {
 
 body.school-dialog-open { overflow: hidden; }
 
+.school-page[data-mutation-pending="true"] {
+  cursor: progress;
+}
+
+.school-page[data-mutation-pending="true"] button {
+  pointer-events: none;
+}
+
 body::before {
   content: "";
   position: fixed;
@@ -284,6 +292,17 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 
 .school-lesson-card.is-canceled { opacity: 0.46; }
 .school-lesson-card.is-canceled .school-card-title { text-decoration: line-through; }
+.school-lesson-card.is-draggable,
+.school-time-card.is-draggable { cursor: grab; }
+.school-lesson-card.is-draggable:active,
+.school-time-card.is-draggable:active { cursor: grabbing; }
+.school-lesson-card.is-locked,
+.school-time-card.is-locked { cursor: default; }
+.school-drop-active {
+  outline: 1px dashed var(--school-accent);
+  outline-offset: -4px;
+  background-color: rgba(125, 211, 252, 0.045);
+}
 
 .school-card-subject {
   display: block;
@@ -705,6 +724,190 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
   font-size: 9px;
 }
 
+.school-drawer-controls,
+.school-assessment {
+  padding: 16px 0;
+  border-top: 1px solid var(--school-line);
+  border-bottom: 1px solid var(--school-line);
+}
+
+.school-assessment { border-top: 0; }
+
+.school-schedule-fields,
+.school-assessment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.school-assessment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.school-schedule-fields label,
+.school-assessment label,
+.school-duration-control {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.school-schedule-fields label > span,
+.school-assessment label > span,
+.school-duration-control > span {
+  color: var(--school-text-3);
+  font-family: var(--school-mono);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.school-schedule-fields select,
+.school-schedule-fields input,
+.school-assessment select,
+.school-assessment input,
+.school-assessment textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid var(--school-line);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--school-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.school-assessment textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.school-wide-field { margin-top: 10px; }
+
+.school-duration-control > div {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  align-items: center;
+  min-height: 42px;
+  border: 1px solid var(--school-line);
+  border-radius: 9px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.school-duration-control button {
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--school-text);
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.school-duration-control output {
+  color: var(--school-text-2);
+  font-family: var(--school-mono);
+  font-size: 10px;
+  text-align: center;
+}
+
+.school-control-actions,
+.school-lesson-actions,
+.school-action-buttons,
+.school-decision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.school-control-actions button,
+.school-lesson-actions button,
+.school-action-buttons button,
+.school-decision-actions button {
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid var(--school-line);
+  border-radius: 9px;
+  background: var(--school-surface);
+  color: var(--school-text);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.school-control-actions button:first-child,
+.school-lesson-actions button.is-primary,
+.school-action-buttons button.is-primary,
+.school-decision-actions button.is-primary {
+  border-color: rgba(125, 211, 252, 0.3);
+  background: rgba(125, 211, 252, 0.1);
+}
+
+.school-lesson-actions button.is-danger,
+.school-action-buttons button.is-danger {
+  color: var(--school-danger);
+}
+
+.school-cancelled-history {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--school-line);
+  border-radius: 10px;
+  color: var(--school-text-2);
+  font-size: 11px;
+}
+
+.school-cancelled-history summary {
+  min-height: 32px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.school-cancelled-history p { margin: 7px 0 0; }
+
+.school-action-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 21000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(4, 5, 7, 0.78);
+}
+
+.school-action-dialog {
+  width: min(520px, 100%);
+  max-height: min(720px, calc(100vh - 36px));
+  overflow-y: auto;
+  padding: 22px;
+  border: 1px solid var(--school-line);
+  border-radius: 14px;
+  background: #22252c;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+}
+
+.school-action-dialog h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.school-action-dialog > p:not(.school-section-kicker) {
+  margin: 12px 0 0;
+  color: var(--school-text-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.school-action-details {
+  margin-top: 12px;
+  color: var(--school-warning);
+  font-family: var(--school-mono);
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
 .school-content-state {
   padding: 20px 0;
   color: var(--school-text-3);
@@ -805,6 +1008,11 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
     padding: 18px 16px calc(24px + env(safe-area-inset-bottom));
     border-left: 0;
   }
+  .school-schedule-fields,
+  .school-assessment-grid { grid-template-columns: 1fr; }
+  .school-control-actions button,
+  .school-lesson-actions button,
+  .school-action-buttons button { flex: 1 1 100%; min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
