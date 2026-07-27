@@ -178,3 +178,74 @@ test('normalizes a lesson without reading ambient browser or clock state', () =>
     decisionRequest: null, hasLearningEvidence: false, isFinalized: false, warnings: []
   });
 });
+
+test('preserves only known mapper warnings and exposes them as runtime issues', () => {
+  const warned = SchoolCore.normalizeLesson(lesson({
+    id: 'warned',
+    warnings: [
+      { code: 'duration-mismatch' },
+      { code: 'invalid-duration' },
+      { code: 'raw-notion-payload', token: 'must-not-survive' }
+    ]
+  }));
+
+  assert.deepEqual(warned.warnings, [
+    { code: 'duration-mismatch' },
+    { code: 'invalid-duration' }
+  ]);
+  assert.deepEqual(
+    SchoolCore.computeRuntimeIssues([warned], '2026-08-03T12:00:00+05:00', 'Asia/Yekaterinburg')
+      .filter((issue) => ['duration-mismatch', 'invalid-duration'].includes(issue.code)),
+    [
+      { code: 'duration-mismatch', lessonId: 'warned' },
+      { code: 'invalid-duration', lessonId: 'warned' }
+    ]
+  );
+});
+
+test('marks an invalid scheduled date without leaking the raw value', () => {
+  const normalized = SchoolCore.normalizeLesson(lesson({
+    id: 'invalid-date',
+    schedule: { kind: 'date-only', date: '2026-02-31', start: null, end: null }
+  }));
+
+  assert.deepEqual(normalized.schedule, { kind: 'date-only', date: null, start: null, end: null });
+  assert.deepEqual(normalized.warnings, [{ code: 'invalid-date' }]);
+  assert.deepEqual(
+    SchoolCore.computeRuntimeIssues([normalized], '2026-08-03T12:00:00+05:00', 'Asia/Yekaterinburg')
+      .filter((issue) => issue.code === 'invalid-date'),
+    [{ code: 'invalid-date', lessonId: 'invalid-date' }]
+  );
+});
+
+test('orders dangerous runtime inconsistencies before overdue and soft schedule issues', () => {
+  const issues = SchoolCore.computeRuntimeIssues([
+    lesson({ id: 'active-a', status: 'В процессе', order: 100 }),
+    lesson({ id: 'active-b', status: 'В процессе', order: 200 }),
+    lesson({ id: 'bad-history', result: 'Зачёт', order: 300 }),
+    lesson({
+      id: 'bad-duration',
+      order: 400,
+      warnings: [{ code: 'duration-mismatch' }]
+    }),
+    lesson({
+      id: 'overdue',
+      order: 500,
+      schedule: { kind: 'date-only', date: '2026-08-02', start: null, end: null }
+    }),
+    lesson({ id: 'duplicate-a', order: 600 }),
+    lesson({ id: 'duplicate-b', order: 600 })
+  ], '2026-08-04T12:00:00+05:00', 'Asia/Yekaterinburg');
+
+  assert.deepEqual(issues.map((issue) => issue.code), [
+    'multiple-active',
+    'planned-with-assessment',
+    'duration-mismatch',
+    'overdue-planned',
+    'overdue-planned',
+    'overdue-planned',
+    'overdue-planned',
+    'overdue-planned',
+    'duplicate-order'
+  ]);
+});

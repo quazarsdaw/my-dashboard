@@ -33,6 +33,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body.school-dialog-open { overflow: hidden; }
+
 body::before {
   content: "";
   position: fixed;
@@ -301,10 +303,35 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 }
 
 .school-time { color: var(--school-text-2); }
+.school-priority {
+  color: var(--school-accent);
+  font-family: var(--school-mono);
+  font-size: 9px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
 .school-status { color: var(--school-warning); }
 .school-status.is-done { color: var(--school-success); }
 .school-status.is-missed { color: var(--school-danger); }
 .school-status.is-active { color: var(--school-success); }
+
+.school-card-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 9px;
+}
+
+.school-card-signal {
+  padding: 3px 5px;
+  border: 1px solid rgba(242, 192, 99, 0.18);
+  border-radius: 5px;
+  color: var(--school-warning);
+  font-family: var(--school-mono);
+  font-size: 7px;
+  font-weight: 750;
+  line-height: 1.2;
+}
 
 .school-decisions {
   margin: 0 0 28px;
@@ -439,7 +466,7 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 
 .school-time-labels {
   position: relative;
-  height: 660px;
+  height: var(--school-time-height, 660px);
   border-right: 1px solid var(--school-line);
 }
 
@@ -452,7 +479,7 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
   font-size: 8px;
 }
 
-.school-time-columns { position: relative; height: 660px; }
+.school-time-columns { position: relative; height: var(--school-time-height, 660px); }
 
 .school-time-line {
   position: absolute;
@@ -474,9 +501,8 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 .school-time-card {
   position: absolute;
   left: 5px;
-  right: 5px;
   z-index: 1;
-  min-height: 38px;
+  min-height: 44px;
   overflow: hidden;
   padding: 7px 8px;
   border: 1px solid rgba(125, 211, 252, 0.16);
@@ -491,22 +517,43 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 .school-time-card:hover { border-color: rgba(125, 211, 252, 0.36); }
 .school-time-card.is-canceled { opacity: 0.46; text-decoration: line-through; }
 
-.school-time-card strong {
-  display: block;
+.school-time-card .school-card-subject { font-size: 6.5px; line-height: 1; }
+.school-time-card .school-card-title {
+  margin-top: 3px;
   overflow: hidden;
-  font-size: 10px;
-  line-height: 1.3;
+  font-size: 8.5px;
+  line-height: 1.12;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.school-time-card span {
-  display: block;
-  margin-top: 5px;
+.school-time-card .school-card-meta {
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin-top: 3px;
   overflow: hidden;
-  color: var(--school-text-3);
-  font-family: var(--school-mono);
-  font-size: 8px;
+}
+.school-time-card .school-time,
+.school-time-card .school-status,
+.school-time-card .school-priority {
+  overflow: hidden;
+  font-size: 6px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.school-time-card .school-card-signals {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  max-width: 46%;
+  margin: 0;
+}
+.school-time-card .school-card-signal {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 3px;
+  background: #292d35;
+  font-size: 5.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -532,6 +579,26 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 
 .school-diary {
   border-top: 1px solid var(--school-line);
+}
+
+.school-diary-group-title {
+  margin: 0;
+  padding: 16px 8px 8px;
+  color: var(--school-text);
+  font-size: 13px;
+}
+
+.school-diary-columns {
+  display: grid;
+  grid-template-columns: 92px 1.15fr 2fr 1fr 0.7fr 0.7fr;
+  gap: 14px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--school-line);
+  color: var(--school-text-3);
+  font-family: var(--school-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .school-diary-row {
@@ -671,6 +738,8 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
   .school-week-day-head { padding-inline: 6px; }
   .school-week-day-head strong { font-size: 9px; }
   .school-diary-row { grid-template-columns: 78px 1fr 1.5fr 0.9fr; }
+  .school-diary-columns { grid-template-columns: 78px 1fr 1.5fr 0.9fr; }
+  .school-diary-columns span:nth-child(n + 5) { display: none; }
   .school-diary-score { display: none; }
 }
 
@@ -723,6 +792,9 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
     gap: 9px;
     padding-inline: 3px;
   }
+  .school-diary-columns { grid-template-columns: 72px minmax(0, 1fr) auto; }
+  .school-diary-columns span:nth-child(2),
+  .school-diary-columns span:nth-child(n + 5) { display: none; }
   .school-diary-subject,
   .school-diary-score { display: none; }
   .school-diary-title { font-size: 11px; }

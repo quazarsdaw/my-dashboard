@@ -10,6 +10,7 @@
   var CANCELED = 'Отменён';
   var FINALIZED = ['Выполнен', 'Частично выполнен', 'Пропущен'];
   var ASSESSMENT_FIELDS = ['result', 'autonomy', 'understanding'];
+  var KNOWN_WARNING_CODES = ['invalid-duration', 'duration-mismatch', 'invalid-date'];
 
   function isRecord(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -52,8 +53,25 @@
 
   function normalizeLesson(raw) {
     raw = isRecord(raw) ? raw : {};
+    var rawSchedule = isRecord(raw.schedule) ? raw.schedule : {};
+    var schedule = normalizeSchedule(rawSchedule);
     var status = text(raw.status) || 'Нераспределён';
     var duration = Number(raw.durationMinutes);
+    var warnings = [];
+    (Array.isArray(raw.warnings) ? raw.warnings : []).forEach(function (warning) {
+      var code = isRecord(warning) ? text(warning.code) : '';
+      if (KNOWN_WARNING_CODES.indexOf(code) !== -1 && !warnings.some(function (item) { return item.code === code; })) {
+        warnings.push({ code: code });
+      }
+    });
+    if (
+      rawSchedule.kind !== 'unscheduled' &&
+      rawSchedule.kind !== undefined &&
+      !schedule.date &&
+      !warnings.some(function (item) { return item.code === 'invalid-date'; })
+    ) {
+      warnings.push({ code: 'invalid-date' });
+    }
     if (!Number.isFinite(duration) || duration < 15 || duration > 180) duration = 45;
     var result = text(raw.result) || null;
     var autonomy = text(raw.autonomy) || null;
@@ -64,14 +82,14 @@
     var finalized = FINALIZED.indexOf(status) !== -1;
     return {
       id: text(raw.id), title: text(raw.title), subject: text(raw.subject), module: text(raw.module),
-      schedule: normalizeSchedule(raw.schedule), status: status, priority: text(raw.priority) || 'Could', week: text(raw.week),
+      schedule: schedule, status: status, priority: text(raw.priority) || 'Could', week: text(raw.week),
       result: result, autonomy: autonomy, understanding: understanding, artifactUrl: artifactUrl, comment: comment,
       missedReason: text(raw.missedReason) || null, moveCount: Number.isFinite(Number(raw.moveCount)) ? Number(raw.moveCount) : 0,
       durationMinutes: duration, order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 0,
       decisionRequest: text(raw.decisionRequest) || null,
       hasLearningEvidence: status === 'В процессе' || status === 'Частично выполнен' || status === 'Выполнен'
         || Boolean(result || autonomy || understanding !== null || comment || artifactUrl),
-      isFinalized: finalized, warnings: []
+      isFinalized: finalized, warnings: warnings
     };
   }
 
@@ -149,6 +167,13 @@
     included.forEach(function (lesson) {
       if (lesson.status === 'Запланирован' && hasAssessment(lesson)) issues.push({ code: 'planned-with-assessment', lessonId: lesson.id });
       if (lesson.status === 'Пропущен' && (lesson.autonomy || lesson.understanding !== null)) issues.push({ code: 'missed-with-assessment', lessonId: lesson.id });
+      (Array.isArray(lesson.warnings) ? lesson.warnings : []).forEach(function (warning) {
+        if (warning && KNOWN_WARNING_CODES.indexOf(warning.code) !== -1) {
+          issues.push({ code: warning.code, lessonId: lesson.id });
+        }
+      });
+    });
+    included.forEach(function (lesson) {
       var lessonDay = getLessonDayKey(lesson, timeZone);
       var nowDay = timeZoneDayKey(now, timeZone);
       if (lesson.status === 'Запланирован' && lessonDay && nowDay && lessonDay < nowDay) issues.push({ code: 'overdue-planned', lessonId: lesson.id });

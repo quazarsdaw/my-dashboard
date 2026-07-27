@@ -29,6 +29,131 @@ function fakeDocument() {
   return { createElement: node };
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function interactiveDocument() {
+  const listeners = new Map();
+  const nodes = new Map();
+  let document;
+
+  function node(tagName, id = '') {
+    const value = {
+      tagName: tagName.toUpperCase(),
+      id,
+      attributes: {},
+      children: [],
+      className: '',
+      hidden: false,
+      inert: false,
+      style: {},
+      textContent: '',
+      appendChild(child) {
+        this.children.push(child);
+        return child;
+      },
+      removeChild(child) {
+        this.children.splice(this.children.indexOf(child), 1);
+      },
+      get firstChild() {
+        return this.children[0] || null;
+      },
+      setAttribute(name, valueToSet) {
+        this.attributes[name] = String(valueToSet);
+      },
+      getAttribute(name) {
+        return this.attributes[name];
+      },
+      removeAttribute(name) {
+        delete this.attributes[name];
+      },
+      addEventListener() {},
+      querySelectorAll() {
+        return id === 'schoolLessonDialog' ? [nodes.get('schoolLessonClose')] : [];
+      },
+      focus() {
+        document.activeElement = this;
+        this.focusCount = (this.focusCount || 0) + 1;
+      }
+    };
+    value.classList = {
+      add(name) {
+        const values = new Set(value.className.split(/\s+/).filter(Boolean));
+        values.add(name);
+        value.className = [...values].join(' ');
+      },
+      remove(name) {
+        value.className = value.className.split(/\s+/).filter((entry) => entry && entry !== name).join(' ');
+      },
+      contains(name) {
+        return value.className.split(/\s+/).includes(name);
+      },
+      toggle(name, force) {
+        if (force === undefined ? !this.contains(name) : force) this.add(name);
+        else this.remove(name);
+      }
+    };
+    if (id) nodes.set(id, value);
+    return value;
+  }
+
+  document = {
+    activeElement: null,
+    body: node('body', 'body'),
+    createElement(tagName) {
+      return node(tagName);
+    },
+    getElementById(id) {
+      return nodes.get(id) || null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+    addEventListener(type, handler) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type).add(handler);
+    },
+    removeEventListener(type, handler) {
+      if (listeners.has(type)) listeners.get(type).delete(handler);
+    },
+    listenerCount(type) {
+      return listeners.has(type) ? listeners.get(type).size : 0;
+    },
+    dispatchKey(key, options = {}) {
+      const event = {
+        key,
+        shiftKey: Boolean(options.shiftKey),
+        prevented: false,
+        preventDefault() {
+          this.prevented = true;
+        }
+      };
+      [...(listeners.get('keydown') || [])].forEach((handler) => handler(event));
+      return event;
+    }
+  };
+
+  [
+    ['main', 'schoolApp'],
+    ['div', 'schoolLessonDialog'],
+    ['button', 'schoolLessonClose'],
+    ['h2', 'schoolLessonTitle'],
+    ['p', 'schoolLessonSubject'],
+    ['div', 'schoolLessonMeta'],
+    ['div', 'schoolContentState'],
+    ['article', 'schoolLessonContent']
+  ].forEach(([tagName, id]) => node(tagName, id));
+  nodes.get('schoolLessonDialog').hidden = true;
+  return { document, nodes };
+}
+
 test('school page loads shared dashboard dependencies before read-only school scripts', () => {
   const html = read('school.html');
   const scripts = [
@@ -73,6 +198,7 @@ test('school layout keeps mobile targets accessible and document overflow contai
   assert.ok(css.includes('overflow-x: hidden'));
   assert.ok(css.includes('.school-mobile-days'));
   assert.ok(css.includes('.school-drawer'));
+  assert.match(css, /\.school-time-card\s*\{[^}]*min-height:\s*44px/s);
 });
 
 test('shared navigation places school between tracker and menu in eight columns', () => {
@@ -156,6 +282,217 @@ test('content renderer creates text nodes and keeps unsafe links inert', () => {
   assert.equal(root.children[0].children[0].attributes.href, undefined);
   assert.equal(root.children[1].attributes.href, 'https://example.com/lesson');
   assert.equal(root.children[1].attributes.rel, 'noopener noreferrer');
+});
+
+test('content renderer groups consecutive list items and gives toggles a summary', () => {
+  const document = fakeDocument();
+  const root = document.createElement('div');
+
+  SchoolUi.renderContentBlocks(root, [
+    { type: 'numbered_list_item', spans: [{ text: 'первый', annotations: {} }], children: [] },
+    { type: 'numbered_list_item', spans: [{ text: 'второй', annotations: {} }], children: [] },
+    { type: 'bulleted_list_item', spans: [{ text: 'маркер', annotations: {} }], children: [] },
+    {
+      type: 'toggle',
+      spans: [{ text: 'подробнее', annotations: {} }],
+      children: [{ type: 'paragraph', spans: [{ text: 'ответ', annotations: {} }], children: [] }]
+    },
+    { type: 'constructor', label: 'prototype lookup must not select a tag' }
+  ], document);
+
+  assert.equal(root.children[0].tagName, 'OL');
+  assert.equal(root.children[0].children.length, 2);
+  assert.equal(root.children[1].tagName, 'UL');
+  assert.equal(root.children[1].children.length, 1);
+  assert.equal(root.children[2].tagName, 'DETAILS');
+  assert.equal(root.children[2].children[0].tagName, 'SUMMARY');
+  assert.equal(root.children[2].children[1].className, 'school-content-children');
+  assert.equal(root.children[3].className, 'school-content-unsupported');
+});
+
+test('today focus is the sole active lesson or the computed next lesson', () => {
+  const active = { id: 'active' };
+  const completed = { id: 'completed', status: 'Выполнен' };
+  const next = { id: 'next' };
+
+  assert.equal(SchoolUi.selectTodayFocus({
+    activeLessons: [active],
+    today: [completed],
+    nextLesson: next
+  }), active);
+  assert.equal(SchoolUi.selectTodayFocus({
+    activeLessons: [],
+    today: [completed],
+    nextLesson: next
+  }), next);
+  assert.equal(SchoolUi.selectTodayFocus({
+    activeLessons: [{ id: 'a' }, { id: 'b' }],
+    today: [completed],
+    nextLesson: next
+  }), null);
+});
+
+test('diary groups rows by planned date and keeps missed reason instead of an empty result', () => {
+  const groups = SchoolUi.groupDiaryLessons([
+    {
+      id: 'missed',
+      status: 'Пропущен',
+      result: null,
+      missedReason: 'Низкая энергия',
+      order: 100,
+      schedule: { date: '2026-08-03' }
+    },
+    {
+      id: 'done',
+      status: 'Выполнен',
+      result: 'Зачёт',
+      missedReason: null,
+      order: 200,
+      schedule: { date: '2026-08-04' }
+    },
+    {
+      id: 'canceled',
+      status: 'Отменён',
+      result: 'Зачёт',
+      order: 300,
+      schedule: { date: '2026-08-04' }
+    }
+  ]);
+
+  assert.deepEqual(groups.map((group) => [group.date, group.lessons.map((lesson) => lesson.id)]), [
+    ['2026-08-04', ['done']],
+    ['2026-08-03', ['missed']]
+  ]);
+  assert.equal(SchoolUi.diaryResult(groups[1].lessons[0]), 'Пропущен · Низкая энергия');
+});
+
+test('week time bounds expand to actual lessons and overlapping lessons receive stable lanes', () => {
+  const lessons = [
+    {
+      id: 'early',
+      schedule: {
+        kind: 'timed',
+        start: '2026-08-03T07:20:00+05:00',
+        end: '2026-08-03T08:05:00+05:00'
+      }
+    },
+    {
+      id: 'overlap-a',
+      schedule: {
+        kind: 'timed',
+        start: '2026-08-03T14:00:00+05:00',
+        end: '2026-08-03T15:00:00+05:00'
+      }
+    },
+    {
+      id: 'overlap-b',
+      schedule: {
+        kind: 'timed',
+        start: '2026-08-03T14:30:00+05:00',
+        end: '2026-08-03T15:15:00+05:00'
+      }
+    },
+    {
+      id: 'late',
+      schedule: {
+        kind: 'timed',
+        start: '2026-08-03T21:20:00+05:00',
+        end: '2026-08-03T22:10:00+05:00'
+      }
+    }
+  ];
+
+  assert.deepEqual(SchoolUi.getWeekTimeBounds(lessons), {
+    startHour: 7,
+    endHour: 23,
+    height: 960
+  });
+  assert.deepEqual(
+    SchoolUi.layoutTimedLessons(lessons).map((item) => [item.lesson.id, item.lane, item.laneCount]),
+    [
+      ['early', 0, 1],
+      ['overlap-a', 0, 2],
+      ['overlap-b', 1, 2],
+      ['late', 0, 1]
+    ]
+  );
+});
+
+test('card signals and decision partitions preserve the approved priority', () => {
+  assert.deepEqual(SchoolUi.lessonSignalLabels({
+    id: 'active',
+    status: 'В процессе',
+    decisionRequest: 'Перенос между неделями',
+    moveCount: 2,
+    warnings: [{ code: 'duration-mismatch' }]
+  }, true), [
+    'Текущий урок',
+    'Запрошен перенос в другую неделю',
+    'Переносов: 2',
+    'Время окончания не совпадает с продолжительностью',
+    'Конфликт времени'
+  ]);
+
+  const persisted = [{ id: 'request' }];
+  const groups = SchoolUi.partitionDecisionItems({
+    persistedDecisions: persisted,
+    runtimeIssues: [
+      { code: 'overdue-planned' },
+      { code: 'multiple-active' },
+      { code: 'duration-mismatch' },
+      { code: 'overlap' }
+    ]
+  });
+  assert.deepEqual(groups, {
+    importantIssues: [{ code: 'multiple-active' }, { code: 'duration-mismatch' }],
+    persisted,
+    remainingIssues: [{ code: 'overdue-planned' }, { code: 'overlap' }]
+  });
+});
+
+test('opening lessons is generation guarded and installs one dialog key handler', async () => {
+  const first = deferred();
+  const second = deferred();
+  const requests = { a: first, b: second };
+  const { document, nodes } = interactiveDocument();
+  const originalFocus = document.createElement('button');
+  document.activeElement = originalFocus;
+  const controller = SchoolUi.createController({
+    api: {
+      getLessonContent(id) {
+        return requests[id].promise;
+      }
+    },
+    core: {},
+    document
+  });
+
+  const openA = controller.openLesson('a');
+  const openB = controller.openLesson('b');
+  assert.equal(document.listenerCount('keydown'), 1);
+
+  second.resolve({
+    lesson: { id: 'b' },
+    blocks: [{ type: 'paragraph', spans: [{ text: 'content b', annotations: {} }], children: [] }]
+  });
+  await openB;
+  assert.equal(nodes.get('schoolLessonContent').children[0].children[0].textContent, 'content b');
+
+  first.resolve({
+    lesson: { id: 'a' },
+    blocks: [{ type: 'paragraph', spans: [{ text: 'stale a', annotations: {} }], children: [] }]
+  });
+  await openA;
+  assert.equal(nodes.get('schoolLessonContent').children.length, 1);
+  assert.equal(nodes.get('schoolLessonContent').children[0].children[0].textContent, 'content b');
+
+  const escapeEvent = document.dispatchKey('Escape');
+  assert.equal(escapeEvent.prevented, true);
+  assert.equal(document.listenerCount('keydown'), 0);
+  assert.equal(nodes.get('schoolLessonContent').children.length, 0);
+  assert.equal(nodes.get('schoolApp').attributes['aria-hidden'], undefined);
+  assert.equal(nodes.get('schoolApp').inert, false);
+  assert.equal(originalFocus.focusCount, 1);
 });
 
 test('read-only controller normalizes loading and auth error states', async () => {

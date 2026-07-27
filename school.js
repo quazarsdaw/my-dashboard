@@ -19,16 +19,23 @@
     { date: '2026-08-09', short: 'Вс', label: '9 августа' }
   ];
   var FINAL_DIARY_STATUSES = ['Выполнен', 'Частично выполнен', 'Пропущен'];
-  var RICH_BLOCK_TAGS = {
+  var RICH_BLOCK_TAGS = Object.freeze({
     paragraph: 'p',
     heading_1: 'h1',
     heading_2: 'h2',
     heading_3: 'h3',
     heading_4: 'h4',
     quote: 'blockquote',
-    callout: 'aside',
-    toggle: 'details'
-  };
+    callout: 'aside'
+  });
+  var HIGH_PRIORITY_ISSUES = [
+    'multiple-active',
+    'planned-with-assessment',
+    'missed-with-assessment',
+    'invalid-duration',
+    'duration-mismatch',
+    'invalid-date'
+  ];
   var ISSUE_LABELS = {
     'multiple-active': 'Активно несколько уроков',
     'planned-with-assessment': 'Запланированный урок содержит оценочные данные',
@@ -125,28 +132,51 @@
   function renderContentBlocks(rootNode, blocks, documentRef) {
     documentRef = documentRef || (root && root.document);
     if (!rootNode || !documentRef) return rootNode;
+    var items = Array.isArray(blocks) ? blocks : [];
+    var index = 0;
 
-    (Array.isArray(blocks) ? blocks : []).forEach(function (block) {
-      if (!isRecord(block)) return;
+    while (index < items.length) {
+      var block = items[index];
+      index += 1;
+      if (!isRecord(block)) continue;
       var node;
-      var tagName = RICH_BLOCK_TAGS[block.type];
+      var tagName = Object.prototype.hasOwnProperty.call(RICH_BLOCK_TAGS, block.type)
+        ? RICH_BLOCK_TAGS[block.type]
+        : null;
 
       if (tagName) {
         node = element(documentRef, tagName, block.type === 'callout' ? 'school-content-callout' : '');
         appendSpans(node, block.spans, documentRef);
         appendChildren(node, block.children, documentRef);
         rootNode.appendChild(node);
-        return;
+        continue;
       }
 
       if (block.type === 'bulleted_list_item' || block.type === 'numbered_list_item') {
-        node = element(documentRef, 'li');
-        appendSpans(node, block.spans, documentRef);
-        appendChildren(node, block.children, documentRef);
         var list = element(documentRef, block.type === 'bulleted_list_item' ? 'ul' : 'ol');
-        list.appendChild(node);
+        var listType = block.type;
+        var listItem = block;
+        while (isRecord(listItem) && listItem.type === listType) {
+          node = element(documentRef, 'li');
+          appendSpans(node, listItem.spans, documentRef);
+          appendChildren(node, listItem.children, documentRef);
+          list.appendChild(node);
+          if (index >= items.length || !isRecord(items[index]) || items[index].type !== listType) break;
+          listItem = items[index];
+          index += 1;
+        }
         rootNode.appendChild(list);
-        return;
+        continue;
+      }
+
+      if (block.type === 'toggle') {
+        node = element(documentRef, 'details');
+        var summary = element(documentRef, 'summary');
+        appendSpans(summary, block.spans, documentRef);
+        node.appendChild(summary);
+        appendChildren(node, block.children, documentRef);
+        rootNode.appendChild(node);
+        continue;
       }
 
       if (block.type === 'to_do') {
@@ -159,7 +189,7 @@
         appendSpans(node, block.spans, documentRef);
         appendChildren(node, block.children, documentRef);
         rootNode.appendChild(node);
-        return;
+        continue;
       }
 
       if (block.type === 'code') {
@@ -169,29 +199,29 @@
         node.appendChild(code);
         rootNode.appendChild(node);
         appendChildren(node, block.children, documentRef);
-        return;
+        continue;
       }
 
       if (block.type === 'divider') {
         rootNode.appendChild(element(documentRef, 'hr'));
-        return;
+        continue;
       }
 
       if (block.type === 'equation') {
         rootNode.appendChild(element(documentRef, 'p', 'school-content-equation', text(block.expression)));
-        return;
+        continue;
       }
 
       if (block.type === 'table') {
         renderTableBlock(rootNode, block, documentRef);
-        return;
+        continue;
       }
 
       if (block.type === 'column_list' || block.type === 'column' || block.type === 'synced_block') {
         node = element(documentRef, 'div', 'school-content-group');
         appendChildren(node, block.children, documentRef);
         rootNode.appendChild(node);
-        return;
+        continue;
       }
 
       if ([
@@ -206,7 +236,7 @@
         }
         rootNode.appendChild(node);
         appendChildren(node, block.children, documentRef);
-        return;
+        continue;
       }
 
       rootNode.appendChild(element(
@@ -215,7 +245,7 @@
         'school-content-unsupported',
         text(block.label) || 'неподдерживаемый блок'
       ));
-    });
+    }
 
     return rootNode;
   }
@@ -264,6 +294,136 @@
     return timeText(schedule.start) + '–' + timeText(schedule.end);
   }
 
+  function selectTodayFocus(model) {
+    var active = model && Array.isArray(model.activeLessons) ? model.activeLessons : [];
+    if (active.length === 1) return active[0];
+    if (active.length > 1) return null;
+    return model && model.nextLesson ? model.nextLesson : null;
+  }
+
+  function diaryResult(lesson) {
+    if (lesson.status === 'Пропущен') {
+      return lesson.missedReason ? 'Пропущен · ' + lesson.missedReason : 'Пропущен';
+    }
+    return lesson.result || lesson.status;
+  }
+
+  function groupDiaryLessons(entries) {
+    var byDate = {};
+    (Array.isArray(entries) ? entries : []).filter(function (lesson) {
+      return lesson && FINAL_DIARY_STATUSES.indexOf(lesson.status) !== -1;
+    }).forEach(function (lesson) {
+      var date = lesson.schedule && typeof lesson.schedule.date === 'string'
+        ? lesson.schedule.date
+        : '';
+      if (!byDate[date]) byDate[date] = [];
+      byDate[date].push(lesson);
+    });
+    return Object.keys(byDate).sort().reverse().map(function (date) {
+      return {
+        date: date,
+        lessons: byDate[date].slice().sort(function (left, right) {
+          return (left.order || 0) - (right.order || 0) || text(left.id).localeCompare(text(right.id));
+        })
+      };
+    });
+  }
+
+  function timeMinutes(value) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 0;
+    var parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: TIME_ZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(date);
+    var values = {};
+    parts.forEach(function (part) { values[part.type] = Number(part.value); });
+    return (values.hour || 0) * 60 + (values.minute || 0);
+  }
+
+  function getWeekTimeBounds(entries) {
+    var timed = (Array.isArray(entries) ? entries : []).filter(function (lesson) {
+      return lesson && lesson.schedule && lesson.schedule.kind === 'timed'
+        && lesson.schedule.start && lesson.schedule.end;
+    });
+    var starts = timed.map(function (lesson) { return timeMinutes(lesson.schedule.start); });
+    var ends = timed.map(function (lesson) { return timeMinutes(lesson.schedule.end); });
+    var startHour = Math.min(9, starts.length ? Math.floor(Math.min.apply(null, starts) / 60) : 9);
+    var endHour = Math.max(20, ends.length ? Math.ceil(Math.max.apply(null, ends) / 60) : 20);
+    if (endHour <= startHour) endHour = startHour + 1;
+    return {
+      startHour: startHour,
+      endHour: endHour,
+      height: (endHour - startHour) * 60
+    };
+  }
+
+  function layoutTimedLessons(entries) {
+    var sorted = (Array.isArray(entries) ? entries : []).slice().sort(function (left, right) {
+      return timeMinutes(left.schedule.start) - timeMinutes(right.schedule.start)
+        || timeMinutes(left.schedule.end) - timeMinutes(right.schedule.end)
+        || text(left.id).localeCompare(text(right.id));
+    });
+    var laneEnds = [];
+    var laidOut = [];
+    var group = [];
+    var groupEnd = -1;
+
+    function finishGroup() {
+      var laneCount = Math.max(1, laneEnds.length);
+      group.forEach(function (item) { item.laneCount = laneCount; });
+      laneEnds = [];
+      group = [];
+      groupEnd = -1;
+    }
+
+    sorted.forEach(function (lesson) {
+      var start = timeMinutes(lesson.schedule.start);
+      var end = timeMinutes(lesson.schedule.end);
+      if (group.length && start >= groupEnd) finishGroup();
+      var lane = laneEnds.findIndex(function (laneEnd) { return laneEnd <= start; });
+      if (lane === -1) {
+        lane = laneEnds.length;
+        laneEnds.push(end);
+      } else {
+        laneEnds[lane] = end;
+      }
+      var item = { lesson: lesson, lane: lane, laneCount: 0 };
+      group.push(item);
+      laidOut.push(item);
+      groupEnd = Math.max(groupEnd, end);
+    });
+    if (group.length) finishGroup();
+    return laidOut;
+  }
+
+  function lessonSignalLabels(lesson, hasConflict) {
+    var signals = [];
+    if (lesson.status === 'В процессе') signals.push('Текущий урок');
+    if (lesson.decisionRequest) signals.push('Запрошен перенос в другую неделю');
+    if (lesson.moveCount > 0) signals.push('Переносов: ' + lesson.moveCount);
+    (Array.isArray(lesson.warnings) ? lesson.warnings : []).forEach(function (warning) {
+      if (warning && ISSUE_LABELS[warning.code]) signals.push(ISSUE_LABELS[warning.code]);
+    });
+    if (hasConflict) signals.push('Конфликт времени');
+    return signals;
+  }
+
+  function partitionDecisionItems(model) {
+    var issues = model && Array.isArray(model.runtimeIssues) ? model.runtimeIssues : [];
+    return {
+      importantIssues: issues.filter(function (issue) {
+        return HIGH_PRIORITY_ISSUES.indexOf(issue.code) !== -1;
+      }),
+      persisted: model && Array.isArray(model.persistedDecisions) ? model.persistedDecisions : [],
+      remainingIssues: issues.filter(function (issue) {
+        return HIGH_PRIORITY_ISSUES.indexOf(issue.code) === -1;
+      })
+    };
+  }
+
   function statusClass(status) {
     if (status === 'Выполнен') return ' is-done';
     if (status === 'Пропущен') return ' is-missed';
@@ -271,18 +431,35 @@
     return '';
   }
 
-  function makeLessonCard(documentRef, lesson, openLesson) {
-    var card = element(documentRef, 'button', 'school-lesson-card');
-    card.type = 'button';
+  function appendLessonDetails(card, documentRef, lesson, conflictIds) {
     if (lesson.status === 'Отменён') card.className += ' is-canceled';
-    card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
-    card.addEventListener('click', function () { openLesson(lesson.id); });
     card.appendChild(element(documentRef, 'span', 'school-card-subject', lesson.subject));
     card.appendChild(element(documentRef, 'strong', 'school-card-title', lesson.title));
     var meta = element(documentRef, 'span', 'school-card-meta');
     meta.appendChild(element(documentRef, 'span', 'school-time', scheduleText(lesson)));
+    if (lesson.schedule.kind === 'timed') {
+      meta.appendChild(element(documentRef, 'span', 'school-time', lesson.durationMinutes + ' минут'));
+    }
     meta.appendChild(element(documentRef, 'span', 'school-status' + statusClass(lesson.status), lesson.status));
+    meta.appendChild(element(documentRef, 'span', 'school-priority', lesson.priority));
     card.appendChild(meta);
+
+    var signals = lessonSignalLabels(lesson, Boolean(conflictIds && conflictIds.has(lesson.id)));
+    if (signals.length) {
+      var warningRoot = element(documentRef, 'span', 'school-card-signals');
+      signals.forEach(function (signal) {
+        warningRoot.appendChild(element(documentRef, 'span', 'school-card-signal', signal));
+      });
+      card.appendChild(warningRoot);
+    }
+  }
+
+  function makeLessonCard(documentRef, lesson, openLesson, conflictIds) {
+    var card = element(documentRef, 'button', 'school-lesson-card');
+    card.type = 'button';
+    card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
+    card.addEventListener('click', function () { openLesson(lesson.id); });
+    appendLessonDetails(card, documentRef, lesson, conflictIds);
     return card;
   }
 
@@ -299,6 +476,8 @@
     var mobileDay = '2026-08-03';
     var previousFocus = null;
     var dialogKeyHandler = null;
+    var dialogGeneration = 0;
+    var currentContentLessonId = null;
 
     function byId(id) {
       return documentRef ? documentRef.getElementById(id) : null;
@@ -374,8 +553,11 @@
       var rootNode = byId('schoolDecisions');
       if (!rootNode) return;
       clearNode(rootNode);
-      var persisted = model.persistedDecisions || [];
-      var issues = model.runtimeIssues || [];
+      var groupsByPriority = partitionDecisionItems(model);
+      var persisted = groupsByPriority.persisted;
+      var importantIssues = groupsByPriority.importantIssues;
+      var remainingIssues = groupsByPriority.remainingIssues;
+      var issues = importantIssues.concat(remainingIssues);
       var count = persisted.length + issues.length;
       var head = element(documentRef, 'header', 'school-decision-head');
       head.appendChild(element(documentRef, 'h2', '', 'Требует решения'));
@@ -386,8 +568,13 @@
         return;
       }
       var groups = element(documentRef, 'div', 'school-decision-groups');
+      if (importantIssues.length) {
+        groups.appendChild(renderDecisionGroup('Обнаруженные проблемы · важно', importantIssues, false));
+      }
       if (persisted.length) groups.appendChild(renderDecisionGroup('Запрошенные действия', persisted, true));
-      if (issues.length) groups.appendChild(renderDecisionGroup('Обнаруженные проблемы', issues, false));
+      if (remainingIssues.length) {
+        groups.appendChild(renderDecisionGroup('Обнаруженные проблемы · остальное', remainingIssues, false));
+      }
       rootNode.appendChild(groups);
     }
 
@@ -396,13 +583,20 @@
       if (!rootNode) return;
       clearNode(rootNode);
       var today = model.today || [];
-      var active = (model.activeLessons || [])[0] || null;
-      var focus = active || today[0] || model.nextLesson;
+      var activeLessons = model.activeLessons || [];
+      var focus = selectTodayFocus(model);
       var metaNode = byId('schoolTodayMeta');
       if (metaNode) metaNode.textContent = today.length ? today.length + ' урока на день' : 'уроков на сегодня нет';
 
       if (!focus) {
-        rootNode.appendChild(element(documentRef, 'div', 'school-empty', 'На сегодня и ближайшее время уроков нет.'));
+        rootNode.appendChild(element(
+          documentRef,
+          'div',
+          'school-empty',
+          activeLessons.length > 1
+            ? 'Сейчас активно несколько уроков. Сначала разрешите состояние в разделе «Требует решения».'
+            : 'На сегодня и ближайшее время уроков нет.'
+        ));
         return;
       }
 
@@ -440,20 +634,6 @@
       }
     }
 
-    function timeMinutes(value) {
-      var date = new Date(value);
-      if (Number.isNaN(date.getTime())) return 0;
-      var parts = new Intl.DateTimeFormat('en-GB', {
-        timeZone: TIME_ZONE,
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23'
-      }).formatToParts(date);
-      var values = {};
-      parts.forEach(function (part) { values[part.type] = Number(part.value); });
-      return (values.hour || 0) * 60 + (values.minute || 0);
-    }
-
     function setMobileDay(date) {
       mobileDay = date;
       if (!documentRef) return;
@@ -475,6 +655,21 @@
       clearNode(mobileRoot);
       var currentDay = localDateKey(now());
       if (WEEK_DAYS.some(function (day) { return day.date === currentDay; })) mobileDay = currentDay;
+      var conflictIds = new Set();
+      (model.runtimeIssues || []).forEach(function (issue) {
+        if (issue.code === 'overlap') {
+          (issue.lessonIds || []).forEach(function (lessonId) { conflictIds.add(lessonId); });
+        }
+      });
+      var timedLessons = lessons.filter(function (lesson) {
+        return lesson.schedule && lesson.schedule.kind === 'timed';
+      });
+      var bounds = getWeekTimeBounds(timedLessons);
+      var weekMeta = byId('schoolWeekTimeMeta');
+      if (weekMeta) {
+        weekMeta.textContent = String(bounds.startHour).padStart(2, '0') + ':00–'
+          + String(bounds.endHour).padStart(2, '0') + ':00 · Asia/Yekaterinburg';
+      }
 
       WEEK_DAYS.forEach(function (day) {
         var dayButton = element(documentRef, 'button', 'school-mobile-day', day.short + ' ' + day.date.slice(-2));
@@ -505,23 +700,24 @@
         (scheduledByDay[day.date] || []).filter(function (lesson) {
           return lesson.schedule.kind === 'date-only';
         }).forEach(function (lesson) {
-          dayColumn.appendChild(makeLessonCard(documentRef, lesson, openLesson));
+          dayColumn.appendChild(makeLessonCard(documentRef, lesson, openLesson, conflictIds));
         });
         allDayGrid.appendChild(dayColumn);
       });
       shell.appendChild(allDayGrid);
 
       var timeShell = element(documentRef, 'div', 'school-time-shell');
+      timeShell.style.setProperty('--school-time-height', bounds.height + 'px');
       var labels = element(documentRef, 'div', 'school-time-labels');
-      for (var hour = 9; hour <= 20; hour += 1) {
+      for (var hour = bounds.startHour; hour <= bounds.endHour; hour += 1) {
         var label = element(documentRef, 'span', 'school-hour-label', String(hour).padStart(2, '0') + ':00');
-        label.style.top = ((hour - 9) * 60) + 'px';
+        label.style.top = ((hour - bounds.startHour) * 60) + 'px';
         labels.appendChild(label);
       }
       timeShell.appendChild(labels);
 
       var columns = element(documentRef, 'div', 'school-time-columns');
-      for (var half = 0; half <= 22; half += 1) {
+      for (var half = 0; half <= (bounds.endHour - bounds.startHour) * 2; half += 1) {
         var line = element(documentRef, 'span', 'school-time-line' + (half % 2 ? ' is-half' : ''));
         line.style.top = (half * 30) + 'px';
         columns.appendChild(line);
@@ -529,20 +725,22 @@
       WEEK_DAYS.forEach(function (day) {
         var timeDay = element(documentRef, 'div', 'school-time-day');
         timeDay.setAttribute('data-school-day', day.date);
-        (scheduledByDay[day.date] || []).filter(function (lesson) {
+        var dayTimed = (scheduledByDay[day.date] || []).filter(function (lesson) {
           return lesson.schedule.kind === 'timed';
-        }).forEach(function (lesson) {
+        });
+        layoutTimedLessons(dayTimed).forEach(function (layout) {
+          var lesson = layout.lesson;
           var start = timeMinutes(lesson.schedule.start);
           var end = timeMinutes(lesson.schedule.end);
           var card = element(documentRef, 'button', 'school-time-card');
           card.type = 'button';
-          card.style.top = Math.max(0, start - 9 * 60) + 'px';
-          card.style.height = Math.max(38, end - start) + 'px';
+          card.style.top = Math.max(0, start - bounds.startHour * 60) + 'px';
+          card.style.height = Math.max(44, end - start) + 'px';
+          card.style.left = 'calc(' + (layout.lane * 100 / layout.laneCount) + '% + 4px)';
+          card.style.width = 'calc(' + (100 / layout.laneCount) + '% - 8px)';
           card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
           card.addEventListener('click', function () { openLesson(lesson.id); });
-          card.appendChild(element(documentRef, 'strong', '', lesson.title));
-          card.appendChild(element(documentRef, 'span', '', scheduleText(lesson)));
-          if (lesson.status === 'Отменён') card.className += ' is-canceled';
+          appendLessonDetails(card, documentRef, lesson, conflictIds);
           timeDay.appendChild(card);
         });
         columns.appendChild(timeDay);
@@ -552,60 +750,64 @@
       rootNode.appendChild(shell);
 
       var unscheduled = lessons.filter(function (lesson) {
-        return lesson.schedule && lesson.schedule.kind === 'unscheduled' && lesson.status !== 'Отменён';
+        return lesson.schedule && lesson.schedule.kind === 'unscheduled';
       });
       if (unscheduled.length) {
         var details = element(documentRef, 'details', 'school-unscheduled');
         details.appendChild(element(documentRef, 'summary', '', 'Нераспределённые · ' + unscheduled.length));
         var list = element(documentRef, 'div', 'school-unscheduled-list');
-        unscheduled.forEach(function (lesson) { list.appendChild(makeLessonCard(documentRef, lesson, openLesson)); });
+        unscheduled.forEach(function (lesson) {
+          list.appendChild(makeLessonCard(documentRef, lesson, openLesson, conflictIds));
+        });
         details.appendChild(list);
         rootNode.appendChild(details);
       }
       setMobileDay(mobileDay);
     }
 
-    function diaryResult(lesson) {
-      if (lesson.status === 'Пропущен') return 'Пропущен';
-      return lesson.result || lesson.status;
-    }
-
     function renderDiary(model) {
       var rootNode = byId('schoolDiary');
       if (!rootNode) return;
       clearNode(rootNode);
-      var diary = (model.diary || []).filter(function (lesson) {
-        return FINAL_DIARY_STATUSES.indexOf(lesson.status) !== -1;
-      }).slice().sort(function (left, right) {
-        return (right.schedule.date || '').localeCompare(left.schedule.date || '') || right.order - left.order;
-      });
-      if (!diary.length) {
+      var groups = groupDiaryLessons(model.diary || []);
+      if (!groups.length) {
         rootNode.appendChild(element(documentRef, 'div', 'school-empty', 'В дневнике пока нет завершённых занятий.'));
         return;
       }
       var list = element(documentRef, 'div', 'school-diary');
-      diary.forEach(function (lesson) {
-        var row = element(documentRef, 'button', 'school-diary-row');
-        row.type = 'button';
-        row.setAttribute('aria-label', 'Открыть запись: ' + lesson.title);
-        row.addEventListener('click', function () { openLesson(lesson.id); });
-        row.appendChild(element(documentRef, 'span', 'school-diary-date', dateText(lesson.schedule.date)));
-        row.appendChild(element(documentRef, 'span', 'school-diary-subject', lesson.subject));
-        row.appendChild(element(documentRef, 'strong', 'school-diary-title', lesson.title));
-        row.appendChild(element(
-          documentRef,
-          'span',
-          'school-diary-result' + (lesson.status === 'Пропущен' ? ' is-missed' : ''),
-          diaryResult(lesson)
-        ));
-        row.appendChild(element(documentRef, 'span', 'school-diary-score', lesson.autonomy || ''));
-        row.appendChild(element(
-          documentRef,
-          'span',
-          'school-diary-score',
-          lesson.understanding === null ? '' : String(lesson.understanding) + '/3'
-        ));
-        list.appendChild(row);
+      var columnLabels = ['Дата', 'Предмет', 'Урок', 'Результат', 'Автономность', 'Понимание'];
+      groups.forEach(function (group) {
+        var section = element(documentRef, 'section', 'school-diary-group');
+        section.appendChild(element(documentRef, 'h3', 'school-diary-group-title', dateText(group.date)));
+        var headings = element(documentRef, 'div', 'school-diary-columns');
+        columnLabels.forEach(function (label) {
+          headings.appendChild(element(documentRef, 'span', '', label));
+        });
+        section.appendChild(headings);
+        group.lessons.forEach(function (lesson) {
+          var row = element(documentRef, 'button', 'school-diary-row');
+          row.type = 'button';
+          row.setAttribute('aria-label', 'Открыть запись: ' + lesson.title);
+          row.addEventListener('click', function () { openLesson(lesson.id); });
+          row.appendChild(element(documentRef, 'span', 'school-diary-date', dateText(lesson.schedule.date)));
+          row.appendChild(element(documentRef, 'span', 'school-diary-subject', lesson.subject));
+          row.appendChild(element(documentRef, 'strong', 'school-diary-title', lesson.title));
+          row.appendChild(element(
+            documentRef,
+            'span',
+            'school-diary-result' + (lesson.status === 'Пропущен' ? ' is-missed' : ''),
+            diaryResult(lesson)
+          ));
+          row.appendChild(element(documentRef, 'span', 'school-diary-score', lesson.autonomy || ''));
+          row.appendChild(element(
+            documentRef,
+            'span',
+            'school-diary-score',
+            lesson.understanding === null ? '' : String(lesson.understanding) + '/3'
+          ));
+          section.appendChild(row);
+        });
+        list.appendChild(section);
       });
       rootNode.appendChild(list);
     }
@@ -639,19 +841,44 @@
       return true;
     }
 
+    function setBackgroundInert(inert) {
+      ['schoolApp', 'topbar', 'bottombar'].forEach(function (id) {
+        var node = byId(id);
+        if (!node) return;
+        node.inert = inert;
+        if (inert) {
+          node.setAttribute('inert', '');
+          node.setAttribute('aria-hidden', 'true');
+        } else {
+          node.removeAttribute('inert');
+          node.removeAttribute('aria-hidden');
+        }
+      });
+      if (documentRef.body) documentRef.body.classList.toggle('school-dialog-open', inert);
+    }
+
     function closeDialog() {
       if (!documentRef) return;
       var dialog = byId('schoolLessonDialog');
       if (!dialog || dialog.hidden) return;
+      dialogGeneration += 1;
+      currentContentLessonId = null;
       dialog.hidden = true;
       dialog.setAttribute('aria-hidden', 'true');
       if (dialogKeyHandler) documentRef.removeEventListener('keydown', dialogKeyHandler);
       dialogKeyHandler = null;
+      setBackgroundInert(false);
+      clearNode(byId('schoolLessonMeta'));
+      clearNode(byId('schoolLessonContent'));
+      if (byId('schoolLessonTitle')) byId('schoolLessonTitle').textContent = 'Урок';
+      if (byId('schoolLessonSubject')) byId('schoolLessonSubject').textContent = '';
+      if (byId('schoolContentState')) byId('schoolContentState').textContent = '';
       if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
       previousFocus = null;
     }
 
     function installDialogKeys(dialog) {
+      if (dialogKeyHandler) return;
       dialogKeyHandler = function (event) {
         if (event.key === 'Escape') {
           event.preventDefault();
@@ -686,14 +913,19 @@
 
     async function openLesson(lessonId) {
       var lesson = lessons.find(function (item) { return item.id === lessonId; }) || null;
+      dialogGeneration += 1;
+      var requestGeneration = dialogGeneration;
+      currentContentLessonId = lessonId;
       if (documentRef) {
         var dialog = byId('schoolLessonDialog');
         if (dialog) {
-          previousFocus = documentRef.activeElement;
+          if (dialog.hidden) previousFocus = documentRef.activeElement;
           dialog.hidden = false;
           dialog.setAttribute('aria-hidden', 'false');
+          setBackgroundInert(true);
           byId('schoolLessonTitle').textContent = lesson ? lesson.title : 'Урок';
           byId('schoolLessonSubject').textContent = lesson ? lesson.subject : '';
+          clearNode(byId('schoolLessonMeta'));
           if (lesson) renderLessonMeta(lesson);
           clearNode(byId('schoolLessonContent'));
           byId('schoolContentState').textContent = 'Загружаю содержание урока…';
@@ -705,13 +937,25 @@
 
       try {
         var content = await api.getLessonContent(lessonId);
-        if (documentRef) {
+        if (
+          documentRef &&
+          requestGeneration === dialogGeneration &&
+          currentContentLessonId === lessonId &&
+          !byId('schoolLessonDialog').hidden
+        ) {
           byId('schoolContentState').textContent = content.blocks.length ? '' : 'У урока пока нет дополнительного содержания.';
           renderContentBlocks(byId('schoolLessonContent'), content.blocks, documentRef);
         }
         return content;
       } catch (error) {
-        if (documentRef) byId('schoolContentState').textContent = 'Не удалось загрузить содержание урока.';
+        if (
+          documentRef &&
+          requestGeneration === dialogGeneration &&
+          currentContentLessonId === lessonId &&
+          !byId('schoolLessonDialog').hidden
+        ) {
+          byId('schoolContentState').textContent = 'Не удалось загрузить содержание урока.';
+        }
         return null;
       }
     }
@@ -786,7 +1030,14 @@
     TIME_ZONE: TIME_ZONE,
     WEEK_DAYS: WEEK_DAYS,
     createController: createController,
+    diaryResult: diaryResult,
+    getWeekTimeBounds: getWeekTimeBounds,
+    groupDiaryLessons: groupDiaryLessons,
+    layoutTimedLessons: layoutTimedLessons,
+    lessonSignalLabels: lessonSignalLabels,
+    partitionDecisionItems: partitionDecisionItems,
     renderContentBlocks: renderContentBlocks,
-    safeHttpsUrl: safeHttpsUrl
+    safeHttpsUrl: safeHttpsUrl,
+    selectTodayFocus: selectTodayFocus
   });
 });
