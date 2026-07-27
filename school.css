@@ -611,13 +611,28 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
   right: 0;
   z-index: 0;
   border-top: 1px solid var(--school-line);
+  opacity: 1;
   pointer-events: none;
+  transition: opacity 120ms ease-out;
 }
 
 .school-time-line.is-half { border-top-color: var(--school-line-soft); }
 .school-time-line.is-quarter { border-top-color: rgba(255, 255, 255, 0.035); }
 .school-time-line.is-ten { border-top-color: rgba(255, 255, 255, 0.028); }
 .school-time-line.is-five { border-top-color: rgba(255, 255, 255, 0.018); }
+
+.school-time-shell[data-school-snap="15"] .school-time-line.is-ten,
+.school-time-shell[data-school-snap="15"] .school-time-line.is-five,
+.school-time-shell[data-school-snap="10"] .school-time-line.is-quarter,
+.school-time-shell[data-school-snap="10"] .school-time-line.is-five {
+  opacity: 0;
+}
+
+.school-time-shell[data-school-snap="15"] .school-time-line.is-quarter,
+.school-time-shell[data-school-snap="10"] .school-time-line.is-ten,
+.school-time-shell[data-school-snap="5"] .school-time-line {
+  opacity: 1;
+}
 
 .school-time-day {
   position: relative;

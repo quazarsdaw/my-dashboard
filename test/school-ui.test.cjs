@@ -445,6 +445,39 @@ test('short lesson cards keep a compact 44px visual minimum at every zoom level'
   });
 });
 
+test('applies continuous timeline geometry in place without rebuilding the week', () => {
+  const shell = {
+    attributes: {},
+    style: {},
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+  };
+  const hourLabel = { style: {} };
+  const gridLine = { style: {} };
+  const lessonCard = { style: {} };
+  const result = SchoolUi.applyTimelineGeometry(SchoolCore, {
+    shell,
+    startMinute: 9 * 60,
+    endMinute: 20 * 60,
+    labels: [{ node: hourLabel, minute: 10 * 60 }],
+    lines: [{ node: gridLine, minute: 9 * 60 + 30 }],
+    cards: [{ node: lessonCard, startMinute: 10 * 60, endMinute: 10 * 60 + 45 }]
+  }, 1.4);
+
+  assert.deepEqual(result, {
+    pixelsPerHour: 84,
+    snapMinutes: 10,
+    height: 924
+  });
+  assert.equal(shell.style['--school-time-height'], '924px');
+  assert.equal(shell.attributes['data-school-snap'], '10');
+  assert.equal(hourLabel.style.top, '84px');
+  assert.equal(gridLine.style.top, '42px');
+  assert.equal(lessonCard.style.top, '84px');
+  assert.equal(lessonCard.style.height, '63px');
+});
+
 test('rapid wheel zoom coalesces anchor restoration and leaves boundary scroll native', () => {
   let nextFrame = 0;
   const frames = new Map();
@@ -511,10 +544,15 @@ test('rapid wheel zoom coalesces anchor restoration and leaves boundary scroll n
 
 test('school styles distinguish quarter ten and five minute lines', () => {
   const css = read('school.css');
+  const source = read('school.js');
   assert.ok(css.includes('.school-time-line.is-quarter'));
   assert.ok(css.includes('.school-time-line.is-ten'));
   assert.ok(css.includes('.school-time-line.is-five'));
+  assert.ok(css.includes('[data-school-snap="15"]'));
+  assert.ok(css.includes('[data-school-snap="10"]'));
+  assert.ok(css.includes('[data-school-snap="5"]'));
   assert.ok(css.includes('.school-zoom-controls'));
+  assert.match(source, /minute\s*\+=\s*5/);
 });
 
 test('school layout keeps mobile targets accessible and document overflow contained', () => {

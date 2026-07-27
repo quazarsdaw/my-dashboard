@@ -449,6 +449,54 @@
     return fallbackDestination;
   }
 
+  function setTimelineStyle(node, property, value) {
+    if (!node || !node.style) return;
+    if (typeof node.style.setProperty === 'function') node.style.setProperty(property, value);
+    else node.style[property] = value;
+  }
+
+  function applyTimelineGeometry(core, registry, scale) {
+    if (!core || !registry || !registry.shell) return null;
+    var pixelsPerHour = core.timelinePixelsPerHour(scale);
+    var snapMinutes = core.timelineSnapMinutesForScale(scale);
+    var startMinute = Number(registry.startMinute) || 0;
+    var endMinute = Number(registry.endMinute) || startMinute;
+    var height = core.timelineYForMinute(endMinute, startMinute, pixelsPerHour);
+    setTimelineStyle(registry.shell, '--school-time-height', height + 'px');
+    if (typeof registry.shell.setAttribute === 'function') {
+      registry.shell.setAttribute('data-school-snap', String(snapMinutes));
+    }
+    (registry.labels || []).forEach(function (entry) {
+      entry.node.style.top = core.timelineYForMinute(
+        entry.minute,
+        startMinute,
+        pixelsPerHour
+      ) + 'px';
+    });
+    (registry.lines || []).forEach(function (entry) {
+      entry.node.style.top = core.timelineYForMinute(
+        entry.minute,
+        startMinute,
+        pixelsPerHour
+      ) + 'px';
+    });
+    (registry.cards || []).forEach(function (entry) {
+      entry.node.style.top = Math.max(
+        0,
+        core.timelineYForMinute(entry.startMinute, startMinute, pixelsPerHour)
+      ) + 'px';
+      entry.node.style.height = Math.max(
+        44,
+        core.timelineYForMinute(entry.endMinute, entry.startMinute, pixelsPerHour)
+      ) + 'px';
+    });
+    return {
+      pixelsPerHour: pixelsPerHour,
+      snapMinutes: snapMinutes,
+      height: height
+    };
+  }
+
   function layoutTimedLessons(entries, pixelsPerHour) {
     var scale = Number.isFinite(Number(pixelsPerHour)) && Number(pixelsPerHour) > 0
       ? Number(pixelsPerHour)
@@ -708,6 +756,7 @@
     var timelineZoomIndex = 0;
     var timelineAnchorFrame = null;
     var pendingTimelineAnchor = null;
+    var timelineGeometryRegistry = null;
     var draggedLessonId = null;
     var activeTimelineDragPreview = null;
     var transparentDragImage = null;
@@ -979,6 +1028,7 @@
       var rootNode = byId('schoolWeek');
       var mobileRoot = byId('schoolMobileDays');
       if (!rootNode || !mobileRoot) return;
+      timelineGeometryRegistry = null;
       clearNode(rootNode);
       clearNode(mobileRoot);
       var currentDay = localDateKey(now());
@@ -1060,6 +1110,14 @@
 
       var timeShell = element(documentRef, 'div', 'school-time-shell');
       timeShell.id = 'schoolTimeShell';
+      var geometryRegistry = {
+        shell: timeShell,
+        startMinute: startMinute,
+        endMinute: endMinute,
+        labels: [],
+        lines: [],
+        cards: []
+      };
       timeShell.style.setProperty('--school-time-height', timelineHeight + 'px');
       var labels = element(documentRef, 'div', 'school-time-labels');
       for (var hour = bounds.startHour; hour <= bounds.endHour; hour += 1) {
@@ -1070,17 +1128,18 @@
           zoomLevel.pixelsPerHour
         ) + 'px';
         labels.appendChild(label);
+        geometryRegistry.labels.push({ node: label, minute: hour * 60 });
       }
       timeShell.appendChild(labels);
 
       var columns = element(documentRef, 'div', 'school-time-columns');
-      for (var minute = startMinute; minute <= endMinute; minute += zoomLevel.snapMinutes) {
+      for (var minute = startMinute; minute <= endMinute; minute += 5) {
         var minuteInHour = minute % 60;
         var lineKind = ' is-hour';
         if (minuteInHour === 30) lineKind = ' is-half';
         else if (minuteInHour === 15 || minuteInHour === 45) lineKind = ' is-quarter';
-        else if (zoomLevel.snapMinutes === 10 && minuteInHour !== 0) lineKind = ' is-ten';
-        else if (zoomLevel.snapMinutes === 5 && minuteInHour !== 0) lineKind = ' is-five';
+        else if (minuteInHour % 10 === 0 && minuteInHour !== 0) lineKind = ' is-ten';
+        else if (minuteInHour !== 0) lineKind = ' is-five';
         var line = element(documentRef, 'span', 'school-time-line' + lineKind);
         line.style.top = core.timelineYForMinute(
           minute,
@@ -1088,6 +1147,7 @@
           zoomLevel.pixelsPerHour
         ) + 'px';
         columns.appendChild(line);
+        geometryRegistry.lines.push({ node: line, minute: minute });
       }
       WEEK_DAYS.forEach(function (day) {
         var timeDay = element(documentRef, 'div', 'school-time-day');
@@ -1122,6 +1182,11 @@
           );
           configureDraggable(card, lesson);
           timeDay.appendChild(card);
+          geometryRegistry.cards.push({
+            node: card,
+            startMinute: start,
+            endMinute: timeMinutes(lesson.schedule.end)
+          });
         });
         configureDropZone(timeDay, day.date, 'timed', bounds, zoomLevel);
         columns.appendChild(timeDay);
@@ -1130,6 +1195,8 @@
       timeShell.addEventListener('wheel', function (event) {
         handleTimelineWheel(event, timeShell, bounds);
       }, { passive: false });
+      timelineGeometryRegistry = geometryRegistry;
+      applyTimelineGeometry(core, geometryRegistry, zoomLevel.pixelsPerHour / 60);
       shell.appendChild(timeShell);
       rootNode.appendChild(shell);
 
@@ -2449,6 +2516,7 @@
     ACTIVE_WEEK: ACTIVE_WEEK,
     TIME_ZONE: TIME_ZONE,
     WEEK_DAYS: WEEK_DAYS,
+    applyTimelineGeometry: applyTimelineGeometry,
     createController: createController,
     commandAfterOverlapChoice: commandAfterOverlapChoice,
     commandForDrop: commandForDrop,
