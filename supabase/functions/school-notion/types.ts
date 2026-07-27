@@ -148,6 +148,126 @@ export interface Lesson {
   week: typeof ACTIVE_LESSON_WEEK;
 }
 
+export type LessonContentColor =
+  | "default"
+  | "gray"
+  | "brown"
+  | "orange"
+  | "yellow"
+  | "green"
+  | "blue"
+  | "purple"
+  | "pink"
+  | "red"
+  | "gray_background"
+  | "brown_background"
+  | "orange_background"
+  | "yellow_background"
+  | "green_background"
+  | "blue_background"
+  | "purple_background"
+  | "pink_background"
+  | "red_background";
+
+export interface LessonContentAnnotations {
+  bold: boolean;
+  code: boolean;
+  color: LessonContentColor;
+  italic: boolean;
+  strikethrough: boolean;
+  underline: boolean;
+}
+
+export interface LessonContentSpan {
+  annotations: LessonContentAnnotations;
+  link: string | null;
+  text: string;
+}
+
+type RichTextLessonBlockType =
+  | "paragraph"
+  | "heading_1"
+  | "heading_2"
+  | "heading_3"
+  | "heading_4"
+  | "bulleted_list_item"
+  | "numbered_list_item"
+  | "toggle"
+  | "quote"
+  | "callout";
+
+type ContainerLessonBlockType =
+  | "column_list"
+  | "column"
+  | "synced_block";
+
+type ReferenceLessonBlockType =
+  | "bookmark"
+  | "link_preview"
+  | "image"
+  | "file"
+  | "pdf"
+  | "video"
+  | "audio"
+  | "embed";
+
+export type LessonContentBlock =
+  | Readonly<{
+    children: LessonContentBlock[];
+    spans: LessonContentSpan[];
+    type: RichTextLessonBlockType;
+  }>
+  | Readonly<{
+    checked: boolean;
+    children: LessonContentBlock[];
+    spans: LessonContentSpan[];
+    type: "to_do";
+  }>
+  | Readonly<{
+    caption: LessonContentSpan[];
+    children: LessonContentBlock[];
+    language: string;
+    spans: LessonContentSpan[];
+    type: "code";
+  }>
+  | Readonly<{
+    children: LessonContentBlock[];
+    expression: string;
+    type: "equation";
+  }>
+  | Readonly<{
+    children: LessonContentBlock[];
+    type: "divider";
+  }>
+  | Readonly<{
+    children: LessonContentBlock[];
+    hasColumnHeader: boolean;
+    hasRowHeader: boolean;
+    tableWidth: number;
+    type: "table";
+  }>
+  | Readonly<{
+    cells: LessonContentSpan[][];
+    children: LessonContentBlock[];
+    type: "table_row";
+  }>
+  | Readonly<{
+    children: LessonContentBlock[];
+    type: ContainerLessonBlockType;
+  }>
+  | Readonly<{
+    caption: LessonContentSpan[];
+    children: LessonContentBlock[];
+    label: string;
+    type: ReferenceLessonBlockType;
+    url: string | null;
+  }>
+  | Readonly<{
+    label: string;
+    sourceType: string;
+    type: "unsupported";
+  }>;
+
 export type LessonFilter =
   | Readonly<{ week: string; from?: never; to?: never }>
   | Readonly<{ from: string; to: string; week?: never }>;
@@ -156,19 +276,31 @@ export type ListLessonsCommand =
   & Readonly<{ operation: "listLessons" }>
   & LessonFilter;
 
+export type GetLessonContentCommand = Readonly<{
+  lessonId: string;
+  operation: "getLessonContent";
+}>;
+
 export interface LessonListResult {
   counts: Readonly<Record<string, number>>;
   lessons: Lesson[];
   total: number;
 }
 
+export interface LessonContentResult {
+  blocks: LessonContentBlock[];
+  lesson: Lesson;
+}
+
 export interface LessonRepository {
+  assertSchoolLesson(pageId: string): Promise<NotionPage>;
   listLessons(filter: LessonFilter): Promise<Lesson[]>;
 }
 
 export interface RouterContext {
   auth: AuthContext;
   notionClient?: SchoolNotionReadClient;
+  notionDataSourceId?: string;
   requestId: string;
   userId: string;
 }

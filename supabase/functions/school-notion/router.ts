@@ -5,6 +5,7 @@ import { createLessonRepository } from "./lesson-repository.ts";
 import { createLessonService } from "./lesson-service.ts";
 import { ACTIVE_LESSON_WEEK } from "./types.ts";
 import type {
+  GetLessonContentCommand,
   HandlerDependencies,
   ListLessonsCommand,
   RouterContext,
@@ -75,7 +76,10 @@ export function routeSchoolCommand(
   command: SchoolCommand,
   context: RouterContext,
 ): Promise<Response> {
-  if (command.operation !== "listLessons") {
+  if (
+    command.operation !== "listLessons" &&
+    command.operation !== "getLessonContent"
+  ) {
     throw new SchoolHttpError(
       400,
       "INVALID_COMMAND",
@@ -83,7 +87,6 @@ export function routeSchoolCommand(
     );
   }
 
-  const validated = validateListLessonsCommand(command);
   if (!context.notionClient) {
     throw new SchoolHttpError(
       500,
@@ -92,9 +95,24 @@ export function routeSchoolCommand(
     );
   }
 
-  const repository = createLessonRepository(context.notionClient);
-  const service = createLessonService(repository);
+  const repository = createLessonRepository(
+    context.notionClient,
+    context.notionDataSourceId,
+  );
+  const service = createLessonService(repository, context.notionClient);
 
+  if (command.operation === "getLessonContent") {
+    const validated = validateGetLessonContentCommand(command);
+    return service.getLessonContent(validated.lessonId).then((data) =>
+      Response.json({
+        data,
+        ok: true,
+        requestId: context.requestId,
+      })
+    );
+  }
+
+  const validated = validateListLessonsCommand(command);
   return service.listLessons(validated).then((data) =>
     Response.json({
       data,
@@ -102,6 +120,31 @@ export function routeSchoolCommand(
       requestId: context.requestId,
     })
   );
+}
+
+function validateGetLessonContentCommand(
+  command: SchoolCommand,
+): GetLessonContentCommand {
+  const keys = Object.keys(command).sort();
+  if (
+    keys.length !== 2 ||
+    keys[0] !== "lessonId" ||
+    keys[1] !== "operation" ||
+    typeof command.lessonId !== "string" ||
+    command.lessonId.length === 0 ||
+    command.lessonId.trim() !== command.lessonId
+  ) {
+    throw new SchoolHttpError(
+      400,
+      "INVALID_COMMAND",
+      "getLessonContent command is invalid",
+    );
+  }
+
+  return {
+    lessonId: command.lessonId,
+    operation: "getLessonContent",
+  };
 }
 
 function isIsoDate(value: unknown): value is string {
@@ -216,6 +259,7 @@ export async function handleRequest(
     const router = dependencies.router ?? routeSchoolCommand;
     const response = await router(command, {
       auth,
+      notionDataSourceId: dependencies.env.NOTION_DATA_SOURCE_ID,
       requestId,
       userId: auth.userId,
     });

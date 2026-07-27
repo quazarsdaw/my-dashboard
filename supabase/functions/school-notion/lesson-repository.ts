@@ -8,6 +8,7 @@ import type {
   Lesson,
   LessonFilter,
   LessonRepository,
+  NotionPage,
   QueryLessonsInput,
   SchoolNotionReadClient,
 } from "./types.ts";
@@ -42,8 +43,48 @@ function buildFilter(filter: LessonFilter): QueryLessonsInput["filter"] {
 
 export function createLessonRepository(
   client: SchoolNotionReadClient,
+  notionDataSourceId?: string,
 ): LessonRepository {
   return Object.freeze({
+    async assertSchoolLesson(pageId: string): Promise<NotionPage> {
+      if (!notionDataSourceId) {
+        throw new SchoolHttpError(
+          500,
+          "SERVER_MISCONFIGURED",
+          "server configuration is invalid",
+        );
+      }
+
+      const page = await client.retrievePage(pageId);
+      if (
+        page.object !== "page" ||
+        !("url" in page) ||
+        !("properties" in page)
+      ) {
+        throw new SchoolHttpError(
+          502,
+          "NOTION_SCHEMA_ERROR",
+          "notion lesson schema is invalid",
+        );
+      }
+
+      if (
+        page.parent.type !== "data_source_id" ||
+        page.parent.data_source_id !== notionDataSourceId ||
+        page.in_trash ||
+        page.archived ||
+        page.is_archived
+      ) {
+        throw new SchoolHttpError(
+          404,
+          "LESSON_OUTSIDE_SCHOOL_DATABASE",
+          "lesson is outside the school database",
+        );
+      }
+
+      return page;
+    },
+
     async listLessons(filter: LessonFilter): Promise<Lesson[]> {
       const lessons: Lesson[] = [];
       const notionFilter = buildFilter(filter);
