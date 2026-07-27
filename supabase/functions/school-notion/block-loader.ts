@@ -76,6 +76,7 @@ export async function loadBlockChildren(
   const maxDepth = boundedLimit(limits.maxDepth, hardMaxDepth);
   const visitedBlockIds = new Set<string>();
   let normalizedBlockCount = 0;
+  let rawResultCount = 0;
 
   async function loadParent(
     parentId: string,
@@ -100,7 +101,16 @@ export async function loadBlockChildren(
         return invalidBlockResponse();
       }
 
+      if (response.has_more && response.results.length === 0) {
+        return paginationError();
+      }
+
       for (const rawBlock of response.results) {
+        rawResultCount += 1;
+        if (rawResultCount > hardMaxBlocks) {
+          return contentTooLarge();
+        }
+
         const validated = validateBlock(rawBlock);
         if (validated.in_trash) {
           continue;

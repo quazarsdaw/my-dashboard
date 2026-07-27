@@ -498,4 +498,25 @@ if (typeof Deno !== "undefined") {
       "malformed unsupported source type",
     );
   });
+
+  Deno.test("mapper does not classify inherited object keys as reference types", () => {
+    const mapped = mapBlock(
+      notionBlock("constructor", {
+        caption: [richText("raw private caption")],
+        url: "https://raw.example/private",
+      }),
+      nestedChildren,
+    );
+
+    assertEquals(mapped, {
+      label: "unsupported notion block (constructor)",
+      sourceType: "constructor",
+      type: "unsupported",
+    }, "constructor future block");
+
+    const serialized = JSON.stringify(mapped);
+    assert(!serialized.includes("raw private caption"), "raw caption leaked");
+    assert(!serialized.includes("raw.example"), "raw url leaked");
+    assert(!serialized.includes("children"), "unsupported gained children");
+  });
 }

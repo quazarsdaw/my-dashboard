@@ -266,7 +266,7 @@ export function mapBlock(
     return { children, type } as LessonContentBlock;
   }
 
-  if (type in referenceLabels && payload) {
+  if (Object.hasOwn(referenceLabels, type) && payload) {
     const referenceType = type as keyof typeof referenceLabels;
     const caption = mapRichText(payload.caption);
     return {

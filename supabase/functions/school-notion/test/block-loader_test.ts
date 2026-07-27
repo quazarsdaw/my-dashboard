@@ -328,6 +328,83 @@ if (typeof Deno !== "undefined") {
     );
   });
 
+  Deno.test("loader counts every raw result before trash, duplicate and malformed filtering", async () => {
+    let listCalls = 0;
+    const client = fakeClient({
+      listBlockChildren(_blockId, startCursor) {
+        assertEquals(
+          startCursor,
+          listCalls === 0 ? undefined : `opaque-raw-page-${listCalls}`,
+          "opaque raw-budget cursor",
+        );
+        listCalls += 1;
+
+        if (listCalls <= 10) {
+          const rawResults = Array.from({ length: 100 }, (_, index) => {
+            if (index % 2 === 0) {
+              return block("same-duplicate-id", "divider");
+            }
+
+            const trashed = block(
+              `trashed-${listCalls}-${index}`,
+              "divider",
+            );
+            trashed.in_trash = true;
+            return trashed;
+          });
+          return Promise.resolve(blockPage(rawResults, {
+            hasMore: true,
+            nextCursor: `opaque-raw-page-${listCalls}`,
+          }));
+        }
+
+        return Promise.resolve(blockPage([
+          { id: "malformed-result-1001", object: "block" },
+        ]));
+      },
+    });
+
+    const error = await captureError(() =>
+      loadBlockChildren("lesson-root", client)
+    );
+
+    assert(
+      error instanceof Error &&
+        "code" in error &&
+        error.code === "LESSON_CONTENT_TOO_LARGE",
+      "raw result 1001 did not fail with the safe size error",
+    );
+    assertEquals(listCalls, 11, "raw traversal stopped at result 1001");
+  });
+
+  Deno.test("loader rejects an empty has-more page before following its cursor", async () => {
+    let listCalls = 0;
+    const client = fakeClient({
+      listBlockChildren() {
+        listCalls += 1;
+        if (listCalls > 1) {
+          throw new Error("empty has-more page triggered another request");
+        }
+        return Promise.resolve(blockPage([], {
+          hasMore: true,
+          nextCursor: "opaque-empty-page-cursor",
+        }));
+      },
+    });
+
+    const error = await captureError(() =>
+      loadBlockChildren("lesson-root", client)
+    );
+
+    assert(
+      error instanceof Error &&
+        "code" in error &&
+        error.code === "NOTION_PAGINATION_ERROR",
+      "empty has-more page was accepted",
+    );
+    assertEquals(listCalls, 1, "empty has-more page call count");
+  });
+
   Deno.test("loader fails closed for partial or invalid blocks and omits trashed blocks", async () => {
     const trashed = block("trashed-private-id");
     trashed.in_trash = true;
