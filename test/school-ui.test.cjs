@@ -277,10 +277,11 @@ test('school page loads shared dashboard dependencies before read-only school sc
   });
 });
 
-test('school page cache-busts the magnetic preview controller and styles together', () => {
+test('school page cache-busts continuous zoom assets together', () => {
   const html = read('school.html');
-  assert.ok(html.includes('school.css?v=7'));
-  assert.ok(html.includes('school.js?v=7'));
+  assert.ok(html.includes('school-core.js?v=5'));
+  assert.ok(html.includes('school.css?v=8'));
+  assert.ok(html.includes('school.js?v=8'));
 });
 
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
@@ -478,10 +479,11 @@ test('applies continuous timeline geometry in place without rebuilding the week'
   assert.equal(lessonCard.style.height, '63px');
 });
 
-test('rapid wheel zoom coalesces anchor restoration and leaves boundary scroll native', () => {
+test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
   let nextFrame = 0;
   const frames = new Map();
   const scrolls = [];
+  let shellTop = 10;
   const runtime = {
     requestAnimationFrame(callback) {
       const id = ++nextFrame;
@@ -493,12 +495,13 @@ test('rapid wheel zoom coalesces anchor restoration and leaves boundary scroll n
     },
     scrollBy(x, y) {
       scrolls.push([x, y]);
+      shellTop -= y;
     }
   };
   const shell = {
     classList: { add() {}, remove() {} },
     getBoundingClientRect() {
-      return { top: 10, bottom: 610, height: 600 };
+      return { top: shellTop, bottom: shellTop + 600, height: 600 };
     }
   };
   const document = {
@@ -512,6 +515,11 @@ test('rapid wheel zoom coalesces anchor restoration and leaves boundary scroll n
     document,
     runtime
   });
+  function runNextFrame(timestamp) {
+    const [id, callback] = frames.entries().next().value;
+    frames.delete(id);
+    callback(timestamp);
+  }
   function wheel(deltaY) {
     return {
       clientY: 70,
@@ -523,23 +531,99 @@ test('rapid wheel zoom coalesces anchor restoration and leaves boundary scroll n
     };
   }
 
-  const first = wheel(-1);
-  const second = wheel(-1);
+  const first = wheel(-20);
+  const second = wheel(-20);
+  const third = wheel(-20);
   controller.handleTimelineWheel(first, shell, { startHour: 9, endHour: 20 });
   controller.handleTimelineWheel(second, shell, { startHour: 9, endHour: 20 });
+  assert.equal(frames.size, 0, 'sub-threshold deltas wait for the next wheel event');
+  controller.handleTimelineWheel(third, shell, { startHour: 9, endHour: 20 });
   assert.equal(first.prevented, true);
   assert.equal(second.prevented, true);
-  assert.equal(frames.size, 1, 'only the latest anchor restoration remains scheduled');
-  [...frames.values()][0]();
-  assert.deepEqual(scrolls, [[0, 60]], '10:00 remains under the cursor at ×2');
-
-  const third = wheel(-1);
-  controller.handleTimelineWheel(third, shell, { startHour: 9, endHour: 20 });
   assert.equal(third.prevented, true);
-  [...frames.values()][0]();
-  const boundary = wheel(-1);
-  controller.handleTimelineWheel(boundary, shell, { startHour: 9, endHour: 20 });
-  assert.equal(boundary.prevented, false);
+  assert.equal(frames.size, 1);
+  assert.deepEqual(controller.getTimelineZoomState(), {
+    currentScale: 1,
+    targetScale: 1.1,
+    wheelDelta: 0,
+    animating: true
+  });
+
+  runNextFrame(0);
+  runNextFrame(80);
+  assert.ok(controller.getTimelineZoomState().currentScale > 1);
+  assert.ok(controller.getTimelineZoomState().currentScale < 1.1);
+  runNextFrame(160);
+  assert.deepEqual(controller.getTimelineZoomState(), {
+    currentScale: 1.1,
+    targetScale: 1.1,
+    wheelDelta: 0,
+    animating: false
+  });
+  assert.ok(Math.abs(scrolls.reduce((sum, entry) => sum + entry[1], 0) - 6) < 0.001);
+});
+
+test('reduced motion applies zoom immediately and drag finalization cancels animation', () => {
+  let nextFrame = 0;
+  const frames = new Map();
+  const shell = {
+    classList: { add() {}, remove() {} },
+    getBoundingClientRect() {
+      return { top: 10, bottom: 610, height: 600 };
+    }
+  };
+  const document = {
+    getElementById(id) {
+      return id === 'schoolTimeShell' ? shell : null;
+    }
+  };
+  const animated = SchoolUi.createController({
+    api: {},
+    core: SchoolCore,
+    document,
+    runtime: {
+      requestAnimationFrame(callback) {
+        const id = ++nextFrame;
+        frames.set(id, callback);
+        return id;
+      },
+      cancelAnimationFrame(id) {
+        frames.delete(id);
+      },
+      scrollBy() {}
+    }
+  });
+  const animatedWheel = {
+    clientY: 70,
+    deltaY: -60,
+    preventDefault() {}
+  };
+  animated.handleTimelineWheel(animatedWheel, shell, { startHour: 9, endHour: 20 });
+  assert.equal(frames.size, 1);
+  animated.finishTimelineZoom();
+  assert.equal(frames.size, 0);
+  assert.equal(animated.getTimelineZoomState().currentScale, 1.1);
+
+  const reduced = SchoolUi.createController({
+    api: {},
+    core: SchoolCore,
+    document,
+    runtime: {
+      matchMedia() {
+        return { matches: true };
+      },
+      requestAnimationFrame() {
+        throw new Error('reduced motion must not schedule a frame');
+      },
+      scrollBy() {}
+    }
+  });
+  reduced.handleTimelineWheel({
+    clientY: 70,
+    deltaY: -60,
+    preventDefault() {}
+  }, shell, { startHour: 9, endHour: 20 });
+  assert.equal(reduced.getTimelineZoomState().currentScale, 1.1);
 });
 
 test('school styles distinguish quarter ten and five minute lines', () => {

@@ -657,7 +657,7 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 }
 
 .school-time-shell.is-zooming .school-time-card {
-  transition: top 120ms ease, height 120ms ease;
+  will-change: top, height;
 }
 
 .school-time-card.is-dragging,

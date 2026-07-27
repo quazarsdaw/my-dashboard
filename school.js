@@ -753,9 +753,11 @@
     var currentContentLessonId = null;
     var mutationSequence = 0;
     var revalidationGeneration = 0;
-    var timelineZoomIndex = 0;
-    var timelineAnchorFrame = null;
-    var pendingTimelineAnchor = null;
+    var timelineScale = 1;
+    var targetTimelineScale = 1;
+    var timelineWheelDelta = 0;
+    var timelineZoomFrame = null;
+    var timelineZoomAnimation = null;
     var timelineGeometryRegistry = null;
     var draggedLessonId = null;
     var activeTimelineDragPreview = null;
@@ -1043,7 +1045,11 @@
         return lesson.schedule && lesson.schedule.kind === 'timed';
       });
       var bounds = getWeekTimeBounds(timedLessons);
-      var zoomLevel = core.timelineZoomLevel(timelineZoomIndex);
+      var zoomLevel = {
+        label: core.timelineZoomLabel(timelineScale),
+        pixelsPerHour: core.timelinePixelsPerHour(timelineScale),
+        snapMinutes: core.timelineSnapMinutesForScale(timelineScale)
+      };
       var startMinute = bounds.startHour * 60;
       var endMinute = bounds.endHour * 60;
       var timelineHeight = core.timelineYForMinute(
@@ -1062,8 +1068,8 @@
       var zoomOut = byId('schoolZoomOut');
       var zoomIn = byId('schoolZoomIn');
       if (zoomLabel) zoomLabel.textContent = zoomLevel.label;
-      if (zoomOut) zoomOut.disabled = timelineZoomIndex === 0;
-      if (zoomIn) zoomIn.disabled = timelineZoomIndex === 3;
+      if (zoomOut) zoomOut.disabled = targetTimelineScale <= 1;
+      if (zoomIn) zoomIn.disabled = targetTimelineScale >= 3;
 
       WEEK_DAYS.forEach(function (day) {
         var dayButton = element(documentRef, 'button', 'school-mobile-day', day.short + ' ' + day.date.slice(-2));
@@ -1188,7 +1194,7 @@
             endMinute: timeMinutes(lesson.schedule.end)
           });
         });
-        configureDropZone(timeDay, day.date, 'timed', bounds, zoomLevel);
+        configureDropZone(timeDay, day.date, 'timed', bounds);
         columns.appendChild(timeDay);
       });
       timeShell.appendChild(columns);
@@ -1294,81 +1300,189 @@
       return render(readModel);
     }
 
-    function restoreTimelineAnchor(anchor, targetIndex) {
-      if (!runtime || typeof runtime.requestAnimationFrame !== 'function') {
-        pendingTimelineAnchor = null;
-        return;
-      }
-      if (
-        timelineAnchorFrame !== null &&
-        typeof runtime.cancelAnimationFrame === 'function'
-      ) {
-        runtime.cancelAnimationFrame(timelineAnchorFrame);
-      }
-      pendingTimelineAnchor = anchor;
-      var targetLevel = core.timelineZoomLevel(targetIndex);
-      timelineAnchorFrame = runtime.requestAnimationFrame(function () {
-        timelineAnchorFrame = null;
-        pendingTimelineAnchor = null;
-        var nextShell = byId('schoolTimeShell');
-        if (!nextShell || typeof nextShell.getBoundingClientRect !== 'function') return;
-        var nextRect = nextShell.getBoundingClientRect();
-        var nextY = core.timelineYForMinute(
-          anchor.minute,
-          anchor.bounds.startHour * 60,
-          targetLevel.pixelsPerHour
-        );
-        if (typeof runtime.scrollBy === 'function') {
-          runtime.scrollBy(0, nextRect.top + nextY - anchor.clientY);
-        }
-      });
+    function timelineZoomSettings(scale) {
+      return {
+        label: core.timelineZoomLabel(scale),
+        pixelsPerHour: core.timelinePixelsPerHour(scale),
+        snapMinutes: core.timelineSnapMinutesForScale(scale)
+      };
     }
 
-    function setTimelineZoom(nextIndex, anchor) {
-      var normalized = core.timelineZoomLevel(nextIndex).index;
-      if (normalized === timelineZoomIndex) return false;
-      timelineZoomIndex = normalized;
-      if (readModel) buildModel();
-      var nextShell = byId('schoolTimeShell');
-      if (nextShell) {
-        nextShell.classList.add('is-zooming');
-        if (runtime && typeof runtime.setTimeout === 'function') {
-          runtime.setTimeout(function () {
-            var currentShell = byId('schoolTimeShell');
-            if (currentShell) currentShell.classList.remove('is-zooming');
-          }, 140);
-        }
+    function createTimelineAnchor(timeShell, bounds, clientY) {
+      if (!timeShell || typeof timeShell.getBoundingClientRect !== 'function') return null;
+      var rect = timeShell.getBoundingClientRect();
+      var pixelsPerHour = core.timelinePixelsPerHour(timelineScale);
+      return {
+        minute: bounds.startHour * 60
+          + (clientY - rect.top) / pixelsPerHour * 60,
+        clientY: clientY,
+        bounds: bounds
+      };
+    }
+
+    function updateTimelineZoomControls() {
+      var zoomLabel = byId('schoolZoomLabel');
+      var zoomOut = byId('schoolZoomOut');
+      var zoomIn = byId('schoolZoomIn');
+      if (zoomLabel) zoomLabel.textContent = core.timelineZoomLabel(timelineScale);
+      if (zoomOut) zoomOut.disabled = targetTimelineScale <= 1;
+      if (zoomIn) zoomIn.disabled = targetTimelineScale >= 3;
+    }
+
+    function restoreTimelineAnchor(anchor) {
+      if (!anchor || !runtime || typeof runtime.scrollBy !== 'function') return;
+      var shell = byId('schoolTimeShell');
+      if (!shell || typeof shell.getBoundingClientRect !== 'function') return;
+      var rect = shell.getBoundingClientRect();
+      var nextY = core.timelineYForMinute(
+        anchor.minute,
+        anchor.bounds.startHour * 60,
+        core.timelinePixelsPerHour(timelineScale)
+      );
+      var delta = rect.top + nextY - anchor.clientY;
+      if (Math.abs(delta) > 0.001) runtime.scrollBy(0, delta);
+    }
+
+    function applyCurrentTimelineScale(scale, anchor) {
+      timelineScale = Math.max(1, Math.min(3, Number(scale) || 1));
+      if (timelineGeometryRegistry) {
+        applyTimelineGeometry(core, timelineGeometryRegistry, timelineScale);
       }
-      if (anchor) restoreTimelineAnchor(anchor, normalized);
+      updateTimelineZoomControls();
+      restoreTimelineAnchor(anchor);
+    }
+
+    function prefersReducedTimelineMotion() {
+      return Boolean(
+        runtime &&
+        typeof runtime.matchMedia === 'function' &&
+        runtime.matchMedia('(prefers-reduced-motion: reduce)').matches
+      );
+    }
+
+    function clearTimelineZoomFrame() {
+      if (
+        timelineZoomFrame !== null &&
+        runtime &&
+        typeof runtime.cancelAnimationFrame === 'function'
+      ) {
+        runtime.cancelAnimationFrame(timelineZoomFrame);
+      }
+      timelineZoomFrame = null;
+    }
+
+    function finishTimelineZoom(anchorOverride) {
+      var anchor = anchorOverride || (timelineZoomAnimation && timelineZoomAnimation.anchor);
+      clearTimelineZoomFrame();
+      timelineZoomAnimation = null;
+      timelineWheelDelta = 0;
+      applyCurrentTimelineScale(targetTimelineScale, anchor);
+      var shell = byId('schoolTimeShell');
+      if (shell) shell.classList.remove('is-zooming');
+    }
+
+    function consumePendingTimelineWheel(anchor, timestamp) {
+      var consumed = core.consumeTimelineWheel(timelineWheelDelta);
+      if (!consumed.steps) return false;
+      timelineWheelDelta = consumed.remainder;
+      var nextTarget = core.normalizeTimelineScale(
+        targetTimelineScale + consumed.steps * 0.1
+      );
+      if (nextTarget === targetTimelineScale) {
+        timelineWheelDelta = 0;
+        return false;
+      }
+      targetTimelineScale = nextTarget;
+      timelineZoomAnimation = {
+        from: timelineScale,
+        to: targetTimelineScale,
+        startTime: Number.isFinite(timestamp) ? timestamp : null,
+        duration: 160,
+        anchor: anchor
+      };
+      return true;
+    }
+
+    function runTimelineZoomFrame(timestamp) {
+      timelineZoomFrame = null;
+      if (!timelineZoomAnimation) return;
+      var anchor = timelineZoomAnimation.anchor;
+      if (Math.abs(timelineWheelDelta) >= 60) {
+        consumePendingTimelineWheel(anchor, timestamp);
+      }
+      var animation = timelineZoomAnimation;
+      if (animation.startTime === null) animation.startTime = timestamp;
+      var progress = animation.duration > 0
+        ? Math.max(0, Math.min(1, (timestamp - animation.startTime) / animation.duration))
+        : 1;
+      var eased = core.easeOutTimelineZoom(progress);
+      var nextScale = animation.from + (animation.to - animation.from) * eased;
+      applyCurrentTimelineScale(nextScale, anchor);
+      if (progress >= 1) {
+        timelineScale = animation.to;
+        timelineZoomAnimation = null;
+        var shell = byId('schoolTimeShell');
+        if (shell) shell.classList.remove('is-zooming');
+        return;
+      }
+      timelineZoomFrame = runtime.requestAnimationFrame(runTimelineZoomFrame);
+    }
+
+    function setTimelineZoomTarget(nextScale, anchor) {
+      var normalized = core.normalizeTimelineScale(nextScale);
+      if (normalized === targetTimelineScale && !timelineZoomAnimation) return false;
+      targetTimelineScale = normalized;
+      if (
+        prefersReducedTimelineMotion() ||
+        !runtime ||
+        typeof runtime.requestAnimationFrame !== 'function'
+      ) {
+        finishTimelineZoom(anchor);
+        return true;
+      }
+      timelineZoomAnimation = {
+        from: timelineScale,
+        to: targetTimelineScale,
+        startTime: null,
+        duration: 160,
+        anchor: anchor
+      };
+      var shell = byId('schoolTimeShell');
+      if (shell) shell.classList.add('is-zooming');
+      if (timelineZoomFrame === null) {
+        timelineZoomFrame = runtime.requestAnimationFrame(runTimelineZoomFrame);
+      }
+      updateTimelineZoomControls();
       return true;
     }
 
     function handleTimelineWheel(event, timeShell, bounds) {
       if (!event || !event.deltaY) return;
-      var direction = event.deltaY < 0 ? 1 : -1;
-      var nextIndex = core.nextTimelineZoomIndex(timelineZoomIndex, direction);
-      if (nextIndex === timelineZoomIndex) return;
-      event.preventDefault();
-      var anchor = pendingTimelineAnchor;
-      if (!anchor) {
-        var rect = timeShell.getBoundingClientRect();
-        var current = core.timelineZoomLevel(timelineZoomIndex);
-        anchor = {
-          minute: bounds.startHour * 60
-            + (event.clientY - rect.top) / current.pixelsPerHour * 60,
-          clientY: event.clientY,
-          bounds: bounds
-        };
+      var zoomDelta = -Number(event.deltaY);
+      var canZoom = zoomDelta > 0 ? targetTimelineScale < 3 : targetTimelineScale > 1;
+      if (!canZoom) {
+        timelineWheelDelta = 0;
+        return;
       }
-      setTimelineZoom(nextIndex, anchor);
+      event.preventDefault();
+      var anchor = createTimelineAnchor(timeShell, bounds, event.clientY);
+      timelineWheelDelta = core.accumulateTimelineWheel(timelineWheelDelta, zoomDelta);
+      var consumed = core.consumeTimelineWheel(timelineWheelDelta);
+      if (!consumed.steps) return;
+      timelineWheelDelta = consumed.remainder;
+      setTimelineZoomTarget(
+        targetTimelineScale + consumed.steps * 0.1,
+        anchor
+      );
     }
 
     function zoomTimelineFromButton(direction) {
-      var nextIndex = core.nextTimelineZoomIndex(timelineZoomIndex, direction);
-      if (nextIndex === timelineZoomIndex) return;
+      timelineWheelDelta = 0;
+      var nextScale = core.nextTimelineLandmark(targetTimelineScale, direction);
+      if (nextScale === targetTimelineScale) return;
       var timeShell = byId('schoolTimeShell');
       if (!timeShell || typeof timeShell.getBoundingClientRect !== 'function') {
-        setTimelineZoom(nextIndex);
+        setTimelineZoomTarget(nextScale, null);
         return;
       }
       var bounds = getWeekTimeBounds(lessons.filter(function (lesson) {
@@ -1383,17 +1497,10 @@
       var clientY = visibleBottom > visibleTop
         ? (visibleTop + visibleBottom) / 2
         : rect.top + Math.max(0, rect.height || 0) / 2;
-      var anchor = pendingTimelineAnchor;
-      if (!anchor) {
-        var current = core.timelineZoomLevel(timelineZoomIndex);
-        anchor = {
-          minute: bounds.startHour * 60
-            + (clientY - rect.top) / current.pixelsPerHour * 60,
-          clientY: clientY,
-          bounds: bounds
-        };
-      }
-      setTimelineZoom(nextIndex, anchor);
+      setTimelineZoomTarget(
+        nextScale,
+        createTimelineAnchor(timeShell, bounds, clientY)
+      );
     }
 
     function rebuildVisibleLessons() {
@@ -1892,6 +1999,7 @@
       card.setAttribute('data-lesson-id', lesson.id);
       if (!draggable) return;
       card.addEventListener('dragstart', function (event) {
+        finishTimelineZoom();
         clearTimelineDragPreview();
         resetTimelineDragMeta();
         draggedLessonId = lesson.id;
@@ -1918,7 +2026,7 @@
       return lessons.find(function (lesson) { return lesson.id === id; }) || null;
     }
 
-    function configureDropZone(node, day, kind, bounds, zoomLevel) {
+    function configureDropZone(node, day, kind, bounds) {
       if (!node) return;
       node.addEventListener('dragover', function (event) {
         if (!draggedLesson(event)) return;
@@ -1931,6 +2039,7 @@
         }
         var rect = node.getBoundingClientRect();
         var lesson = draggedLesson(event);
+        var zoomLevel = timelineZoomSettings(timelineScale);
         var dragPreview = renderTimelineDragPreview(
           node,
           lesson,
@@ -1974,6 +2083,7 @@
           var rect = typeof node.getBoundingClientRect === 'function'
             ? node.getBoundingClientRect()
             : { top: 0 };
+          var zoomLevel = timelineZoomSettings(timelineScale);
           var fallbackDestination = timelineDestination(
             core,
             day,
@@ -2480,8 +2590,17 @@
     return Object.freeze({
       bind: bind,
       closeDialog: closeDialog,
+      finishTimelineZoom: finishTimelineZoom,
       getLessons: function () { return cloneLessons(lessons); },
       getReadModel: function () { return readModel; },
+      getTimelineZoomState: function () {
+        return {
+          currentScale: timelineScale,
+          targetScale: targetTimelineScale,
+          wheelDelta: timelineWheelDelta,
+          animating: Boolean(timelineZoomAnimation)
+        };
+      },
       handleTimelineWheel: handleTimelineWheel,
       load: load,
       openLesson: openLesson,
