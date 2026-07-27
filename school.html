@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1C1E24">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="app-icon.svg">
+  <link rel="stylesheet" href="school.css?v=9">
+  <title>Личная школа</title>
+  <script src="profile-theme.js?v=401"></script>
+  <script src="topbar.js?v=403" defer></script>
+  <script src="supabase-sync.js?v=406-sb" defer></script>
+  <script src="school-core.js?v=6" defer></script>
+  <script src="school-api.js" defer></script>
+  <script src="school-mutation-queue.js?v=1" defer></script>
+  <script src="school.js?v=9" defer></script>
+</head>
+<body data-page="school">
+  <main class="school-page" id="schoolApp" aria-busy="true">
+    <header class="school-head">
+      <div>
+        <p class="school-eyebrow">W01 · 3–9 августа 2026</p>
+        <h1>Личная школа</h1>
+      </div>
+      <div class="school-progress" aria-live="polite">
+        <strong id="schoolProgress">Выполнено 0 из 0</strong>
+        <span id="schoolProgressMeta"></span>
+      </div>
+    </header>
+
+    <div class="school-view-tabs" role="tablist" aria-label="Раздел школы">
+      <button class="school-view-tab is-active" type="button" role="tab" aria-selected="true"
+        aria-controls="schoolTodayPanel" data-school-view="today">Сегодня</button>
+      <button class="school-view-tab" type="button" role="tab" aria-selected="false"
+        aria-controls="schoolWeekPanel" data-school-view="week">Неделя</button>
+      <button class="school-view-tab" type="button" role="tab" aria-selected="false"
+        aria-controls="schoolDiaryPanel" data-school-view="diary">Дневник</button>
+    </div>
+
+    <section class="school-state" id="schoolState" aria-live="polite">
+      <div class="school-state-mark" aria-hidden="true">···</div>
+      <strong id="schoolStateTitle">Загружаю уроки</strong>
+      <span id="schoolStateText">Проверяю доступ к личной школе.</span>
+    </section>
+
+    <div class="school-ready" id="schoolReady" hidden>
+      <section class="school-loading-skeleton" id="schoolLoadingSkeleton" aria-live="polite">
+        <span id="schoolLoadingText">Загружаю уроки из notion…</span>
+        <div class="school-skeleton-card"></div>
+        <div class="school-skeleton-card"></div>
+        <div class="school-skeleton-card"></div>
+      </section>
+
+      <section class="school-sync-banner" id="schoolSyncBanner" role="status"
+        aria-live="polite" hidden>
+        <span id="schoolSyncMessage"></span>
+        <button id="schoolSyncRetry" type="button">Повторить чтение</button>
+      </section>
+
+      <section class="school-decisions" id="schoolDecisions" aria-labelledby="schoolDecisionsTitle"></section>
+
+      <section id="schoolTodayPanel" class="school-panel" role="tabpanel" data-school-panel="today">
+        <div class="school-section-head">
+          <div>
+            <p class="school-section-kicker">Фокус дня</p>
+            <h2>Сегодня</h2>
+          </div>
+          <span class="school-section-meta" id="schoolTodayMeta"></span>
+        </div>
+        <div id="schoolToday"></div>
+      </section>
+
+      <section id="schoolWeekPanel" class="school-panel" role="tabpanel" data-school-panel="week" hidden>
+        <div class="school-section-head">
+          <div>
+            <p class="school-section-kicker">Расписание</p>
+            <h2>Учебная неделя</h2>
+          </div>
+          <div class="school-week-tools">
+            <span class="school-section-meta" id="schoolWeekTimeMeta">09:00–20:00 · Asia/Yekaterinburg</span>
+            <div class="school-zoom-controls" aria-label="Масштаб времени">
+              <button id="schoolZoomOut" type="button" aria-label="Уменьшить масштаб времени">−</button>
+              <output id="schoolZoomLabel">×1 · шаг 15 минут</output>
+              <button id="schoolZoomIn" type="button" aria-label="Увеличить масштаб времени">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="school-mobile-days" id="schoolMobileDays" aria-label="Выбор дня"></div>
+        <div id="schoolWeek"></div>
+      </section>
+
+      <section id="schoolDiaryPanel" class="school-panel" role="tabpanel" data-school-panel="diary" hidden>
+        <div class="school-section-head">
+          <div>
+            <p class="school-section-kicker">История недели</p>
+            <h2>Электронный дневник</h2>
+          </div>
+          <span class="school-section-meta">по запланированной дате</span>
+        </div>
+        <div id="schoolDiary"></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="school-dialog-backdrop" id="schoolLessonDialog" role="dialog" aria-modal="true"
+    aria-labelledby="schoolLessonTitle" aria-hidden="true" hidden>
+    <aside class="school-drawer" tabindex="-1">
+      <header class="school-drawer-head">
+        <div>
+          <p class="school-drawer-subject" id="schoolLessonSubject"></p>
+          <h2 id="schoolLessonTitle">Урок</h2>
+        </div>
+        <button class="school-drawer-close" id="schoolLessonClose" type="button" aria-label="Закрыть урок">×</button>
+      </header>
+      <div class="school-drawer-meta" id="schoolLessonMeta"></div>
+      <section class="school-drawer-controls" id="schoolScheduleControls" aria-label="Управление уроком">
+        <div class="school-schedule-fields">
+          <label>
+            <span>День</span>
+            <select id="schoolLessonDate"></select>
+          </label>
+          <label>
+            <span>Время</span>
+            <input id="schoolLessonTime" type="time" step="900">
+          </label>
+          <div class="school-duration-control">
+            <span>Продолжительность</span>
+            <div>
+              <button id="schoolDurationDown" type="button" aria-label="Уменьшить продолжительность">−</button>
+              <output id="schoolLessonDuration">45 минут</output>
+              <button id="schoolDurationUp" type="button" aria-label="Увеличить продолжительность">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="school-control-actions">
+          <button id="schoolApplySchedule" type="button">Сохранить время</button>
+          <button id="schoolSetDateOnly" type="button">Без времени</button>
+          <button id="schoolSetUnscheduled" type="button">В нераспределённые</button>
+        </div>
+      </section>
+      <section class="school-assessment" id="schoolAssessmentControls" aria-label="Результат урока">
+        <div class="school-assessment-grid">
+          <label>
+            <span>Результат</span>
+            <select id="schoolLessonResult">
+              <option value="Зачёт">Зачёт</option>
+              <option value="Незачёт">Незачёт</option>
+              <option value="Требует повторения">Требует повторения</option>
+            </select>
+          </label>
+          <label>
+            <span>Автономность</span>
+            <select id="schoolLessonAutonomy">
+              <option value="A0">A0</option>
+              <option value="A1">A1</option>
+              <option value="A2" selected>A2</option>
+              <option value="A3">A3</option>
+            </select>
+          </label>
+          <label>
+            <span>Понимание</span>
+            <select id="schoolLessonUnderstanding">
+              <option value="0">0/3</option>
+              <option value="1">1/3</option>
+              <option value="2" selected>2/3</option>
+              <option value="3">3/3</option>
+            </select>
+          </label>
+          <label>
+            <span>Причина пропуска</span>
+            <select id="schoolLessonMissedReason">
+              <option value="Внешние обстоятельства">Внешние обстоятельства</option>
+              <option value="Ошибка планирования">Ошибка планирования</option>
+              <option value="Низкая энергия">Низкая энергия</option>
+              <option value="Избегание сложной задачи">Избегание сложной задачи</option>
+              <option value="Задача слишком большая">Задача слишком большая</option>
+              <option value="Техническая проблема">Техническая проблема</option>
+            </select>
+          </label>
+        </div>
+        <label class="school-wide-field">
+          <span>Краткий комментарий</span>
+          <textarea id="schoolLessonComment" rows="3" maxlength="1000"></textarea>
+        </label>
+        <label class="school-wide-field">
+          <span>Артефакт · HTTPS</span>
+          <input id="schoolLessonArtifact" type="url" inputmode="url" maxlength="2048"
+            placeholder="https://…">
+        </label>
+      </section>
+      <div class="school-lesson-actions" id="schoolLessonActions"></div>
+      <details class="school-cancelled-history" id="schoolCancelledHistory" hidden>
+        <summary>Данные, сохранённые до отмены</summary>
+        <div id="schoolCancelledHistoryContent"></div>
+      </details>
+      <div class="school-content-state" id="schoolContentState" aria-live="polite"></div>
+      <article class="school-lesson-content" id="schoolLessonContent"></article>
+    </aside>
+  </div>
+
+  <div class="school-action-backdrop" id="schoolActionDialog" role="dialog" aria-modal="true"
+    aria-labelledby="schoolActionTitle" aria-hidden="true" hidden>
+    <section class="school-action-dialog" tabindex="-1">
+      <p class="school-section-kicker">Подтверждение</p>
+      <h2 id="schoolActionTitle">Подтвердите действие</h2>
+      <p id="schoolActionMessage"></p>
+      <div class="school-action-details" id="schoolActionDetails"></div>
+      <div class="school-action-buttons" id="schoolActionButtons"></div>
+    </section>
+  </div>
+</body>
+</html>
