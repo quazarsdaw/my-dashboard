@@ -479,7 +479,7 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 
 .school-time-shell {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 64px minmax(0, 1fr);
   min-width: 0;
 }
 
@@ -491,11 +491,14 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 
 .school-hour-label {
   position: absolute;
-  right: 9px;
+  right: 10px;
   transform: translateY(-50%);
-  color: var(--school-text-3);
+  color: var(--school-text);
   font-family: var(--school-mono);
-  font-size: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.015em;
+  line-height: 1;
 }
 
 .school-time-columns { position: relative; height: var(--school-time-height, 660px); }
@@ -937,7 +940,7 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
 @media (max-width: 900px) {
   .school-today-list,
   .school-unscheduled-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .school-time-shell { grid-template-columns: 42px minmax(0, 1fr); }
+  .school-time-shell { grid-template-columns: 56px minmax(0, 1fr); }
   .school-week-day-head { padding-inline: 6px; }
   .school-week-day-head strong { font-size: 9px; }
   .school-diary-row { grid-template-columns: 78px 1fr 1.5fr 0.9fr; }
@@ -989,7 +992,7 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
   .school-time-day.is-mobile-active { display: block; }
   .school-week-day-head { min-height: 58px; }
   .school-week-day-head strong { font-size: 12px; }
-  .school-time-shell { grid-template-columns: 42px minmax(0, 1fr); }
+  .school-time-shell { grid-template-columns: 56px minmax(0, 1fr); }
   .school-diary-row {
     grid-template-columns: 72px minmax(0, 1fr) auto;
     gap: 9px;
