@@ -1,0 +1,11 @@
+{
+  "imports": {
+    "@supabase/server": "npm:@supabase/server@1.4.1",
+    "@notionhq/client": "npm:@notionhq/client@5.23.2"
+  },
+  "tasks": {
+    "check": "deno check index.ts test/*.ts",
+    "lint": "deno lint",
+    "test": "deno test --allow-env test"
+  }
+}
