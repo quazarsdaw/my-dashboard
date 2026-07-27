@@ -263,7 +263,7 @@ test('school page loads shared dashboard dependencies before read-only school sc
   const html = read('school.html');
   const scripts = [
     'profile-theme.js?v=401',
-    'topbar.js?v=402',
+    'topbar.js?v=403',
     'supabase-sync.js?v=406-sb',
     'school-core.js',
     'school-api.js',
