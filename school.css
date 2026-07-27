@@ -35,14 +35,6 @@ body {
 
 body.school-dialog-open { overflow: hidden; }
 
-.school-page[data-mutation-pending="true"] {
-  cursor: progress;
-}
-
-.school-page[data-mutation-pending="true"] button {
-  pointer-events: none;
-}
-
 body::before {
   content: "";
   position: fixed;
@@ -586,6 +578,11 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 }
 
 .school-time-card.is-dragging { transition: none; }
+.school-lesson-card.is-saving,
+.school-time-card.is-saving {
+  border-color: rgba(242, 192, 99, 0.34);
+  cursor: progress;
+}
 
 .school-time-card:hover { border-color: rgba(125, 211, 252, 0.36); }
 .school-time-card.is-canceled { opacity: 0.46; text-decoration: line-through; }

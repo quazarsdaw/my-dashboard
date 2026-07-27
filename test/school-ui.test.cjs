@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const SchoolCore = require('../school-core.js');
+const SchoolMutationQueue = require('../school-mutation-queue.js');
 const SchoolUi = require('../school.js');
 
 function read(file) {
@@ -38,6 +39,80 @@ function deferred() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+function queueLesson(id, time) {
+  const start = `2026-08-03T${time}:00+05:00`;
+  return {
+    id,
+    status: 'Запланирован',
+    durationMinutes: 45,
+    schedule: SchoolCore.scheduleForDestination({ kind: 'timed', start }, 45)
+  };
+}
+
+function moveCommand(id, time) {
+  return {
+    operation: 'moveLesson',
+    lessonId: id,
+    destination: {
+      kind: 'timed',
+      start: `2026-08-03T${time}:00+05:00`
+    },
+    order: id === 'a' ? 100 : 200
+  };
+}
+
+function moveReducer(command) {
+  return (lessons) => lessons.map((lesson) => {
+    if (lesson.id !== command.lessonId) return lesson;
+    const start = command.destination.start;
+    return {
+      ...lesson,
+      schedule: {
+        kind: 'timed',
+        date: '2026-08-03',
+        start,
+        end: SchoolCore.scheduleForDestination(
+          { kind: 'timed', start },
+          lesson.durationMinutes
+        ).end
+      }
+    };
+  });
+}
+
+function createQueueController({ mutate }) {
+  let serverLessons = [queueLesson('a', '09:00'), queueLesson('b', '09:30')];
+  return SchoolUi.createController({
+    api: {
+      async listLessons() {
+        return structuredClone(serverLessons);
+      },
+      async mutate(command) {
+        const result = await mutate(command);
+        serverLessons = moveReducer(command)(serverLessons);
+        return result;
+      }
+    },
+    core: {
+      buildReadModel(lessons) {
+        return {
+          lessons,
+          today: [],
+          weekDays: {},
+          diary: [],
+          progress: { completed: 0, total: lessons.length, partial: 0, missed: 0 },
+          activeLessons: [],
+          nextLesson: null,
+          persistedDecisions: [],
+          runtimeIssues: []
+        };
+      }
+    },
+    mutationQueue: SchoolMutationQueue,
+    document: null
+  });
 }
 
 function interactiveDocument() {
@@ -198,6 +273,16 @@ test('school week exposes accessible timeline zoom controls', () => {
   assert.ok(html.includes('aria-label="Увеличить масштаб времени"'));
 });
 
+test('loads mutation queue before the school controller', () => {
+  const html = read('school.html');
+  assert.ok(html.includes('school-mutation-queue.js'));
+  assert.ok(html.includes('school.js'));
+  assert.ok(
+    html.indexOf('school-mutation-queue.js') < html.indexOf('school.js'),
+    'queue must load before the controller'
+  );
+});
+
 test('timeline destination uses the active zoom step', () => {
   assert.deepEqual(
     SchoolUi.timelineDestination(
@@ -329,12 +414,11 @@ test('controller rolls back optimistic lessons when mutation fails', async () =>
     ),
     (error) => error.code === 'LESSON_TIME_CONFLICT'
   );
+  await controller.whenMutationsIdle();
 
-  assert.deepEqual(rendered, [
-    ['Запланирован'],
-    ['В процессе'],
-    ['Запланирован']
-  ]);
+  assert.deepEqual(rendered[0], ['Запланирован']);
+  assert.ok(rendered.some((statuses) => statuses[0] === 'В процессе'));
+  assert.deepEqual(rendered.at(-1), ['Запланирован']);
   assert.deepEqual(controller.getLessons(), initial);
 });
 
@@ -379,6 +463,56 @@ test('successful mutation revalidates from notion and rechecks active lessons', 
 
   assert.deepEqual(calls, ['list', 'startLesson', 'list']);
   assert.deepEqual(controller.getReadModel().activeLessons.map((lesson) => lesson.id), ['lesson-1']);
+});
+
+test('controller keeps a second optimistic drop while the first mutation is pending', async () => {
+  const first = deferred();
+  const calls = [];
+  const controller = createQueueController({
+    mutate(command) {
+      calls.push(command.lessonId);
+      return command.lessonId === 'a' ? first.promise : Promise.resolve({ id: 'b' });
+    }
+  });
+
+  await controller.load();
+  const a = controller.runMutation(moveCommand('a', '10:00'), moveReducer(moveCommand('a', '10:00')));
+  const b = controller.runMutation(moveCommand('b', '11:00'), moveReducer(moveCommand('b', '11:00')));
+  assert.deepEqual(
+    controller.getLessons().map((lesson) => lesson.schedule.start.slice(11, 16)),
+    ['10:00', '11:00']
+  );
+  first.resolve({ id: 'a' });
+  await Promise.all([a, b]);
+  await controller.whenMutationsIdle();
+  assert.deepEqual(calls, ['a', 'b']);
+});
+
+test('failed queued mutation removes only its optimistic layer', async () => {
+  const controller = createQueueController({
+    mutate(command) {
+      return command.lessonId === 'a'
+        ? Promise.reject(new Error('failed a'))
+        : Promise.resolve({ id: 'b' });
+    }
+  });
+
+  await controller.load();
+  const commandA = moveCommand('a', '10:00');
+  const commandB = moveCommand('b', '11:00');
+  const a = controller.runMutation(commandA, moveReducer(commandA));
+  const b = controller.runMutation(commandB, moveReducer(commandB));
+  await assert.rejects(a, /failed a/);
+  await b;
+  await controller.whenMutationsIdle();
+  assert.equal(
+    controller.getLessons().find((lesson) => lesson.id === 'a').schedule.start.slice(11, 16),
+    '09:00'
+  );
+  assert.equal(
+    controller.getLessons().find((lesson) => lesson.id === 'b').schedule.start.slice(11, 16),
+    '11:00'
+  );
 });
 
 test('drop transition matrix blocks finalized cards and requires explicit status commands', () => {
@@ -900,9 +1034,10 @@ test('school controller contains focus trap, escape close and restore behavior',
   assert.ok(source.includes('aria-hidden'));
 });
 
-test('school source installs drag, touch-safe fallback and optimistic rollback behavior', () => {
+test('school source installs drag, touch-safe fallback and isolated optimistic queue behavior', () => {
   const source = read('school.js');
   const html = read('school.html');
+  const css = read('school.css');
 
   assert.ok(source.includes('.listLessons('));
   assert.ok(source.includes('.getLessonContent('));
@@ -913,8 +1048,10 @@ test('school source installs drag, touch-safe fallback and optimistic rollback b
   assert.ok(source.includes('Оставить в W01'));
   assert.ok(source.includes("operation: 'resolveActiveLessons'"));
   assert.ok(source.includes('optimisticReducer'));
-  assert.ok(source.includes('revalidateAfterMutation'));
-  assert.ok(source.includes('rollback'));
+  assert.ok(source.includes('optimisticMutations'));
+  assert.ok(source.includes('pendingLessonIds'));
+  assert.ok(source.includes('whenMutationsIdle'));
+  assert.ok(!css.includes('.school-page[data-mutation-pending="true"]'));
   assert.ok(html.includes('id="schoolActionDialog"'));
   assert.ok(html.includes('id="schoolScheduleControls"'));
   assert.ok(!source.includes('.innerHTML'));

@@ -489,7 +489,7 @@
     return '';
   }
 
-  function appendLessonDetails(card, documentRef, lesson, conflictIds) {
+  function appendLessonDetails(card, documentRef, lesson, conflictIds, isSaving) {
     if (lesson.status === 'Отменён') card.className += ' is-canceled';
     card.appendChild(element(documentRef, 'span', 'school-card-subject', lesson.subject));
     card.appendChild(element(documentRef, 'strong', 'school-card-title', lesson.title));
@@ -503,6 +503,7 @@
     card.appendChild(meta);
 
     var signals = lessonSignalLabels(lesson, Boolean(conflictIds && conflictIds.has(lesson.id)));
+    if (isSaving) signals.unshift('сохраняется');
     if (signals.length) {
       var warningRoot = element(documentRef, 'span', 'school-card-signals');
       signals.forEach(function (signal) {
@@ -512,12 +513,18 @@
     }
   }
 
-  function makeLessonCard(documentRef, lesson, openLesson, conflictIds, configureCard) {
+  function makeLessonCard(documentRef, lesson, openLesson, conflictIds, configureCard, pendingLessonIds) {
     var card = element(documentRef, 'button', 'school-lesson-card');
     card.type = 'button';
     card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
     card.addEventListener('click', function () { openLesson(lesson.id); });
-    appendLessonDetails(card, documentRef, lesson, conflictIds);
+    appendLessonDetails(
+      card,
+      documentRef,
+      lesson,
+      conflictIds,
+      Boolean(pendingLessonIds && pendingLessonIds.has(lesson.id))
+    );
     if (typeof configureCard === 'function') configureCard(card, lesson);
     return card;
   }
@@ -616,9 +623,13 @@
     var documentRef = options.document === undefined ? (root && root.document) : options.document;
     var api = options.api || (root && root.SchoolApi);
     var core = options.core || (root && root.SchoolCore);
+    var queueApi = options.mutationQueue || (root && root.SchoolMutationQueue);
     var now = typeof options.now === 'function' ? options.now : function () { return new Date(); };
     var onState = typeof options.onState === 'function' ? options.onState : function () {};
     var lessons = [];
+    var confirmedLessons = [];
+    var optimisticMutations = [];
+    var pendingLessonIds = new Set();
     var readModel = null;
     var currentView = 'today';
     var mobileDay = '2026-08-03';
@@ -626,11 +637,40 @@
     var dialogKeyHandler = null;
     var dialogGeneration = 0;
     var currentContentLessonId = null;
-    var mutationPending = false;
+    var mutationSequence = 0;
     var timelineZoomIndex = 0;
     var draggedLessonId = null;
     var actionResolver = null;
     var actionPreviousFocus = null;
+    var queue = queueApi.create({
+      execute: async function (entry) {
+        try {
+          var result = await api.mutate(entry.command);
+          confirmedLessons = entry.reducer(cloneLessons(confirmedLessons));
+          optimisticMutations = optimisticMutations.filter(function (item) {
+            return item.id !== entry.id;
+          });
+          rebuildVisibleLessons();
+          return result;
+        } catch (error) {
+          optimisticMutations = optimisticMutations.filter(function (item) {
+            return item.id !== entry.id;
+          });
+          rebuildVisibleLessons();
+          throw error;
+        }
+      },
+      afterBatch: async function () {
+        await revalidateAfterMutation();
+      },
+      onPendingChange: function (keys) {
+        pendingLessonIds = keys;
+        if (readModel) buildModel();
+      },
+      onAfterBatchError: function () {
+        setMutationMessage('Изменения сохранены, но контрольное чтение не удалось.');
+      }
+    });
 
     function byId(id) {
       return documentRef ? documentRef.getElementById(id) : null;
@@ -818,7 +858,8 @@
             lesson,
             openLesson,
             null,
-            configureDraggable
+            configureDraggable,
+            pendingLessonIds
           ));
         });
         rootNode.appendChild(list);
@@ -912,7 +953,8 @@
             lesson,
             openLesson,
             conflictIds,
-            configureDraggable
+            configureDraggable,
+            pendingLessonIds
           ));
         });
         configureDropZone(dayColumn, day.date, 'date-only');
@@ -975,7 +1017,13 @@
           card.style.width = 'calc(' + (100 / layout.laneCount) + '% - 8px)';
           card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
           card.addEventListener('click', function () { openLesson(lesson.id); });
-          appendLessonDetails(card, documentRef, lesson, conflictIds);
+          appendLessonDetails(
+            card,
+            documentRef,
+            lesson,
+            conflictIds,
+            pendingLessonIds.has(lesson.id)
+          );
           configureDraggable(card, lesson);
           timeDay.appendChild(card);
         });
@@ -1002,7 +1050,8 @@
             lesson,
             openLesson,
             conflictIds,
-            configureDraggable
+            configureDraggable,
+            pendingLessonIds
           ));
         });
         details.appendChild(list);
@@ -1164,41 +1213,47 @@
       });
     }
 
-    async function revalidateAfterMutation() {
-      lessons = await api.listLessons({ week: ACTIVE_WEEK });
+    function rebuildVisibleLessons() {
+      lessons = optimisticMutations.reduce(function (items, entry) {
+        return entry.reducer(cloneLessons(items));
+      }, cloneLessons(confirmedLessons));
       return buildModel();
     }
 
-    async function runMutation(command, optimisticReducer) {
-      if (mutationPending) {
-        var pendingError = new Error('другая операция школы ещё выполняется');
-        pendingError.code = 'SCHOOL_MUTATION_IN_PROGRESS';
-        pendingError.status = 409;
-        throw pendingError;
+    function affectedLessonIds(command) {
+      var ids = [];
+      if (command && command.lessonId) ids.push(command.lessonId);
+      if (command && command.previousLessonId) ids.push(command.previousLessonId);
+      if (command && command.newLessonId) ids.push(command.newLessonId);
+      if (command && command.keepLessonId) ids.push(command.keepLessonId);
+      if (command && command.operation === 'resolveActiveLessons') {
+        lessons.forEach(function (lesson) {
+          if (lesson.status === 'В процессе') ids.push(lesson.id);
+        });
       }
-      var rollback = cloneLessons(lessons);
-      mutationPending = true;
-      if (documentRef && byId('schoolApp')) {
-        byId('schoolApp').setAttribute('data-mutation-pending', 'true');
-      }
-      try {
-        if (typeof optimisticReducer === 'function') {
-          lessons = optimisticReducer(cloneLessons(lessons));
-          buildModel();
-        }
-        var result = await api.mutate(command);
-        await revalidateAfterMutation();
-        return result;
-      } catch (error) {
-        lessons = rollback;
-        if (lessons.length) buildModel();
-        throw error;
-      } finally {
-        mutationPending = false;
-        if (documentRef && byId('schoolApp')) {
-          byId('schoolApp').removeAttribute('data-mutation-pending');
-        }
-      }
+      return ids.filter(function (id, index) {
+        return id && ids.indexOf(id) === index;
+      });
+    }
+
+    async function revalidateAfterMutation() {
+      confirmedLessons = await api.listLessons({ week: ACTIVE_WEEK });
+      return rebuildVisibleLessons();
+    }
+
+    function runMutation(command, optimisticReducer) {
+      var reducer = typeof optimisticReducer === 'function'
+        ? optimisticReducer
+        : function (items) { return items; };
+      var entry = {
+        id: 'school-mutation-' + (++mutationSequence),
+        keys: affectedLessonIds(command),
+        command: command,
+        reducer: reducer
+      };
+      optimisticMutations.push(entry);
+      rebuildVisibleLessons();
+      return queue.enqueue(entry);
     }
 
     function optimisticLessons(command) {
@@ -1564,8 +1619,11 @@
     }
 
     function configureDraggable(card, lesson) {
-      var draggable = isLessonDraggable(lesson);
+      var saving = pendingLessonIds.has(lesson.id);
+      var draggable = isLessonDraggable(lesson) && !saving;
       card.draggable = draggable;
+      card.classList.toggle('is-saving', saving);
+      card.setAttribute('aria-busy', saving ? 'true' : 'false');
       card.className += draggable ? ' is-draggable' : ' is-locked';
       card.setAttribute('data-lesson-id', lesson.id);
       if (!draggable) return;
@@ -2014,7 +2072,9 @@
     async function load() {
       setState('loading', 'Загружаю уроки', 'Проверяю доступ к личной школе.');
       try {
-        lessons = await api.listLessons({ week: ACTIVE_WEEK });
+        confirmedLessons = await api.listLessons({ week: ACTIVE_WEEK });
+        optimisticMutations = [];
+        lessons = cloneLessons(confirmedLessons);
         if (!Array.isArray(lessons) || lessons.length === 0) {
           setState('empty', 'Уроков пока нет', 'В выбранной учебной неделе нет доступных уроков.');
           return null;
@@ -2119,15 +2179,17 @@
       revalidateAfterMutation: revalidateAfterMutation,
       render: render,
       runMutation: runMutation,
-      selectView: selectView
+      selectView: selectView,
+      whenMutationsIdle: function () { return queue.whenIdle(); }
     });
   }
 
   function boot() {
-    if (!root || !root.document || !root.SchoolApi || !root.SchoolCore) return;
+    if (!root || !root.document || !root.SchoolApi || !root.SchoolCore || !root.SchoolMutationQueue) return;
     var controller = createController({
       api: root.SchoolApi,
       core: root.SchoolCore,
+      mutationQueue: root.SchoolMutationQueue,
       document: root.document
     });
     root.SchoolController = controller;
