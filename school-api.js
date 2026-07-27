@@ -9,7 +9,6 @@
 
   var FUNCTION_NAME = 'school-notion';
   var SDK_WAIT_TIMEOUT_MS = 5000;
-  var AUTH_SETTLE_MS = 250;
   var POLL_INTERVAL_MS = 10;
 
   function isRecord(value) {
@@ -71,14 +70,48 @@
     };
   }
 
+  function waitForSession(client, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(clientError(
+          'AUTH_UNAVAILABLE',
+          503,
+          'проверка авторизации не успела завершиться'
+        ));
+      }, Math.max(0, timeoutMs));
+
+      Promise.resolve().then(function () {
+        return client.auth.getSession();
+      }).then(function (result) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      }, function () {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(clientError(
+          'AUTH_UNAVAILABLE',
+          503,
+          'не удалось проверить авторизацию'
+        ));
+      });
+    });
+  }
+
   async function waitForAuth() {
     var startedAt = Date.now();
-    var clientReadyAt = null;
+    var clientSeen = false;
 
     while (Date.now() - startedAt <= SDK_WAIT_TIMEOUT_MS) {
       var state = readSyncState();
 
       if (state && state.client) {
+        clientSeen = true;
         if (
           !state.client.functions ||
           typeof state.client.functions.invoke !== 'function'
@@ -97,17 +130,62 @@
           };
         }
 
-        if (clientReadyAt === null) clientReadyAt = Date.now();
-        if (Date.now() - clientReadyAt >= AUTH_SETTLE_MS) {
+        if (
+          state.client.auth &&
+          typeof state.client.auth.getSession === 'function'
+        ) {
+          var remainingMs = SDK_WAIT_TIMEOUT_MS - (Date.now() - startedAt);
+          var sessionResult = await waitForSession(state.client, remainingMs);
+          if (!isRecord(sessionResult) || sessionResult.error) {
+            throw clientError(
+              'AUTH_UNAVAILABLE',
+              503,
+              'не удалось проверить авторизацию'
+            );
+          }
+
+          var session = isRecord(sessionResult.data)
+            ? sessionResult.data.session
+            : undefined;
+          if (isRecord(session) && isRecord(session.user)) {
+            return {
+              client: state.client,
+              user: session.user
+            };
+          }
+          if (session === null) {
+            throw clientError(
+              'UNAUTHORIZED',
+              401,
+              'для доступа к школе необходимо войти'
+            );
+          }
+
           throw clientError(
-            'UNAUTHORIZED',
-            401,
-            'для доступа к школе необходимо войти'
+            'AUTH_UNAVAILABLE',
+            503,
+            'клиент авторизации вернул некорректную сессию'
           );
+        }
+
+        state = readSyncState();
+        if (state && state.client && state.signedIn && state.user) {
+          return {
+            client: state.client,
+            user: state.user
+          };
         }
       }
 
       await delay(POLL_INTERVAL_MS);
+    }
+
+    if (clientSeen) {
+      throw clientError(
+        'AUTH_UNAVAILABLE',
+        503,
+        'не удалось определить состояние авторизации'
+      );
     }
 
     throw clientError(
@@ -192,16 +270,72 @@
     throw validationError();
   }
 
-  async function readResponseBody(response) {
+  function isSafeFailureEnvelope(value) {
+    if (
+      !isRecord(value) ||
+      value.ok !== false ||
+      typeof value.error !== 'string' ||
+      !/^[A-Z][A-Z0-9_]{0,63}$/.test(value.error) ||
+      typeof value.message !== 'string' ||
+      value.message.length === 0 ||
+      Array.from(value.message).length > 500 ||
+      typeof value.requestId !== 'string' ||
+      value.requestId.length === 0 ||
+      value.requestId.length > 128 ||
+      value.requestId.trim() !== value.requestId ||
+      (value.details !== undefined && !isRecord(value.details)) ||
+      (value.status !== undefined && !Number.isInteger(value.status))
+    ) {
+      return false;
+    }
+
+    return Object.keys(value).every(function (key) {
+      return [
+        'ok',
+        'error',
+        'message',
+        'requestId',
+        'details',
+        'status'
+      ].indexOf(key) !== -1;
+    });
+  }
+
+  function isSafeSuccessEnvelope(value) {
+    if (
+      !isRecord(value) ||
+      value.ok !== true ||
+      !isRecord(value.data) ||
+      typeof value.requestId !== 'string' ||
+      value.requestId.length === 0 ||
+      value.requestId.length > 128 ||
+      value.requestId.trim() !== value.requestId
+    ) {
+      return false;
+    }
+
+    var keys = Object.keys(value).sort();
+    return keys.length === 3 &&
+      keys[0] === 'data' &&
+      keys[1] === 'ok' &&
+      keys[2] === 'requestId';
+  }
+
+  function isResponse(value) {
+    return typeof Response !== 'undefined' && value instanceof Response;
+  }
+
+  async function readResponseBody(response, allowPlainEnvelope) {
     if (!response) return null;
-    if (typeof Response !== 'undefined' && response instanceof Response) {
+    if (isResponse(response)) {
       try {
-        return await response.clone().json();
+        var parsed = await response.clone().json();
+        return isSafeFailureEnvelope(parsed) ? parsed : null;
       } catch (_error) {
         return null;
       }
     }
-    return isRecord(response) ? response : null;
+    return allowPlainEnvelope && isSafeFailureEnvelope(response) ? response : null;
   }
 
   function fallbackCode(status) {
@@ -222,12 +356,34 @@
     return 'не удалось выполнить запрос школы';
   }
 
+  function statusFromCode(code) {
+    if (code === 'UNAUTHORIZED') return 401;
+    if (code === 'FORBIDDEN' || code === 'ORIGIN_NOT_ALLOWED') return 403;
+    if (code === 'VALIDATION_ERROR' || code === 'INVALID_COMMAND' || code === 'INVALID_JSON') return 400;
+    if (code === 'LESSON_NOT_FOUND' || code === 'LESSON_OUTSIDE_SCHOOL_DATABASE') return 404;
+    if (
+      typeof code === 'string' &&
+      (
+        code === 'CONFLICT' ||
+        code.indexOf('ACTIVE_LESSON_') === 0 ||
+        code.indexOf('SCHOOL_') === 0 ||
+        code === 'LESSON_STATUS_TRANSITION_REQUIRED' ||
+        code === 'LESSON_TIME_CONFLICT' ||
+        code === 'CROSS_WEEK_MOVE_REQUIRES_REVIEW'
+      )
+    ) {
+      return 409;
+    }
+    return 503;
+  }
+
   async function toSchoolError(functionError, response) {
     var source = response || (functionError && functionError.context) || null;
-    var body = await readResponseBody(source);
-    var status = source && Number.isInteger(source.status)
+    var trustedResponse = isResponse(source);
+    var body = await readResponseBody(source, !functionError);
+    var status = trustedResponse && Number.isInteger(source.status)
       ? source.status
-      : (functionError && Number.isInteger(functionError.status) ? functionError.status : 503);
+      : (body ? statusFromCode(body.error) : 503);
 
     if (body && Number.isInteger(body.status)) status = body.status;
 
@@ -263,13 +419,16 @@
     }
 
     if (result.error) {
+      if (isSafeFailureEnvelope(result.data)) {
+        throw await toSchoolError(null, result.data);
+      }
       throw await toSchoolError(
         result.error,
-        result.error.context || (isRecord(result.data) ? result.data : null)
+        result.error.context
       );
     }
 
-    if (!isRecord(result.data) || result.data.ok !== true || !('data' in result.data)) {
+    if (!isSafeSuccessEnvelope(result.data)) {
       if (isRecord(result.data) && result.data.ok === false) {
         throw await toSchoolError(null, result.data);
       }

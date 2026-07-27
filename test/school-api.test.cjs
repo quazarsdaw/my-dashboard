@@ -47,9 +47,61 @@ test('waits for the asynchronously loaded existing SupabaseSync client', async (
   assert.equal(calls.length, 1);
 });
 
+test('waits for explicit session restoration longer than the former auth grace period', async () => {
+  let currentUser = null;
+  let edgeCallCount = 0;
+  const restoredUser = { id: 'owner-id', email: 'owner@example.com' };
+  const client = {
+    auth: {
+      getSession: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        currentUser = restoredUser;
+        return {
+          data: {
+            session: {
+              access_token: 'managed-inside-the-shared-client',
+              token_type: 'bearer',
+              user: restoredUser
+            }
+          },
+          error: null
+        };
+      }
+    },
+    functions: {
+      invoke: async () => {
+        edgeCallCount += 1;
+        return successEnvelope({ lessons: [{ id: 'restored-lesson' }] });
+      }
+    }
+  };
+  globalThis.SupabaseSync = {
+    get client() { return client; },
+    get user() { return currentUser; },
+    isSignedIn() { return Boolean(currentUser); },
+    getUser() { return currentUser; }
+  };
+
+  assert.deepEqual(
+    await SchoolApi.listLessons({ week: 'W01 · 3–9 августа 2026' }),
+    [{ id: 'restored-lesson' }]
+  );
+  assert.equal(edgeCallCount, 1);
+});
+
 test('does not call the edge function when the existing session has no user', async () => {
   let callCount = 0;
+  let getSessionCount = 0;
   const client = {
+    auth: {
+      getSession: async () => {
+        getSessionCount += 1;
+        return {
+          data: { session: null },
+          error: null
+        };
+      }
+    },
     functions: {
       invoke: async () => {
         callCount += 1;
@@ -68,6 +120,7 @@ test('does not call the edge function when the existing session has no user', as
     SchoolApi.listLessons({ week: 'W01 · 3–9 августа 2026' }),
     (error) => error.name === 'SchoolClientError' && error.status === 401 && error.code === 'UNAUTHORIZED'
   );
+  assert.equal(getSessionCount, 1);
   assert.equal(callCount, 0);
 });
 
@@ -201,6 +254,37 @@ for (const scenario of [
   });
 }
 
+for (const context of [
+  new Error('authorization bearer secret-from-error-context'),
+  {
+    status: 403,
+    error: 'FORBIDDEN',
+    message: 'authorization bearer secret-from-object-context',
+    details: { token: 'secret-detail' }
+  }
+]) {
+  test(`ignores untrusted ${context instanceof Error ? 'error' : 'plain object'} transport context`, async () => {
+    const transportError = new Error('transport failed');
+    transportError.context = context;
+    installSignedInSync(async () => ({ data: null, error: transportError }));
+
+    await assert.rejects(
+      SchoolApi.listLessons({ week: 'W01 · 3–9 августа 2026' }),
+      (error) => {
+        assert.equal(error.name, 'SchoolClientError');
+        assert.equal(error.status, 503);
+        assert.equal(error.code, 'UPSTREAM_UNAVAILABLE');
+        assert.equal(error.message, 'сервис школы временно недоступен');
+        assert.equal(error.details, undefined);
+        const serialized = JSON.stringify(error);
+        assert.equal(serialized.includes('bearer'), false);
+        assert.equal(serialized.includes('secret-detail'), false);
+        return true;
+      }
+    );
+  });
+}
+
 test('rejects mixed or incomplete list filters before calling the edge function', async () => {
   let callCount = 0;
   installSignedInSync(async () => {
@@ -222,6 +306,56 @@ test('rejects mixed or incomplete list filters before calling the edge function'
   );
   assert.equal(callCount, 0);
 });
+
+for (const scenario of [
+  {
+    name: 'missing data',
+    envelope: { ok: true, requestId: 'request-1' }
+  },
+  {
+    name: 'undefined data',
+    envelope: { ok: true, data: undefined, requestId: 'request-1' }
+  },
+  {
+    name: 'null data',
+    envelope: { ok: true, data: null, requestId: 'request-1' }
+  },
+  {
+    name: 'array data',
+    envelope: { ok: true, data: [], requestId: 'request-1' }
+  },
+  {
+    name: 'scalar data',
+    envelope: { ok: true, data: 'lessons', requestId: 'request-1' }
+  },
+  {
+    name: 'missing request id',
+    envelope: { ok: true, data: {} }
+  },
+  {
+    name: 'empty request id',
+    envelope: { ok: true, data: {}, requestId: '' }
+  },
+  {
+    name: 'non-string request id',
+    envelope: { ok: true, data: {}, requestId: 42 }
+  }
+]) {
+  test(`invoke rejects a success envelope with ${scenario.name}`, async () => {
+    installSignedInSync(async () => ({
+      data: scenario.envelope,
+      error: null
+    }));
+
+    await assert.rejects(
+      SchoolApi.invoke({
+        operation: 'listLessons',
+        week: 'W01 · 3–9 августа 2026'
+      }),
+      (error) => error.code === 'INVALID_RESPONSE' && error.status === 502
+    );
+  });
+}
 
 test('invoke accepts only the two read-only operations', async () => {
   let callCount = 0;
