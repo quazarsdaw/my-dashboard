@@ -53,6 +53,91 @@ export interface SchoolNotionReadClient {
   ): Promise<NotionBlockPage>;
 }
 
+export type LessonStatus =
+  | "Нераспределён"
+  | "Запланирован"
+  | "В процессе"
+  | "Выполнен"
+  | "Частично выполнен"
+  | "Пропущен"
+  | "Отменён";
+
+export type LessonPriority = "Must" | "Should" | "Could";
+
+export type LessonResult =
+  | "Зачёт"
+  | "Незачёт"
+  | "Требует повторения"
+  | null;
+
+export type LessonAutonomy = "A0" | "A1" | "A2" | "A3" | null;
+
+export type LessonSchedule =
+  | Readonly<{
+    date: null;
+    end: null;
+    kind: "unscheduled";
+    start: null;
+  }>
+  | Readonly<{
+    date: string;
+    end: null;
+    kind: "date-only";
+    start: null;
+  }>
+  | Readonly<{
+    date: string;
+    end: string;
+    kind: "timed";
+    start: string;
+  }>;
+
+export type LessonWarning = Readonly<{
+  code: "duration-mismatch";
+}>;
+
+export interface Lesson {
+  artifactUrl: string | null;
+  autonomy: LessonAutonomy;
+  comment: string;
+  decisionRequest: "Перенос между неделями" | null;
+  durationMinutes: number;
+  hasLearningEvidence: boolean;
+  id: string;
+  isFinalized: boolean;
+  missedReason: string | null;
+  module: string;
+  moveCount: number;
+  order: number;
+  priority: LessonPriority;
+  result: LessonResult;
+  schedule: LessonSchedule;
+  status: LessonStatus;
+  subject: string;
+  title: string;
+  understanding: 0 | 1 | 2 | 3 | null;
+  warnings: LessonWarning[];
+  week: string;
+}
+
+export type LessonFilter =
+  | Readonly<{ week: string; from?: never; to?: never }>
+  | Readonly<{ from: string; to: string; week?: never }>;
+
+export type ListLessonsCommand =
+  & Readonly<{ operation: "listLessons" }>
+  & LessonFilter;
+
+export interface LessonListResult {
+  counts: Readonly<Record<string, number>>;
+  lessons: Lesson[];
+  total: number;
+}
+
+export interface LessonRepository {
+  listLessons(filter: LessonFilter): Promise<Lesson[]>;
+}
+
 export interface RouterContext {
   auth: AuthContext;
   notionClient?: SchoolNotionReadClient;

@@ -1,13 +1,21 @@
 import { authorizeRequest } from "./auth.ts";
 import { buildCorsHeaders } from "./cors.ts";
 import { normalizeError, SchoolHttpError } from "./errors.ts";
+import { createLessonRepository } from "./lesson-repository.ts";
+import { createLessonService } from "./lesson-service.ts";
 import type {
   HandlerDependencies,
+  ListLessonsCommand,
   RouterContext,
   SchoolCommand,
 } from "./types.ts";
 
 const allowedMethods = new Set(["OPTIONS", "POST"]);
+const activeWeek = Object.freeze({
+  endDate: "2026-08-09",
+  notionValue: "W01 · 3–9 августа 2026",
+  startDate: "2026-08-03",
+});
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -63,20 +71,98 @@ function withHeaders(response: Response, headers: Headers): Response {
 }
 
 export function routeSchoolCommand(
-  _command: SchoolCommand,
+  command: SchoolCommand,
   context: RouterContext,
 ): Promise<Response> {
-  return Promise.resolve(
-    Response.json(
-      {
-        ok: false,
-        error: "COMMAND_NOT_IMPLEMENTED",
-        message: "command is not implemented",
-        requestId: context.requestId,
-      },
-      { status: 501 },
-    ),
+  if (command.operation !== "listLessons") {
+    throw new SchoolHttpError(
+      400,
+      "INVALID_COMMAND",
+      "command operation is not allowed",
+    );
+  }
+
+  const validated = validateListLessonsCommand(command);
+  if (!context.notionClient) {
+    throw new SchoolHttpError(
+      500,
+      "SERVER_MISCONFIGURED",
+      "server configuration is invalid",
+    );
+  }
+
+  const repository = createLessonRepository(context.notionClient);
+  const service = createLessonService(repository);
+
+  return service.listLessons(validated).then((data) =>
+    Response.json({
+      data,
+      ok: true,
+      requestId: context.requestId,
+    })
   );
+}
+
+function isIsoDate(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
+    return false;
+  }
+
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value;
+}
+
+function invalidCommand(): never {
+  throw new SchoolHttpError(
+    400,
+    "INVALID_COMMAND",
+    "listLessons command is invalid",
+  );
+}
+
+function validateListLessonsCommand(
+  command: SchoolCommand,
+): ListLessonsCommand {
+  const keys = Object.keys(command).sort();
+  const weekShape = keys.length === 2 &&
+    keys[0] === "operation" &&
+    keys[1] === "week";
+  const rangeShape = keys.length === 3 &&
+    keys[0] === "from" &&
+    keys[1] === "operation" &&
+    keys[2] === "to";
+
+  if (weekShape) {
+    if (command.week !== activeWeek.notionValue) {
+      return invalidCommand();
+    }
+
+    return {
+      operation: "listLessons",
+      week: activeWeek.notionValue,
+    };
+  }
+
+  if (
+    !rangeShape ||
+    !isIsoDate(command.from) ||
+    !isIsoDate(command.to) ||
+    command.from < activeWeek.startDate ||
+    command.to > activeWeek.endDate ||
+    command.from > command.to
+  ) {
+    return invalidCommand();
+  }
+
+  return {
+    from: command.from,
+    operation: "listLessons",
+    to: command.to,
+  };
 }
 
 export async function handleRequest(
