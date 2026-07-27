@@ -374,6 +374,20 @@
     };
   }
 
+  function timelineDestination(core, day, clientY, rect, bounds, zoomLevel) {
+    var minute = core.timelineMinuteAtY(
+      clientY - rect.top,
+      bounds.startHour * 60,
+      zoomLevel.pixelsPerHour,
+      zoomLevel.snapMinutes
+    );
+    return {
+      kind: 'timed',
+      start: day + 'T' + String(Math.floor(minute / 60)).padStart(2, '0')
+        + ':' + String(minute % 60).padStart(2, '0') + ':00+05:00'
+    };
+  }
+
   function layoutTimedLessons(entries) {
     var sorted = (Array.isArray(entries) ? entries : []).slice().sort(function (left, right) {
       return timeMinutes(left.schedule.start) - timeMinutes(right.schedule.start)
@@ -613,6 +627,7 @@
     var dialogGeneration = 0;
     var currentContentLessonId = null;
     var mutationPending = false;
+    var timelineZoomIndex = 0;
     var draggedLessonId = null;
     var actionResolver = null;
     var actionPreviousFocus = null;
@@ -841,6 +856,14 @@
         return lesson.schedule && lesson.schedule.kind === 'timed';
       });
       var bounds = getWeekTimeBounds(timedLessons);
+      var zoomLevel = core.timelineZoomLevel(timelineZoomIndex);
+      var startMinute = bounds.startHour * 60;
+      var endMinute = bounds.endHour * 60;
+      var timelineHeight = core.timelineYForMinute(
+        endMinute,
+        startMinute,
+        zoomLevel.pixelsPerHour
+      );
       var weekMeta = byId('schoolWeekTimeMeta');
       if (weekMeta) {
         var weekMetaText = String(bounds.startHour).padStart(2, '0') + ':00–'
@@ -848,6 +871,12 @@
         weekMeta.textContent = weekMetaText;
         weekMeta.setAttribute('data-default-text', weekMetaText);
       }
+      var zoomLabel = byId('schoolZoomLabel');
+      var zoomOut = byId('schoolZoomOut');
+      var zoomIn = byId('schoolZoomIn');
+      if (zoomLabel) zoomLabel.textContent = zoomLevel.label;
+      if (zoomOut) zoomOut.disabled = timelineZoomIndex === 0;
+      if (zoomIn) zoomIn.disabled = timelineZoomIndex === 3;
 
       WEEK_DAYS.forEach(function (day) {
         var dayButton = element(documentRef, 'button', 'school-mobile-day', day.short + ' ' + day.date.slice(-2));
@@ -892,19 +921,34 @@
       shell.appendChild(allDayGrid);
 
       var timeShell = element(documentRef, 'div', 'school-time-shell');
-      timeShell.style.setProperty('--school-time-height', bounds.height + 'px');
+      timeShell.id = 'schoolTimeShell';
+      timeShell.style.setProperty('--school-time-height', timelineHeight + 'px');
       var labels = element(documentRef, 'div', 'school-time-labels');
       for (var hour = bounds.startHour; hour <= bounds.endHour; hour += 1) {
         var label = element(documentRef, 'span', 'school-hour-label', String(hour).padStart(2, '0') + ':00');
-        label.style.top = ((hour - bounds.startHour) * 60) + 'px';
+        label.style.top = core.timelineYForMinute(
+          hour * 60,
+          startMinute,
+          zoomLevel.pixelsPerHour
+        ) + 'px';
         labels.appendChild(label);
       }
       timeShell.appendChild(labels);
 
       var columns = element(documentRef, 'div', 'school-time-columns');
-      for (var half = 0; half <= (bounds.endHour - bounds.startHour) * 2; half += 1) {
-        var line = element(documentRef, 'span', 'school-time-line' + (half % 2 ? ' is-half' : ''));
-        line.style.top = (half * 30) + 'px';
+      for (var minute = startMinute; minute <= endMinute; minute += zoomLevel.snapMinutes) {
+        var minuteInHour = minute % 60;
+        var lineKind = ' is-hour';
+        if (minuteInHour === 30) lineKind = ' is-half';
+        else if (minuteInHour === 15 || minuteInHour === 45) lineKind = ' is-quarter';
+        else if (zoomLevel.snapMinutes === 10 && minuteInHour !== 0) lineKind = ' is-ten';
+        else if (zoomLevel.snapMinutes === 5 && minuteInHour !== 0) lineKind = ' is-five';
+        var line = element(documentRef, 'span', 'school-time-line' + lineKind);
+        line.style.top = core.timelineYForMinute(
+          minute,
+          startMinute,
+          zoomLevel.pixelsPerHour
+        ) + 'px';
         columns.appendChild(line);
       }
       WEEK_DAYS.forEach(function (day) {
@@ -918,8 +962,15 @@
           var start = timeMinutes(lesson.schedule.start);
           var card = element(documentRef, 'button', 'school-time-card');
           card.type = 'button';
-          card.style.top = Math.max(0, start - bounds.startHour * 60) + 'px';
-          card.style.height = (layout.visualEnd - start) + 'px';
+          card.style.top = Math.max(
+            0,
+            core.timelineYForMinute(start, startMinute, zoomLevel.pixelsPerHour)
+          ) + 'px';
+          card.style.height = core.timelineYForMinute(
+            layout.visualEnd,
+            start,
+            zoomLevel.pixelsPerHour
+          ) + 'px';
           card.style.left = 'calc(' + (layout.lane * 100 / layout.laneCount) + '% + 4px)';
           card.style.width = 'calc(' + (100 / layout.laneCount) + '% - 8px)';
           card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
@@ -928,10 +979,13 @@
           configureDraggable(card, lesson);
           timeDay.appendChild(card);
         });
-        configureDropZone(timeDay, day.date, 'timed', bounds);
+        configureDropZone(timeDay, day.date, 'timed', bounds, zoomLevel);
         columns.appendChild(timeDay);
       });
       timeShell.appendChild(columns);
+      timeShell.addEventListener('wheel', function (event) {
+        handleTimelineWheel(event, timeShell, bounds);
+      }, { passive: false });
       shell.appendChild(timeShell);
       rootNode.appendChild(shell);
 
@@ -1026,6 +1080,88 @@
         timeZone: TIME_ZONE
       });
       return render(readModel);
+    }
+
+    function restoreTimelineAnchor(anchorMinute, clientY, bounds) {
+      if (!root || typeof root.requestAnimationFrame !== 'function') return;
+      root.requestAnimationFrame(function () {
+        var nextShell = byId('schoolTimeShell');
+        if (!nextShell || typeof nextShell.getBoundingClientRect !== 'function') return;
+        var nextLevel = core.timelineZoomLevel(timelineZoomIndex);
+        var nextRect = nextShell.getBoundingClientRect();
+        var nextY = core.timelineYForMinute(
+          anchorMinute,
+          bounds.startHour * 60,
+          nextLevel.pixelsPerHour
+        );
+        if (typeof root.scrollBy === 'function') {
+          root.scrollBy(0, nextRect.top + nextY - clientY);
+        }
+      });
+    }
+
+    function setTimelineZoom(nextIndex, anchor) {
+      var normalized = core.timelineZoomLevel(nextIndex).index;
+      if (normalized === timelineZoomIndex) return false;
+      timelineZoomIndex = normalized;
+      if (readModel) buildModel();
+      var nextShell = byId('schoolTimeShell');
+      if (nextShell) {
+        nextShell.classList.add('is-zooming');
+        if (root && typeof root.setTimeout === 'function') {
+          root.setTimeout(function () {
+            var currentShell = byId('schoolTimeShell');
+            if (currentShell) currentShell.classList.remove('is-zooming');
+          }, 140);
+        }
+      }
+      if (anchor) restoreTimelineAnchor(anchor.minute, anchor.clientY, anchor.bounds);
+      return true;
+    }
+
+    function handleTimelineWheel(event, timeShell, bounds) {
+      if (!event || !event.deltaY) return;
+      var direction = event.deltaY < 0 ? 1 : -1;
+      var nextIndex = core.nextTimelineZoomIndex(timelineZoomIndex, direction);
+      if (nextIndex === timelineZoomIndex) return;
+      event.preventDefault();
+      var rect = timeShell.getBoundingClientRect();
+      var current = core.timelineZoomLevel(timelineZoomIndex);
+      var anchorMinute = bounds.startHour * 60
+        + (event.clientY - rect.top) / current.pixelsPerHour * 60;
+      setTimelineZoom(nextIndex, {
+        minute: anchorMinute,
+        clientY: event.clientY,
+        bounds: bounds
+      });
+    }
+
+    function zoomTimelineFromButton(direction) {
+      var nextIndex = core.nextTimelineZoomIndex(timelineZoomIndex, direction);
+      if (nextIndex === timelineZoomIndex) return;
+      var timeShell = byId('schoolTimeShell');
+      if (!timeShell || typeof timeShell.getBoundingClientRect !== 'function') {
+        setTimelineZoom(nextIndex);
+        return;
+      }
+      var bounds = getWeekTimeBounds(lessons.filter(function (lesson) {
+        return lesson.schedule && lesson.schedule.kind === 'timed';
+      }));
+      var rect = timeShell.getBoundingClientRect();
+      var viewportHeight = root && Number.isFinite(root.innerHeight) ? root.innerHeight : rect.bottom;
+      var visibleTop = Math.max(0, rect.top);
+      var visibleBottom = Math.min(viewportHeight, rect.bottom);
+      var clientY = visibleBottom > visibleTop
+        ? (visibleTop + visibleBottom) / 2
+        : rect.top + Math.max(0, rect.height || 0) / 2;
+      var current = core.timelineZoomLevel(timelineZoomIndex);
+      var anchorMinute = bounds.startHour * 60
+        + (clientY - rect.top) / current.pixelsPerHour * 60;
+      setTimelineZoom(nextIndex, {
+        minute: anchorMinute,
+        clientY: clientY,
+        bounds: bounds
+      });
     }
 
     async function revalidateAfterMutation() {
@@ -1435,6 +1571,7 @@
       if (!draggable) return;
       card.addEventListener('dragstart', function (event) {
         draggedLessonId = lesson.id;
+        card.classList.add('is-dragging');
         if (event.dataTransfer) {
           event.dataTransfer.effectAllowed = 'move';
           event.dataTransfer.setData('text/plain', lesson.id);
@@ -1442,6 +1579,7 @@
       });
       card.addEventListener('dragend', function () {
         draggedLessonId = null;
+        card.classList.remove('is-dragging');
         var preview = byId('schoolWeekTimeMeta');
         if (preview) preview.textContent = preview.getAttribute('data-default-text') || preview.textContent;
       });
@@ -1455,7 +1593,7 @@
       return lessons.find(function (lesson) { return lesson.id === id; }) || null;
     }
 
-    function configureDropZone(node, day, kind, bounds) {
+    function configureDropZone(node, day, kind, bounds, zoomLevel) {
       if (!node) return;
       node.addEventListener('dragover', function (event) {
         if (!draggedLesson(event)) return;
@@ -1463,13 +1601,10 @@
         node.classList.add('school-drop-active');
         if (kind !== 'timed' || !bounds || typeof node.getBoundingClientRect !== 'function') return;
         var rect = node.getBoundingClientRect();
-        var rawMinutes = bounds.startHour * 60 + (event.clientY - rect.top);
-        var snapped = core.snapMinuteOfDay(rawMinutes);
+        var destination = timelineDestination(core, day, event.clientY, rect, bounds, zoomLevel);
         var lesson = draggedLesson(event);
-        var start = day + 'T' + String(Math.floor(snapped / 60)).padStart(2, '0')
-          + ':' + String(snapped % 60).padStart(2, '0') + ':00+05:00';
         var previewSchedule = core.scheduleForDestination(
-          { kind: 'timed', start: start },
+          destination,
           lesson.durationMinutes
         );
         var preview = byId('schoolWeekTimeMeta');
@@ -1493,13 +1628,7 @@
           var rect = typeof node.getBoundingClientRect === 'function'
             ? node.getBoundingClientRect()
             : { top: 0 };
-          var rawMinutes = bounds.startHour * 60 + (event.clientY - rect.top);
-          var snapped = core.snapMinuteOfDay(rawMinutes);
-          destination = {
-            kind: 'timed',
-            start: day + 'T' + String(Math.floor(snapped / 60)).padStart(2, '0')
-              + ':' + String(snapped % 60).padStart(2, '0') + ':00+05:00'
-          };
+          destination = timelineDestination(core, day, event.clientY, rect, bounds, zoomLevel);
         }
         var order = orderAtEnd(
           destinationDate(destination),
@@ -1917,6 +2046,14 @@
       if (actionDialog) actionDialog.addEventListener('click', function (event) {
         if (event.target === actionDialog) closeActionDialog('cancel');
       });
+      var zoomOut = byId('schoolZoomOut');
+      if (zoomOut) zoomOut.addEventListener('click', function () {
+        zoomTimelineFromButton(-1);
+      });
+      var zoomIn = byId('schoolZoomIn');
+      if (zoomIn) zoomIn.addEventListener('click', function () {
+        zoomTimelineFromButton(1);
+      });
 
       var applySchedule = byId('schoolApplySchedule');
       if (applySchedule) applySchedule.addEventListener('click', function () {
@@ -2021,6 +2158,7 @@
     partitionDecisionItems: partitionDecisionItems,
     renderContentBlocks: renderContentBlocks,
     safeHttpsUrl: safeHttpsUrl,
-    selectTodayFocus: selectTodayFocus
+    selectTodayFocus: selectTodayFocus,
+    timelineDestination: timelineDestination
   });
 });

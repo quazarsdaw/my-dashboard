@@ -189,6 +189,37 @@ test('school shell exposes the three approved views and accessible lesson dialog
   assert.ok(source.includes("'Выполнено ' + progress.completed + ' из ' + progress.total"));
 });
 
+test('school week exposes accessible timeline zoom controls', () => {
+  const html = read('school.html');
+  assert.ok(html.includes('id="schoolZoomOut"'));
+  assert.ok(html.includes('aria-label="Уменьшить масштаб времени"'));
+  assert.ok(html.includes('id="schoolZoomLabel"'));
+  assert.ok(html.includes('id="schoolZoomIn"'));
+  assert.ok(html.includes('aria-label="Увеличить масштаб времени"'));
+});
+
+test('timeline destination uses the active zoom step', () => {
+  assert.deepEqual(
+    SchoolUi.timelineDestination(
+      SchoolCore,
+      '2026-08-03',
+      130,
+      { top: 10 },
+      { startHour: 9 },
+      { pixelsPerHour: 120, snapMinutes: 5 }
+    ),
+    { kind: 'timed', start: '2026-08-03T10:00:00+05:00' }
+  );
+});
+
+test('school styles distinguish quarter ten and five minute lines', () => {
+  const css = read('school.css');
+  assert.ok(css.includes('.school-time-line.is-quarter'));
+  assert.ok(css.includes('.school-time-line.is-ten'));
+  assert.ok(css.includes('.school-time-line.is-five'));
+  assert.ok(css.includes('.school-zoom-controls'));
+});
+
 test('school layout keeps mobile targets accessible and document overflow contained', () => {
   const css = read('school.css');
 

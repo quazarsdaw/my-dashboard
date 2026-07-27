@@ -195,6 +195,48 @@ a:focus-visible {
   font-size: 10px;
 }
 
+.school-week-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.school-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.school-zoom-controls button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--school-line);
+  border-radius: 10px;
+  background: var(--school-surface);
+  color: var(--school-text);
+  cursor: pointer;
+  font: 800 18px/1 var(--school-mono);
+}
+
+.school-zoom-controls button:hover:not(:disabled) {
+  border-color: rgba(125, 211, 252, 0.36);
+  background: var(--school-surface-strong);
+}
+
+.school-zoom-controls button:disabled {
+  opacity: 0.36;
+  cursor: default;
+}
+
+.school-zoom-controls output {
+  min-width: 122px;
+  color: var(--school-text-2);
+  font-family: var(--school-mono);
+  font-size: 9px;
+  text-align: center;
+}
+
 .school-panel { margin-top: 26px; }
 
 .school-empty {
@@ -513,6 +555,9 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
 }
 
 .school-time-line.is-half { border-top-color: var(--school-line-soft); }
+.school-time-line.is-quarter { border-top-color: rgba(255, 255, 255, 0.035); }
+.school-time-line.is-ten { border-top-color: rgba(255, 255, 255, 0.028); }
+.school-time-line.is-five { border-top-color: rgba(255, 255, 255, 0.018); }
 
 .school-time-day {
   position: relative;
@@ -535,6 +580,12 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
   font: inherit;
   text-align: left;
 }
+
+.school-time-shell.is-zooming .school-time-card {
+  transition: top 120ms ease, height 120ms ease;
+}
+
+.school-time-card.is-dragging { transition: none; }
 
 .school-time-card:hover { border-color: rgba(125, 211, 252, 0.36); }
 .school-time-card.is-canceled { opacity: 0.46; text-decoration: line-through; }
@@ -957,6 +1008,12 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
   .school-view-tabs { width: 100%; margin: 14px 0 20px; }
   .school-section-head { align-items: flex-start; }
   .school-section-meta { max-width: 150px; text-align: right; }
+  .school-week-tools {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .school-zoom-controls output { min-width: 112px; }
   .school-today-focus { grid-template-columns: 1fr; padding: 20px; }
   .school-open { width: 100%; min-height: 44px; }
   .school-today-list,
