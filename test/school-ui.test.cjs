@@ -365,11 +365,28 @@ test('diary groups rows by planned date and keeps missed reason instead of an em
     ['2026-08-03', ['missed']]
   ]);
   assert.equal(SchoolUi.diaryResult(groups[1].lessons[0]), 'Пропущен · Низкая энергия');
-  assert.deepEqual(SchoolUi.diaryScores({
+  const missedModel = SchoolCore.buildReadModel([{
+    id: 'missed-with-stale-assessment',
+    title: 'пропущенный урок',
+    subject: 'Software Engineering',
+    schedule: { kind: 'date-only', date: '2026-08-03' },
     status: 'Пропущен',
+    priority: 'Must',
+    week: 'W01',
     autonomy: 'A3',
-    understanding: 3
-  }), { autonomy: '', understanding: '' });
+    understanding: 3,
+    durationMinutes: 45,
+    order: 100
+  }], {
+    now: '2026-08-04T12:00:00+05:00',
+    timeZone: 'Asia/Yekaterinburg',
+    activeWeek: 'W01'
+  });
+  assert.deepEqual(
+    missedModel.runtimeIssues.filter((issue) => issue.code === 'missed-with-assessment'),
+    [{ code: 'missed-with-assessment', lessonId: 'missed-with-stale-assessment' }]
+  );
+  assert.deepEqual(SchoolUi.diaryScores(missedModel.diary[0]), { autonomy: '', understanding: '' });
   assert.deepEqual(SchoolUi.diaryScores({
     status: 'Выполнен',
     autonomy: 'A2',
@@ -446,7 +463,7 @@ test('same-start timed lessons sort by numeric order and stable id before durati
       schedule: {
         kind: 'timed',
         start: '2026-08-03T14:00:00+05:00',
-        end: '2026-08-03T15:30:00+05:00'
+        end: '2026-08-03T15:00:00+05:00'
       }
     },
     {
@@ -455,7 +472,7 @@ test('same-start timed lessons sort by numeric order and stable id before durati
       schedule: {
         kind: 'timed',
         start: '2026-08-03T14:00:00+05:00',
-        end: '2026-08-03T15:00:00+05:00'
+        end: '2026-08-03T15:30:00+05:00'
       }
     }
   ];
