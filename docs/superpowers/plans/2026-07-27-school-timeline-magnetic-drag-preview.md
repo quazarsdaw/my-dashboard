@@ -114,24 +114,53 @@ git commit -m "добавить геометрию магнитного preview 
 
 **интерфейсы:**
 - использует: `timelineDragPreview(...)`
+- создаёт: `makeTimelineDragPreviewNodes(documentRef, lesson, preview) -> { previewNode, lineNode }`
+- создаёт: `setTransparentDragImage(event, dragImageNode) -> boolean`
 - создаёт: `renderTimelineDragPreview(node, lesson, day, clientY, rect, bounds, zoomLevel)`
 - создаёт: `clearTimelineDragPreview()`
 - сохраняет: `activeTimelineDragPreview = { node, lessonId, destination }`
 
-- [ ] **шаг 1: написать падающий regression-тест контракта controller**
+- [ ] **шаг 1: написать падающие regression-тесты видимого результата**
 
 ```javascript
-test('school drag controller renders one snapped preview and suppresses the native ghost', () => {
-  const source = read('school.js');
-  const css = read('school.css');
+test('builds a snapped preview card and line from the destination shown to the user', () => {
+  const documentRef = fakeDocument();
+  const lesson = {
+    title: 'technical reading baseline',
+    subject: 'english & ielts'
+  };
+  const nodes = SchoolUi.makeTimelineDragPreviewNodes(documentRef, lesson, {
+    top: 130,
+    height: 90,
+    schedule: {
+      start: '2026-08-03T10:05:00+05:00',
+      end: '2026-08-03T10:50:00+05:00'
+    }
+  });
 
-  assert.ok(source.includes('timelineDragPreview('));
-  assert.ok(source.includes('setDragImage'));
-  assert.ok(source.includes('activeTimelineDragPreview'));
-  assert.ok(source.includes('school-time-drag-preview'));
-  assert.ok(source.includes('clearTimelineDragPreview'));
-  assert.ok(css.includes('.school-time-drag-preview'));
-  assert.ok(css.includes('.school-time-snap-line'));
+  assert.equal(nodes.previewNode.className, 'school-time-drag-preview');
+  assert.equal(nodes.previewNode.style.top, '130px');
+  assert.equal(nodes.previewNode.style.height, '90px');
+  assert.equal(nodes.previewNode.children[0].textContent, 'english & ielts');
+  assert.equal(nodes.previewNode.children[1].textContent, 'technical reading baseline');
+  assert.equal(nodes.previewNode.children[2].textContent, '10:05–10:50');
+  assert.equal(nodes.lineNode.className, 'school-time-snap-line');
+  assert.equal(nodes.lineNode.style.top, '130px');
+});
+
+test('passes a transparent element to the browser drag image contract', () => {
+  const dragImageNode = {};
+  let received = null;
+  const applied = SchoolUi.setTransparentDragImage({
+    dataTransfer: {
+      setDragImage(node, x, y) {
+        received = { node, x, y };
+      }
+    }
+  }, dragImageNode);
+
+  assert.equal(applied, true);
+  assert.deepEqual(received, { node: dragImageNode, x: 0, y: 0 });
 });
 ```
 
@@ -140,10 +169,10 @@ test('school drag controller renders one snapped preview and suppresses the nati
 команда:
 
 ```bash
-node --test --test-name-pattern="renders one snapped preview" test/school-ui.test.cjs
+node --test --test-name-pattern="snapped preview card|transparent element" test/school-ui.test.cjs
 ```
 
-ожидаемый результат: `fail` на отсутствующих preview-классах и `setDragImage`.
+ожидаемый результат: `fail`, потому что оба behavior-helper ещё отсутствуют.
 
 - [ ] **шаг 3: добавить controller-состояние и очистку**
 
@@ -183,10 +212,9 @@ fallback.
 
 1. вызывает `timelineDragPreview`;
 2. очищает предыдущий preview только при смене колонки или слота;
-3. создаёт `div.school-time-drag-preview`;
-4. задаёт `top`, `height`, subject, title и `scheduleRange`;
-5. создаёт `span.school-time-snap-line` на той же координате;
-6. сохраняет использованный `destination` в `activeTimelineDragPreview`.
+3. вызывает протестированный `makeTimelineDragPreviewNodes`;
+4. добавляет `previewNode` и `lineNode` в активную колонку;
+5. сохраняет использованный `destination` в `activeTimelineDragPreview`.
 
 в `drop` использовать `activeTimelineDragPreview.destination`, только если
 совпадают текущая колонка и `lessonId`; иначе безопасно пересчитать через
@@ -236,7 +264,7 @@ fallback.
 команды:
 
 ```bash
-node --test --test-name-pattern="timeline drag preview|renders one snapped preview" test/school-ui.test.cjs
+node --test --test-name-pattern="timeline drag preview|snapped preview card|transparent element" test/school-ui.test.cjs
 node --test test/school-ui.test.cjs
 ```
 
