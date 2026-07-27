@@ -165,7 +165,7 @@ function assessmentProperties(
         : {}),
       "Понимание": number(command.understanding),
       "Причина пропуска": select(null),
-      "Результат": select(command.result),
+      "Результат": select(command.result ?? "Зачёт"),
       "Статус": select("Выполнен"),
     };
   }

@@ -1,4 +1,5 @@
 import { createActiveLessonService } from "./active-lesson-service.ts";
+import { createAssessmentService } from "./assessment-service.ts";
 import { authorizeRequest } from "./auth.ts";
 import { buildCorsHeaders } from "./cors.ts";
 import { normalizeError, SchoolHttpError } from "./errors.ts";
@@ -123,12 +124,18 @@ export function routeSchoolCommand(
     );
   }
 
-  if (
-    command.operation !== "startLesson" &&
-    command.operation !== "switchActiveLesson" &&
-    command.operation !== "resolveActiveLessons" &&
-    command.operation !== "reopenLesson"
-  ) {
+  const mutationOperations = new Set<SchoolCommand["operation"]>([
+    "cancelLesson",
+    "clearLearningEvidence",
+    "completeLesson",
+    "correctMissedStatus",
+    "reopenLesson",
+    "resolveActiveLessons",
+    "restoreCancelledLesson",
+    "startLesson",
+    "switchActiveLesson",
+  ]);
+  if (!mutationOperations.has(command.operation)) {
     throw new SchoolHttpError(
       400,
       "INVALID_COMMAND",
@@ -148,9 +155,31 @@ export function routeSchoolCommand(
     activeRepository,
     lockService,
   );
+  const assessmentService = createAssessmentService(
+    activeRepository,
+    lockService,
+  );
 
   let operation;
   switch (command.operation) {
+    case "cancelLesson":
+      operation = assessmentService.cancelLesson(context.userId, command);
+      break;
+    case "clearLearningEvidence":
+      operation = assessmentService.clearLearningEvidence(
+        context.userId,
+        command,
+      );
+      break;
+    case "completeLesson":
+      operation = assessmentService.completeLesson(context.userId, command);
+      break;
+    case "correctMissedStatus":
+      operation = assessmentService.correctMissedStatus(
+        context.userId,
+        command,
+      );
+      break;
     case "startLesson":
       operation = activeService.startLesson(context.userId, command);
       break;
@@ -169,6 +198,18 @@ export function routeSchoolCommand(
     case "reopenLesson":
       operation = activeService.reopenLesson(context.userId, command);
       break;
+    case "restoreCancelledLesson":
+      operation = assessmentService.restoreCancelledLesson(
+        context.userId,
+        command,
+      );
+      break;
+    default:
+      throw new SchoolHttpError(
+        400,
+        "INVALID_COMMAND",
+        "command operation is not allowed",
+      );
   }
 
   return operation.then((data) =>

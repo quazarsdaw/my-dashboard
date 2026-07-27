@@ -428,7 +428,7 @@ export type CompleteLessonCommand =
     & AssessmentCommon
     & Readonly<{
       autonomy: Exclude<LessonAutonomy, null>;
-      result: Exclude<LessonResult, null>;
+      result?: Exclude<LessonResult, null>;
       status: "Выполнен";
       understanding: 0 | 1 | 2 | 3;
     }>
@@ -540,6 +540,29 @@ export interface ActiveLessonService {
       previousLesson: Lesson;
     }>
   >;
+}
+
+export interface AssessmentService {
+  cancelLesson(
+    ownerId: string,
+    command: CancelLessonCommand,
+  ): Promise<Lesson>;
+  clearLearningEvidence(
+    ownerId: string,
+    command: ClearLearningEvidenceCommand,
+  ): Promise<Lesson>;
+  completeLesson(
+    ownerId: string,
+    command: CompleteLessonCommand,
+  ): Promise<Lesson>;
+  correctMissedStatus(
+    ownerId: string,
+    command: CorrectMissedStatusCommand,
+  ): Promise<Lesson>;
+  restoreCancelledLesson(
+    ownerId: string,
+    command: RestoreCancelledLessonCommand,
+  ): Promise<Lesson>;
 }
 
 export interface LessonListResult {
