@@ -296,6 +296,41 @@ test('clamps wheel zoom to the supported range', () => {
   assert.equal(SchoolCore.nextTimelineZoomIndex(3, 1), 3);
 });
 
+test('normalizes continuous timeline scale and derives snap thresholds', () => {
+  assert.equal(SchoolCore.normalizeTimelineScale('broken'), 1);
+  assert.equal(SchoolCore.normalizeTimelineScale(0.4), 1);
+  assert.equal(SchoolCore.normalizeTimelineScale(1.26), 1.3);
+  assert.equal(SchoolCore.normalizeTimelineScale(4), 3);
+  assert.equal(SchoolCore.timelinePixelsPerHour(1.345), 80.7);
+  assert.equal(SchoolCore.timelineSnapMinutesForScale(1.2), 15);
+  assert.equal(SchoolCore.timelineSnapMinutesForScale(1.3), 10);
+  assert.equal(SchoolCore.timelineSnapMinutesForScale(1.7), 10);
+  assert.equal(SchoolCore.timelineSnapMinutesForScale(1.8), 5);
+  assert.equal(SchoolCore.timelineZoomLabel(1.4), '×1.4 · шаг 10 минут');
+});
+
+test('accumulates wheel direction and consumes at most two scale steps', () => {
+  assert.equal(SchoolCore.accumulateTimelineWheel(40, -20), -20);
+  assert.deepEqual(
+    SchoolCore.consumeTimelineWheel(190),
+    { steps: 2, remainder: 70 }
+  );
+  assert.deepEqual(
+    SchoolCore.consumeTimelineWheel(-130),
+    { steps: -2, remainder: -10 }
+  );
+});
+
+test('selects landmark buttons and exposes bounded ease-out progress', () => {
+  assert.equal(SchoolCore.nextTimelineLandmark(1, 1), 1.5);
+  assert.equal(SchoolCore.nextTimelineLandmark(1.4, 1), 1.5);
+  assert.equal(SchoolCore.nextTimelineLandmark(1.5, -1), 1);
+  assert.equal(SchoolCore.nextTimelineLandmark(3, 1), 3);
+  assert.equal(SchoolCore.easeOutTimelineZoom(0), 0);
+  assert.equal(SchoolCore.easeOutTimelineZoom(1), 1);
+  assert.ok(SchoolCore.easeOutTimelineZoom(0.5) > 0.5);
+});
+
 test('derives timed end from the saved duration and preserves date-only duration', () => {
   assert.deepEqual(
     SchoolCore.scheduleForDestination(

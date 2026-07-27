@@ -25,6 +25,7 @@
     Object.freeze({ index: 2, label: '×2 · шаг 5 минут', pixelsPerHour: 120, snapMinutes: 5 }),
     Object.freeze({ index: 3, label: '×3 · шаг 5 минут', pixelsPerHour: 180, snapMinutes: 5 })
   ]);
+  var TIMELINE_LANDMARKS = Object.freeze([1, 1.5, 2, 3]);
 
   function isRecord(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -85,6 +86,76 @@
 
   function nextTimelineZoomIndex(index, direction) {
     return timelineZoomLevel(Number(index) + (direction > 0 ? 1 : -1)).index;
+  }
+
+  function clampTimelineScale(value) {
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 1;
+    return Math.max(1, Math.min(3, numeric));
+  }
+
+  function normalizeTimelineScale(value) {
+    return Math.round(clampTimelineScale(value) * 10) / 10;
+  }
+
+  function timelinePixelsPerHour(scale) {
+    return clampTimelineScale(scale) * 60;
+  }
+
+  function timelineSnapMinutesForScale(scale) {
+    var normalized = normalizeTimelineScale(scale);
+    if (normalized >= 1.8) return 5;
+    if (normalized >= 1.3) return 10;
+    return 15;
+  }
+
+  function timelineZoomLabel(scale) {
+    var normalized = normalizeTimelineScale(scale);
+    var scaleLabel = normalized.toFixed(1).replace(/\.0$/, '');
+    return '×' + scaleLabel + ' · шаг '
+      + timelineSnapMinutesForScale(normalized) + ' минут';
+  }
+
+  function accumulateTimelineWheel(currentDelta, nextDelta) {
+    var current = Number(currentDelta) || 0;
+    var next = Number(nextDelta) || 0;
+    if (current && next && Math.sign(current) !== Math.sign(next)) return next;
+    return current + next;
+  }
+
+  function consumeTimelineWheel(delta) {
+    var current = Number(delta) || 0;
+    var direction = Math.sign(current);
+    var steps = direction * Math.min(2, Math.floor(Math.abs(current) / 60));
+    return {
+      steps: steps,
+      remainder: current - steps * 60
+    };
+  }
+
+  function nextTimelineLandmark(scale, direction) {
+    var current = clampTimelineScale(scale);
+    var epsilon = 0.0001;
+    if (direction > 0) {
+      for (var forwardIndex = 0; forwardIndex < TIMELINE_LANDMARKS.length; forwardIndex += 1) {
+        if (TIMELINE_LANDMARKS[forwardIndex] > current + epsilon) {
+          return TIMELINE_LANDMARKS[forwardIndex];
+        }
+      }
+      return TIMELINE_LANDMARKS[TIMELINE_LANDMARKS.length - 1];
+    }
+    for (var backwardIndex = TIMELINE_LANDMARKS.length - 1; backwardIndex >= 0; backwardIndex -= 1) {
+      if (TIMELINE_LANDMARKS[backwardIndex] < current - epsilon) {
+        return TIMELINE_LANDMARKS[backwardIndex];
+      }
+    }
+    return TIMELINE_LANDMARKS[0];
+  }
+
+  function easeOutTimelineZoom(progress) {
+    var numeric = Number(progress);
+    var bounded = Number.isFinite(numeric) ? Math.max(0, Math.min(1, numeric)) : 0;
+    return 1 - Math.pow(1 - bounded, 3);
   }
 
   function timelineYForMinute(minute, startMinute, pixelsPerHour) {
@@ -383,6 +454,14 @@
     snapMinuteOfDay: snapMinuteOfDay,
     timelineZoomLevel: timelineZoomLevel,
     nextTimelineZoomIndex: nextTimelineZoomIndex,
+    normalizeTimelineScale: normalizeTimelineScale,
+    timelinePixelsPerHour: timelinePixelsPerHour,
+    timelineSnapMinutesForScale: timelineSnapMinutesForScale,
+    timelineZoomLabel: timelineZoomLabel,
+    accumulateTimelineWheel: accumulateTimelineWheel,
+    consumeTimelineWheel: consumeTimelineWheel,
+    nextTimelineLandmark: nextTimelineLandmark,
+    easeOutTimelineZoom: easeOutTimelineZoom,
     timelineYForMinute: timelineYForMinute,
     timelineMinuteAtY: timelineMinuteAtY,
     changeDurationBySteps: changeDurationBySteps,
