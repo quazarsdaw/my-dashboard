@@ -117,6 +117,23 @@ test('excludes canceled lessons from next selection, conflicts, progress and dec
   assert.equal(model.runtimeIssues.some((issue) => issue.code === 'overlap'), false);
 });
 
+test('skips a timed lesson that started before now when selecting the next lesson', () => {
+  const past = lesson({
+    id: 'past',
+    schedule: { kind: 'timed', date: '2026-08-03', start: '2026-08-03T09:00:00+05:00', end: '2026-08-03T09:45:00+05:00' }
+  });
+  const future = lesson({
+    id: 'future',
+    order: 200,
+    schedule: { kind: 'timed', date: '2026-08-03', start: '2026-08-03T15:00:00+05:00', end: '2026-08-03T15:45:00+05:00' }
+  });
+
+  assert.equal(
+    SchoolCore.selectNextLesson([past, future], '2026-08-03T12:00:00+05:00', 'Asia/Yekaterinburg').id,
+    'future'
+  );
+});
+
 test('returns persisted requests separately from derived runtime issues', () => {
   const model = SchoolCore.buildReadModel([
     lesson({ id: 'request', decisionRequest: 'Перенос между неделями' }),

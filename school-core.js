@@ -122,11 +122,13 @@
 
   function selectNextLesson(lessons, now, timeZone) {
     var day = timeZoneDayKey(now, timeZone);
+    var nowTime = new Date(now).getTime();
     var candidates = (lessons || []).filter(function (lesson) {
       return lesson.status !== CANCELED && !lesson.isFinalized && lesson.status !== 'В процессе';
     });
     var timed = candidates.filter(function (lesson) {
-      return lesson.schedule.kind === 'timed' && lesson.schedule.start && getLessonDayKey(lesson, timeZone) >= day;
+      return lesson.schedule.kind === 'timed' && lesson.schedule.start
+        && getLessonDayKey(lesson, timeZone) >= day && new Date(lesson.schedule.start).getTime() >= nowTime;
     }).sort(function (left, right) { return left.schedule.start.localeCompare(right.schedule.start) || left.order - right.order; });
     if (timed.length) return timed[0];
     var dateOnly = candidates.filter(function (lesson) {
