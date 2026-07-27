@@ -1,4 +1,5 @@
 import { handleRequest } from "../router.ts";
+import { ACTIVE_LESSON_WEEK } from "../types.ts";
 
 type UserClaims = {
   id?: string;
@@ -87,7 +88,8 @@ function request(
     headers,
     body: method === "POST"
       ? JSON.stringify(
-        options.body ?? { operation: "listLessons", week: "W01" },
+        options.body ??
+          { operation: "listLessons", week: ACTIVE_LESSON_WEEK },
       )
       : undefined,
   });
@@ -207,7 +209,7 @@ if (typeof Deno !== "undefined") {
         authorization: `Bearer ${authorizationToken}`,
         body: {
           operation: "listLessons",
-          week: "W01",
+          week: ACTIVE_LESSON_WEEK,
         },
       }),
       dependencies({
@@ -217,7 +219,11 @@ if (typeof Deno !== "undefined") {
             "listLessons",
             "normalized operation",
           );
-          assertEquals(command.week, "W01", "normalized week");
+          assertEquals(
+            command.week,
+            ACTIVE_LESSON_WEEK,
+            "normalized week",
+          );
           assertEquals(context.userId, ownerId, "router user id");
           assertEquals(
             context.requestId,

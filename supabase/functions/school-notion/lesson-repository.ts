@@ -4,6 +4,7 @@ import type {
 } from "@notionhq/client";
 import { SchoolHttpError } from "./errors.ts";
 import { mapNotionPageToLesson, READ_PROPERTY_NAMES } from "./notion-mapper.ts";
+import { assertLessonBelongsToSchool } from "./validation.ts";
 import type {
   Lesson,
   LessonFilter,
@@ -56,33 +57,7 @@ export function createLessonRepository(
       }
 
       const page = await client.retrievePage(pageId);
-      if (
-        page.object !== "page" ||
-        !("url" in page) ||
-        !("properties" in page)
-      ) {
-        throw new SchoolHttpError(
-          502,
-          "NOTION_SCHEMA_ERROR",
-          "notion lesson schema is invalid",
-        );
-      }
-
-      if (
-        page.parent.type !== "data_source_id" ||
-        page.parent.data_source_id !== notionDataSourceId ||
-        page.in_trash ||
-        page.archived ||
-        page.is_archived
-      ) {
-        throw new SchoolHttpError(
-          404,
-          "LESSON_OUTSIDE_SCHOOL_DATABASE",
-          "lesson is outside the school database",
-        );
-      }
-
-      return page;
+      return assertLessonBelongsToSchool(page, notionDataSourceId);
     },
 
     async listLessons(filter: LessonFilter): Promise<Lesson[]> {

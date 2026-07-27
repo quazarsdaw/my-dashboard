@@ -2,7 +2,12 @@ import type { PageObjectResponse } from "@notionhq/client";
 import { SchoolHttpError } from "./errors.ts";
 import {
   ACTIVE_LESSON_WEEK,
+  LESSON_AUTONOMIES,
+  LESSON_DECISION_REQUESTS,
   LESSON_MISSED_REASONS,
+  LESSON_PRIORITIES,
+  LESSON_RESULTS,
+  LESSON_STATUSES,
   LESSON_SUBJECTS,
 } from "./types.ts";
 import type {
@@ -54,29 +59,15 @@ const evidenceStatuses = new Set<LessonStatus>([
   "Выполнен",
   "Частично выполнен",
 ]);
-const statuses = new Set<LessonStatus>([
-  "Нераспределён",
-  "Запланирован",
-  "В процессе",
-  "Выполнен",
-  "Частично выполнен",
-  "Пропущен",
-  "Отменён",
-]);
-const priorities = new Set<LessonPriority>(["Must", "Should", "Could"]);
-const results = new Set<Exclude<LessonResult, null>>([
-  "Зачёт",
-  "Незачёт",
-  "Требует повторения",
-]);
-const autonomies = new Set<Exclude<LessonAutonomy, null>>([
-  "A0",
-  "A1",
-  "A2",
-  "A3",
-]);
+const statuses = new Set<LessonStatus>(LESSON_STATUSES);
+const priorities = new Set<LessonPriority>(LESSON_PRIORITIES);
+const results = new Set<Exclude<LessonResult, null>>(LESSON_RESULTS);
+const autonomies = new Set<Exclude<LessonAutonomy, null>>(
+  LESSON_AUTONOMIES,
+);
 const lessonSubjects = new Set<string>(LESSON_SUBJECTS);
 const missedReasons = new Set<string>(LESSON_MISSED_REASONS);
+const decisionRequests = new Set<string>(LESSON_DECISION_REQUESTS);
 const dateOnlyPattern = /^(\d{4})-(\d{2})-(\d{2})$/;
 const timedIsoPattern =
   /^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
@@ -470,7 +461,7 @@ function assertAllowedValues(
       understanding !== 2 &&
       understanding !== 3 ||
     missedReason !== null && !missedReasons.has(missedReason) ||
-    decisionRequest !== null && decisionRequest !== "Перенос между неделями"
+    decisionRequest !== null && !decisionRequests.has(decisionRequest)
   ) {
     return schemaError();
   }
@@ -532,8 +523,8 @@ export function mapNotionPageToLesson(page: PageObjectResponse): Lesson {
     artifactUrl,
     autonomy,
     comment,
-    decisionRequest: rawDecisionRequest === "Перенос между неделями"
-      ? "Перенос между неделями"
+    decisionRequest: rawDecisionRequest === LESSON_DECISION_REQUESTS[0]
+      ? LESSON_DECISION_REQUESTS[0]
       : null,
     durationMinutes,
     hasLearningEvidence: evidenceStatuses.has(status) ||

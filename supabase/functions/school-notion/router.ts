@@ -3,60 +3,14 @@ import { buildCorsHeaders } from "./cors.ts";
 import { normalizeError, SchoolHttpError } from "./errors.ts";
 import { createLessonRepository } from "./lesson-repository.ts";
 import { createLessonService } from "./lesson-service.ts";
-import { ACTIVE_LESSON_WEEK } from "./types.ts";
+import { parseSchoolCommand } from "./validation.ts";
 import type {
-  GetLessonContentCommand,
   HandlerDependencies,
-  ListLessonsCommand,
   RouterContext,
   SchoolCommand,
 } from "./types.ts";
 
 const allowedMethods = new Set(["OPTIONS", "POST"]);
-const activeWeek = Object.freeze({
-  endDate: "2026-08-09",
-  notionValue: ACTIVE_LESSON_WEEK,
-  startDate: "2026-08-03",
-});
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function normalizeCommand(input: unknown): SchoolCommand {
-  if (!isRecord(input) || typeof input.operation !== "string") {
-    throw new SchoolHttpError(
-      400,
-      "INVALID_COMMAND",
-      "request body must contain an operation",
-    );
-  }
-
-  const operation = input.operation.trim();
-
-  if (!operation) {
-    throw new SchoolHttpError(
-      400,
-      "INVALID_COMMAND",
-      "request body must contain an operation",
-    );
-  }
-
-  const command: Record<string, unknown> = { operation };
-
-  for (const [key, value] of Object.entries(input)) {
-    if (
-      key !== "operation" &&
-      key !== "__proto__" &&
-      key !== "constructor" &&
-      key !== "prototype"
-    ) {
-      command[key] = value;
-    }
-  }
-
-  return Object.freeze(command) as SchoolCommand;
-}
 
 function withHeaders(response: Response, headers: Headers): Response {
   const responseHeaders = new Headers(response.headers);
@@ -102,8 +56,7 @@ export function routeSchoolCommand(
   const service = createLessonService(repository, context.notionClient);
 
   if (command.operation === "getLessonContent") {
-    const validated = validateGetLessonContentCommand(command);
-    return service.getLessonContent(validated.lessonId).then((data) =>
+    return service.getLessonContent(command.lessonId).then((data) =>
       Response.json({
         data,
         ok: true,
@@ -112,101 +65,13 @@ export function routeSchoolCommand(
     );
   }
 
-  const validated = validateListLessonsCommand(command);
-  return service.listLessons(validated).then((data) =>
+  return service.listLessons(command).then((data) =>
     Response.json({
       data,
       ok: true,
       requestId: context.requestId,
     })
   );
-}
-
-function validateGetLessonContentCommand(
-  command: SchoolCommand,
-): GetLessonContentCommand {
-  const keys = Object.keys(command).sort();
-  if (
-    keys.length !== 2 ||
-    keys[0] !== "lessonId" ||
-    keys[1] !== "operation" ||
-    typeof command.lessonId !== "string" ||
-    command.lessonId.length === 0 ||
-    command.lessonId.trim() !== command.lessonId
-  ) {
-    throw new SchoolHttpError(
-      400,
-      "INVALID_COMMAND",
-      "getLessonContent command is invalid",
-    );
-  }
-
-  return {
-    lessonId: command.lessonId,
-    operation: "getLessonContent",
-  };
-}
-
-function isIsoDate(value: unknown): value is string {
-  if (
-    typeof value !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(value)
-  ) {
-    return false;
-  }
-
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return Number.isFinite(parsed.getTime()) &&
-    parsed.toISOString().slice(0, 10) === value;
-}
-
-function invalidCommand(): never {
-  throw new SchoolHttpError(
-    400,
-    "INVALID_COMMAND",
-    "listLessons command is invalid",
-  );
-}
-
-function validateListLessonsCommand(
-  command: SchoolCommand,
-): ListLessonsCommand {
-  const keys = Object.keys(command).sort();
-  const weekShape = keys.length === 2 &&
-    keys[0] === "operation" &&
-    keys[1] === "week";
-  const rangeShape = keys.length === 3 &&
-    keys[0] === "from" &&
-    keys[1] === "operation" &&
-    keys[2] === "to";
-
-  if (weekShape) {
-    if (command.week !== activeWeek.notionValue) {
-      return invalidCommand();
-    }
-
-    return {
-      operation: "listLessons",
-      week: activeWeek.notionValue,
-    };
-  }
-
-  if (
-    !rangeShape ||
-    !isIsoDate(command.from) ||
-    !isIsoDate(command.to) ||
-    command.from < activeWeek.startDate ||
-    command.to > activeWeek.endDate ||
-    command.from > command.to
-  ) {
-    return invalidCommand();
-  }
-
-  return {
-    from: command.from,
-    operation: "listLessons",
-    to: command.to,
-  };
 }
 
 export async function handleRequest(
@@ -255,7 +120,7 @@ export async function handleRequest(
       );
     }
 
-    const command = normalizeCommand(body);
+    const command = parseSchoolCommand(body);
     const router = dependencies.router ?? routeSchoolCommand;
     const response = await router(command, {
       auth,

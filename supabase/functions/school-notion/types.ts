@@ -24,11 +24,6 @@ export interface AuthContext {
   userId: string;
 }
 
-export type SchoolCommand = Readonly<{
-  operation: string;
-  [key: string]: unknown;
-}>;
-
 export type QueryLessonsInput = Omit<
   Parameters<Client["dataSources"]["query"]>[0],
   "data_source_id"
@@ -39,6 +34,14 @@ export type NotionQueryResponse = Awaited<
 >;
 
 export type NotionPage = Awaited<ReturnType<Client["pages"]["retrieve"]>>;
+
+export type NotionUpdateProperties = NonNullable<
+  Parameters<Client["pages"]["update"]>[0]["properties"]
+>;
+
+export type NotionPageUpdateResponse = Awaited<
+  ReturnType<Client["pages"]["update"]>
+>;
 
 export type NotionBlockPage = Awaited<
   ReturnType<Client["blocks"]["children"]["list"]>
@@ -53,16 +56,32 @@ export interface SchoolNotionReadClient {
   ): Promise<NotionBlockPage>;
 }
 
-export type LessonStatus =
-  | "Нераспределён"
-  | "Запланирован"
-  | "В процессе"
-  | "Выполнен"
-  | "Частично выполнен"
-  | "Пропущен"
-  | "Отменён";
+export interface SchoolNotionMutationClient extends SchoolNotionReadClient {
+  updatePage(
+    pageId: string,
+    properties: NotionUpdateProperties,
+  ): Promise<NotionPageUpdateResponse>;
+}
 
-export type LessonPriority = "Must" | "Should" | "Could";
+export const LESSON_STATUSES = Object.freeze(
+  [
+    "Нераспределён",
+    "Запланирован",
+    "В процессе",
+    "Выполнен",
+    "Частично выполнен",
+    "Пропущен",
+    "Отменён",
+  ] as const,
+);
+
+export type LessonStatus = (typeof LESSON_STATUSES)[number];
+
+export const LESSON_PRIORITIES = Object.freeze(
+  ["Must", "Should", "Could"] as const,
+);
+
+export type LessonPriority = (typeof LESSON_PRIORITIES)[number];
 
 export const LESSON_SUBJECTS = Object.freeze(
   [
@@ -79,6 +98,12 @@ export type LessonSubject = (typeof LESSON_SUBJECTS)[number];
 
 export const ACTIVE_LESSON_WEEK = "W01 · 3–9 августа 2026" as const;
 
+export const LESSON_DECISION_REQUESTS = Object.freeze(
+  ["Перенос между неделями"] as const,
+);
+
+export type LessonDecisionRequest = (typeof LESSON_DECISION_REQUESTS)[number];
+
 export const LESSON_MISSED_REASONS = Object.freeze(
   [
     "Внешние обстоятельства",
@@ -92,13 +117,17 @@ export const LESSON_MISSED_REASONS = Object.freeze(
 
 export type LessonMissedReason = (typeof LESSON_MISSED_REASONS)[number] | null;
 
-export type LessonResult =
-  | "Зачёт"
-  | "Незачёт"
-  | "Требует повторения"
-  | null;
+export const LESSON_RESULTS = Object.freeze(
+  ["Зачёт", "Незачёт", "Требует повторения"] as const,
+);
 
-export type LessonAutonomy = "A0" | "A1" | "A2" | "A3" | null;
+export type LessonResult = (typeof LESSON_RESULTS)[number] | null;
+
+export const LESSON_AUTONOMIES = Object.freeze(
+  ["A0", "A1", "A2", "A3"] as const,
+);
+
+export type LessonAutonomy = (typeof LESSON_AUTONOMIES)[number] | null;
 
 export type LessonSchedule =
   | Readonly<{
@@ -128,7 +157,7 @@ export interface Lesson {
   artifactUrl: string | null;
   autonomy: LessonAutonomy;
   comment: string;
-  decisionRequest: "Перенос между неделями" | null;
+  decisionRequest: LessonDecisionRequest | null;
   durationMinutes: number;
   hasLearningEvidence: boolean;
   id: string;
@@ -280,6 +309,174 @@ export type GetLessonContentCommand = Readonly<{
   lessonId: string;
   operation: "getLessonContent";
 }>;
+
+export type LessonDestination =
+  | Readonly<{
+    date: string;
+    kind: "date-only";
+  }>
+  | Readonly<{
+    kind: "timed";
+    start: string;
+  }>
+  | Readonly<{
+    kind: "unscheduled";
+  }>;
+
+type ScheduledDestination = Exclude<
+  LessonDestination,
+  Readonly<{ kind: "unscheduled" }>
+>;
+
+export type MoveLessonCommand = Readonly<{
+  allowOverlap?: boolean;
+  destination: ScheduledDestination;
+  lessonId: string;
+  operation: "moveLesson";
+  order: number;
+}>;
+
+export type UnscheduleLessonCommand = Readonly<{
+  lessonId: string;
+  operation: "unscheduleLesson";
+  order: number;
+}>;
+
+export type ChangeLessonDurationCommand = Readonly<{
+  allowOverlap?: boolean;
+  durationMinutes: number;
+  lessonId: string;
+  operation: "changeLessonDuration";
+}>;
+
+export type ReorderLessonCommand = Readonly<{
+  lessonId: string;
+  operation: "reorderLesson";
+  order: number;
+}>;
+
+export type PauseAndMoveLessonCommand = Readonly<{
+  allowOverlap?: boolean;
+  destination: LessonDestination;
+  lessonId: string;
+  operation: "pauseAndMoveLesson";
+  order: number;
+}>;
+
+export type RestoreMissedLessonCommand = Readonly<{
+  allowOverlap?: boolean;
+  destination: ScheduledDestination;
+  lessonId: string;
+  operation: "restoreMissedLesson";
+  order: number;
+}>;
+
+export type StartLessonCommand = Readonly<{
+  lessonId: string;
+  operation: "startLesson";
+}>;
+
+export type SwitchActiveLessonCommand = Readonly<{
+  newLessonId: string;
+  operation: "switchActiveLesson";
+  previousLessonId: string;
+}>;
+
+export type ResolveActiveLessonsCommand = Readonly<{
+  keepLessonId: string;
+  operation: "resolveActiveLessons";
+}>;
+
+export type ReopenLessonCommand = Readonly<{
+  lessonId: string;
+  operation: "reopenLesson";
+}>;
+
+type AssessmentCommon = Readonly<{
+  artifactUrl?: string | null;
+  comment?: string;
+  lessonId: string;
+  operation: "completeLesson";
+}>;
+
+export type CompleteLessonCommand =
+  | (
+    & AssessmentCommon
+    & Readonly<{
+      autonomy: Exclude<LessonAutonomy, null>;
+      result: Exclude<LessonResult, null>;
+      status: "Выполнен";
+      understanding: 0 | 1 | 2 | 3;
+    }>
+  )
+  | (
+    & AssessmentCommon
+    & Readonly<{
+      autonomy: Exclude<LessonAutonomy, null>;
+      status: "Частично выполнен";
+      understanding: 0 | 1 | 2 | 3;
+    }>
+  )
+  | Readonly<{
+    comment?: string;
+    lessonId: string;
+    missedReason: Exclude<LessonMissedReason, null>;
+    operation: "completeLesson";
+    status: "Пропущен";
+  }>;
+
+export type CancelLessonCommand = Readonly<{
+  confirmLearningEvidence?: boolean;
+  lessonId: string;
+  operation: "cancelLesson";
+}>;
+
+export type RestoreCancelledLessonCommand = Readonly<{
+  lessonId: string;
+  operation: "restoreCancelledLesson";
+}>;
+
+export type CorrectMissedStatusCommand = Readonly<{
+  lessonId: string;
+  operation: "correctMissedStatus";
+}>;
+
+export type ClearLearningEvidenceCommand = Readonly<{
+  confirm: true;
+  lessonId: string;
+  operation: "clearLearningEvidence";
+}>;
+
+export type RequestCrossWeekMoveCommand = Readonly<{
+  lessonId: string;
+  operation: "requestCrossWeekMove";
+}>;
+
+export type ClearDecisionRequestCommand = Readonly<{
+  lessonId: string;
+  operation: "clearDecisionRequest";
+}>;
+
+export type SchoolCommand =
+  | ListLessonsCommand
+  | GetLessonContentCommand
+  | MoveLessonCommand
+  | UnscheduleLessonCommand
+  | ChangeLessonDurationCommand
+  | ReorderLessonCommand
+  | PauseAndMoveLessonCommand
+  | RestoreMissedLessonCommand
+  | StartLessonCommand
+  | SwitchActiveLessonCommand
+  | ResolveActiveLessonsCommand
+  | ReopenLessonCommand
+  | CompleteLessonCommand
+  | CancelLessonCommand
+  | RestoreCancelledLessonCommand
+  | CorrectMissedStatusCommand
+  | ClearLearningEvidenceCommand
+  | RequestCrossWeekMoveCommand
+  | ClearDecisionRequestCommand;
 
 export interface LessonListResult {
   counts: Readonly<Record<string, number>>;

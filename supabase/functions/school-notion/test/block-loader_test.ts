@@ -2,6 +2,7 @@ import { loadBlockChildren } from "../block-loader.ts";
 import { createLessonRepository } from "../lesson-repository.ts";
 import { createLessonService } from "../lesson-service.ts";
 import { routeSchoolCommand } from "../router.ts";
+import { parseSchoolCommand } from "../validation.ts";
 import type { NotionBlockPage, SchoolNotionReadClient } from "../types.ts";
 import {
   notionLessonPage,
@@ -619,7 +620,7 @@ if (typeof Deno !== "undefined") {
     ) {
       const before = notionCalls;
       const error = await captureError(() =>
-        routeSchoolCommand(invalid, context)
+        Promise.resolve(parseSchoolCommand(invalid))
       );
       assert(
         error instanceof Error &&

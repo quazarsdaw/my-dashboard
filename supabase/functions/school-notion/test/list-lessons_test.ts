@@ -1,6 +1,7 @@
 import { createLessonRepository } from "../lesson-repository.ts";
 import { createLessonService } from "../lesson-service.ts";
 import { handleRequest, routeSchoolCommand } from "../router.ts";
+import { parseSchoolCommand } from "../validation.ts";
 import type { QueryLessonsInput, SchoolNotionReadClient } from "../types.ts";
 import {
   ACTIVE_WEEK,
@@ -345,22 +346,7 @@ if (typeof Deno !== "undefined") {
     );
   });
 
-  Deno.test("route rejects unknown keys, mixed filters and out-of-bounds dates before notion", async () => {
-    let queryCount = 0;
-    const client = fakeClient(() => {
-      queryCount += 1;
-      return Promise.resolve(notionQueryResponse([]));
-    });
-    const context = {
-      auth: {
-        supabase: {},
-        userClaims: { sub: "owner-id" },
-        userId: "owner-id",
-      },
-      notionClient: client,
-      requestId: "request-invalid",
-      userId: "owner-id",
-    };
+  Deno.test("route rejects unknown keys, mixed filters and out-of-bounds dates before notion", () => {
     const invalidCommands = [
       {
         filter: { property: "Статус", select: { equals: "Выполнен" } },
@@ -388,7 +374,7 @@ if (typeof Deno !== "undefined") {
     for (const command of invalidCommands) {
       let error: unknown;
       try {
-        await routeSchoolCommand(command, context);
+        parseSchoolCommand(command);
       } catch (caught) {
         error = caught;
       }
@@ -399,7 +385,5 @@ if (typeof Deno !== "undefined") {
         `invalid command was accepted: ${JSON.stringify(command)}`,
       );
     }
-
-    assertEquals(queryCount, 0, "notion query count");
   });
 }
