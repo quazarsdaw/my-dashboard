@@ -315,7 +315,11 @@ export function buildWhitelistedProperties(
           command.order,
           currentLesson,
         ),
-        "Статус": select("Запланирован"),
+        "Статус": select(
+          command.destination.kind === "unscheduled"
+            ? "Нераспределён"
+            : "Запланирован",
+        ),
       };
 
     case "restoreMissedLesson":

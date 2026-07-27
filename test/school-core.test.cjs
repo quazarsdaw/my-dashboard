@@ -249,3 +249,137 @@ test('orders dangerous runtime inconsistencies before overdue and soft schedule 
     'duplicate-order'
   ]);
 });
+
+test('snaps drag positions to 15 minutes without coupling them to duration steps', () => {
+  assert.equal(SchoolCore.ACTIVE_WEEK.start, '2026-08-03');
+  assert.equal(SchoolCore.ACTIVE_WEEK.end, '2026-08-09');
+  assert.equal(SchoolCore.DRAG_SNAP_MINUTES, 15);
+  assert.equal(SchoolCore.DURATION_STEP_MINUTES, 5);
+  assert.equal(SchoolCore.snapMinuteOfDay(607), 600);
+  assert.equal(SchoolCore.snapMinuteOfDay(608), 615);
+  assert.equal(SchoolCore.changeDurationBySteps(45, 1), 50);
+  assert.equal(SchoolCore.changeDurationBySteps(60, -2), 50);
+  assert.equal(SchoolCore.changeDurationBySteps(15, -1), 15);
+  assert.equal(SchoolCore.changeDurationBySteps(180, 1), 180);
+});
+
+test('derives timed end from the saved duration and preserves date-only duration', () => {
+  assert.deepEqual(
+    SchoolCore.scheduleForDestination(
+      { kind: 'timed', start: '2026-08-03T14:15:00+05:00' },
+      60
+    ),
+    {
+      kind: 'timed',
+      date: '2026-08-03',
+      start: '2026-08-03T14:15:00+05:00',
+      end: '2026-08-03T15:15:00+05:00'
+    }
+  );
+  assert.deepEqual(
+    SchoolCore.scheduleForDestination(
+      { kind: 'date-only', date: '2026-08-04' },
+      60
+    ),
+    { kind: 'date-only', date: '2026-08-04', start: null, end: null }
+  );
+});
+
+test('allocates sparse local day order and renumbers only one ordered collection', () => {
+  assert.equal(SchoolCore.orderForDrop(null, 100), 50);
+  assert.equal(SchoolCore.orderForDrop(100, 200), 150);
+  assert.equal(SchoolCore.orderForDrop(300, null), 400);
+  assert.deepEqual(
+    SchoolCore.renumberLessonOrders([
+      lesson({ id: 'third', order: 10 }),
+      lesson({ id: 'first', order: -5 }),
+      lesson({ id: 'second', order: 10 })
+    ]),
+    [
+      { id: 'first', order: 100 },
+      { id: 'second', order: 200 },
+      { id: 'third', order: 300 }
+    ]
+  );
+});
+
+test('finds only strict timed overlaps and ignores boundary touch or canceled lessons', () => {
+  const candidate = lesson({
+    id: 'candidate',
+    schedule: {
+      kind: 'timed',
+      date: '2026-08-03',
+      start: '2026-08-03T14:00:00+05:00',
+      end: '2026-08-03T14:45:00+05:00'
+    }
+  });
+  const conflicts = SchoolCore.findTimeConflicts(candidate, [
+    lesson({
+      id: 'overlap',
+      schedule: {
+        kind: 'timed',
+        date: '2026-08-03',
+        start: '2026-08-03T14:30:00+05:00',
+        end: '2026-08-03T15:15:00+05:00'
+      }
+    }),
+    lesson({
+      id: 'touch',
+      schedule: {
+        kind: 'timed',
+        date: '2026-08-03',
+        start: '2026-08-03T14:45:00+05:00',
+        end: '2026-08-03T15:30:00+05:00'
+      }
+    }),
+    lesson({
+      id: 'canceled-overlap',
+      status: 'Отменён',
+      schedule: {
+        kind: 'timed',
+        date: '2026-08-03',
+        start: '2026-08-03T14:15:00+05:00',
+        end: '2026-08-03T15:00:00+05:00'
+      }
+    }),
+    lesson({ id: 'date-only' })
+  ]);
+
+  assert.deepEqual(conflicts.map((item) => item.id), ['overlap']);
+});
+
+test('reports a soft break warning only when the positive gap is under five minutes', () => {
+  const first = lesson({
+    id: 'first',
+    schedule: {
+      kind: 'timed',
+      date: '2026-08-03',
+      start: '2026-08-03T14:00:00+05:00',
+      end: '2026-08-03T14:45:00+05:00'
+    }
+  });
+  const fourMinutes = lesson({
+    id: 'four-minutes',
+    schedule: {
+      kind: 'timed',
+      date: '2026-08-03',
+      start: '2026-08-03T14:49:00+05:00',
+      end: '2026-08-03T15:34:00+05:00'
+    }
+  });
+  const fiveMinutes = lesson({
+    id: 'five-minutes',
+    schedule: {
+      kind: 'timed',
+      date: '2026-08-03',
+      start: '2026-08-03T14:50:00+05:00',
+      end: '2026-08-03T15:35:00+05:00'
+    }
+  });
+
+  assert.deepEqual(
+    SchoolCore.findShortBreaks([first, fourMinutes]).map((item) => item.gapMinutes),
+    [4]
+  );
+  assert.deepEqual(SchoolCore.findShortBreaks([first, fiveMinutes]), []);
+});

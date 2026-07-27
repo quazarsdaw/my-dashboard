@@ -11,6 +11,14 @@
   var FINALIZED = ['Выполнен', 'Частично выполнен', 'Пропущен'];
   var ASSESSMENT_FIELDS = ['result', 'autonomy', 'understanding'];
   var KNOWN_WARNING_CODES = ['invalid-duration', 'duration-mismatch', 'invalid-date'];
+  var ACTIVE_WEEK = Object.freeze({
+    key: 'W01 · 3–9 августа 2026',
+    start: '2026-08-03',
+    end: '2026-08-09',
+    timeZone: 'Asia/Yekaterinburg'
+  });
+  var DRAG_SNAP_MINUTES = 15;
+  var DURATION_STEP_MINUTES = 5;
 
   function isRecord(value) {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -49,6 +57,112 @@
     if (kind === 'unscheduled') return { kind: 'unscheduled', date: null, start: null, end: null };
     if (kind === 'date-only') return { kind: 'date-only', date: date, start: null, end: null };
     return { kind: 'timed', date: date, start: start, end: end };
+  }
+
+  function addMinutesPreservingOffset(start, minutes) {
+    var timestamp = Date.parse(start);
+    if (!Number.isFinite(timestamp)) return null;
+    var nextTimestamp = timestamp + minutes * 60000;
+    if (/Z$/.test(start)) return new Date(nextTimestamp).toISOString();
+    var offset = start.match(/([+-])(\d{2}):(\d{2})$/);
+    if (!offset) return null;
+    var direction = offset[1] === '+' ? 1 : -1;
+    var offsetMinutes = direction * (Number(offset[2]) * 60 + Number(offset[3]));
+    var local = new Date(nextTimestamp + offsetMinutes * 60000).toISOString().slice(0, 19);
+    return local + offset[0];
+  }
+
+  function snapMinuteOfDay(value) {
+    var minutes = Number(value);
+    if (!Number.isFinite(minutes)) return 0;
+    return Math.max(0, Math.min(24 * 60 - DRAG_SNAP_MINUTES,
+      Math.round(minutes / DRAG_SNAP_MINUTES) * DRAG_SNAP_MINUTES));
+  }
+
+  function changeDurationBySteps(duration, stepDelta) {
+    var current = Number.isInteger(duration) && duration >= 15 && duration <= 180 ? duration : 45;
+    var steps = Number.isInteger(stepDelta) ? stepDelta : 0;
+    return Math.max(15, Math.min(180, current + steps * DURATION_STEP_MINUTES));
+  }
+
+  function scheduleForDestination(destination, durationMinutes) {
+    if (!isRecord(destination)) return { kind: 'unscheduled', date: null, start: null, end: null };
+    if (destination.kind === 'date-only') {
+      return { kind: 'date-only', date: dateKey(destination.date), start: null, end: null };
+    }
+    if (destination.kind === 'timed') {
+      var start = text(destination.start);
+      return {
+        kind: 'timed',
+        date: start ? start.slice(0, 10) : null,
+        start: start || null,
+        end: start ? addMinutesPreservingOffset(start, durationMinutes) : null
+      };
+    }
+    return { kind: 'unscheduled', date: null, start: null, end: null };
+  }
+
+  function orderForDrop(previousOrder, nextOrder) {
+    var previous = Number(previousOrder);
+    var next = Number(nextOrder);
+    var hasPrevious = previousOrder !== null && Number.isFinite(previous);
+    var hasNext = nextOrder !== null && Number.isFinite(next);
+    if (!hasPrevious && !hasNext) return 100;
+    if (!hasPrevious) return next - 50;
+    if (!hasNext) return previous + 100;
+    return previous + (next - previous) / 2;
+  }
+
+  function renumberLessonOrders(lessons) {
+    return (lessons || []).slice().sort(function (left, right) {
+      return Number(left.order) - Number(right.order) || text(left.id).localeCompare(text(right.id));
+    }).map(function (lesson, index) {
+      return { id: text(lesson.id), order: (index + 1) * 100 };
+    });
+  }
+
+  function isTimedLesson(lesson) {
+    return lesson && lesson.status !== CANCELED && lesson.schedule &&
+      lesson.schedule.kind === 'timed' && text(lesson.schedule.start) && text(lesson.schedule.end);
+  }
+
+  function overlaps(left, right) {
+    return left.schedule.start < right.schedule.end &&
+      left.schedule.end > right.schedule.start;
+  }
+
+  function findTimeConflicts(candidate, lessons) {
+    if (!isTimedLesson(candidate)) return [];
+    return (lessons || []).filter(function (lesson) {
+      return isTimedLesson(lesson) && lesson.id !== candidate.id &&
+        lesson.schedule.date === candidate.schedule.date &&
+        overlaps(candidate, lesson);
+    }).slice().sort(function (left, right) {
+      return left.schedule.start.localeCompare(right.schedule.start) ||
+        left.order - right.order || left.id.localeCompare(right.id);
+    });
+  }
+
+  function findShortBreaks(lessons) {
+    var timed = (lessons || []).filter(isTimedLesson).slice().sort(function (left, right) {
+      return left.schedule.start.localeCompare(right.schedule.start) ||
+        left.order - right.order || left.id.localeCompare(right.id);
+    });
+    var warnings = [];
+    for (var index = 1; index < timed.length; index += 1) {
+      var previous = timed[index - 1];
+      var next = timed[index];
+      if (previous.schedule.date !== next.schedule.date) continue;
+      var gapMinutes = (Date.parse(next.schedule.start) - Date.parse(previous.schedule.end)) / 60000;
+      if (Number.isFinite(gapMinutes) && gapMinutes >= 0 && gapMinutes < 5) {
+        warnings.push({
+          code: 'short-break',
+          gapMinutes: gapMinutes,
+          lessonIds: [previous.id, next.id]
+        });
+      }
+    }
+    return warnings;
   }
 
   function normalizeLesson(raw) {
@@ -227,6 +341,9 @@
   }
 
   return {
+    ACTIVE_WEEK: ACTIVE_WEEK,
+    DRAG_SNAP_MINUTES: DRAG_SNAP_MINUTES,
+    DURATION_STEP_MINUTES: DURATION_STEP_MINUTES,
     normalizeLesson: normalizeLesson,
     getLessonDayKey: getLessonDayKey,
     sortLessonsForDay: sortLessonsForDay,
@@ -235,6 +352,13 @@
     selectDiaryLessons: selectDiaryLessons,
     selectNextLesson: selectNextLesson,
     computeRuntimeIssues: computeRuntimeIssues,
-    buildReadModel: buildReadModel
+    buildReadModel: buildReadModel,
+    snapMinuteOfDay: snapMinuteOfDay,
+    changeDurationBySteps: changeDurationBySteps,
+    scheduleForDestination: scheduleForDestination,
+    orderForDrop: orderForDrop,
+    renumberLessonOrders: renumberLessonOrders,
+    findTimeConflicts: findTimeConflicts,
+    findShortBreaks: findShortBreaks
   };
 });

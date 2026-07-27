@@ -565,6 +565,47 @@ export interface AssessmentService {
   ): Promise<Lesson>;
 }
 
+export interface ScheduleLessonRepository extends ActiveLessonRepository {
+  listWeekLessons(
+    renewBeforeNextPage?: () => Promise<void>,
+  ): Promise<Lesson[]>;
+}
+
+export interface ScheduleService {
+  changeLessonDuration(
+    ownerId: string,
+    command: ChangeLessonDurationCommand,
+  ): Promise<Lesson>;
+  clearDecisionRequest(
+    ownerId: string,
+    command: ClearDecisionRequestCommand,
+  ): Promise<Lesson>;
+  moveLesson(
+    ownerId: string,
+    command: MoveLessonCommand,
+  ): Promise<Lesson>;
+  pauseAndMoveLesson(
+    ownerId: string,
+    command: PauseAndMoveLessonCommand,
+  ): Promise<Lesson>;
+  reorderLesson(
+    ownerId: string,
+    command: ReorderLessonCommand,
+  ): Promise<Lesson>;
+  requestCrossWeekMove(
+    ownerId: string,
+    command: RequestCrossWeekMoveCommand,
+  ): Promise<Lesson>;
+  restoreMissedLesson(
+    ownerId: string,
+    command: RestoreMissedLessonCommand,
+  ): Promise<Lesson>;
+  unscheduleLesson(
+    ownerId: string,
+    command: UnscheduleLessonCommand,
+  ): Promise<Lesson>;
+}
+
 export interface LessonListResult {
   counts: Readonly<Record<string, number>>;
   lessons: Lesson[];
@@ -578,7 +619,10 @@ export interface LessonContentResult {
 
 export interface LessonRepository {
   assertSchoolLesson(pageId: string): Promise<NotionPage>;
-  listLessons(filter: LessonFilter): Promise<Lesson[]>;
+  listLessons(
+    filter: LessonFilter,
+    renewBeforeNextPage?: () => Promise<void>,
+  ): Promise<Lesson[]>;
 }
 
 export interface RouterContext {

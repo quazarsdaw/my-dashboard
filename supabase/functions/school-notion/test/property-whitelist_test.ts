@@ -9,6 +9,11 @@ import {
   type Lesson,
   type SchoolNotionMutationClient,
 } from "../types.ts";
+import { createActiveLessonRepository } from "../lesson-repository.ts";
+import {
+  notionLessonPage,
+  notionQueryResponse,
+} from "./fixtures/notion-lessons.ts";
 
 function assert(
   condition: unknown,
@@ -272,6 +277,21 @@ if (typeof Deno !== "undefined") {
       },
       "unscheduled properties",
     );
+
+    const pausedToUnscheduled = buildWhitelistedProperties(
+      parseSchoolCommand({
+        destination: { kind: "unscheduled" },
+        lessonId: "lesson-id",
+        operation: "pauseAndMoveLesson",
+        order: 100,
+      }),
+      lesson({ status: "В процессе" }),
+    );
+    assertJsonEquals(
+      pausedToUnscheduled.Статус,
+      { select: { name: "Нераспределён" } },
+      "paused unscheduled status",
+    );
   });
 
   Deno.test("duration change preserves start and recomputes timed end", () => {
@@ -439,5 +459,57 @@ if (typeof Deno !== "undefined") {
     }
 
     throw new Error("expected school membership rejection");
+  });
+
+  Deno.test("first mutation persists an inferred legacy duration", async () => {
+    const legacy = notionLessonPage({
+      date: {
+        end: "2026-08-03T15:00:00+05:00",
+        start: "2026-08-03T14:00:00+05:00",
+        time_zone: null,
+      },
+      durationMinutes: null,
+      id: "legacy-duration",
+    });
+    const canonical = notionLessonPage({
+      date: {
+        end: "2026-08-03T15:00:00+05:00",
+        start: "2026-08-03T14:00:00+05:00",
+        time_zone: null,
+      },
+      durationMinutes: 60,
+      id: "legacy-duration",
+      order: 150,
+    });
+    let writtenProperties: Record<string, unknown> | null = null;
+    const client = {
+      listBlockChildren: () => Promise.reject(new Error("unused")),
+      queryDataSource: () => Promise.resolve(notionQueryResponse([])),
+      retrievePage: () => Promise.resolve(legacy),
+      updatePage: (_pageId: string, properties: Record<string, unknown>) => {
+        writtenProperties = properties;
+        return Promise.resolve(canonical);
+      },
+    } satisfies SchoolNotionMutationClient;
+    const repository = createActiveLessonRepository(
+      client,
+      "server-only-data-source-id",
+    );
+    const current = await repository.getLesson("legacy-duration");
+
+    await repository.updateLesson(
+      {
+        lessonId: "legacy-duration",
+        operation: "reorderLesson",
+        order: 150,
+      },
+      current,
+    );
+
+    assertJsonEquals(
+      writtenProperties?.["Продолжительность, мин"],
+      { number: 60 },
+      "persisted inferred duration",
+    );
   });
 }

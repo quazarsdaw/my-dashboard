@@ -6,9 +6,11 @@ import { normalizeError, SchoolHttpError } from "./errors.ts";
 import {
   createActiveLessonRepository,
   createLessonRepository,
+  createScheduleLessonRepository,
 } from "./lesson-repository.ts";
 import { createLessonService } from "./lesson-service.ts";
 import { createSchoolLockService } from "./lock-service.ts";
+import { createScheduleService } from "./schedule-service.ts";
 import { parseSchoolCommand } from "./validation.ts";
 import type {
   HandlerDependencies,
@@ -126,14 +128,22 @@ export function routeSchoolCommand(
 
   const mutationOperations = new Set<SchoolCommand["operation"]>([
     "cancelLesson",
+    "changeLessonDuration",
+    "clearDecisionRequest",
     "clearLearningEvidence",
     "completeLesson",
     "correctMissedStatus",
+    "moveLesson",
+    "pauseAndMoveLesson",
+    "reorderLesson",
     "reopenLesson",
+    "requestCrossWeekMove",
     "resolveActiveLessons",
     "restoreCancelledLesson",
+    "restoreMissedLesson",
     "startLesson",
     "switchActiveLesson",
+    "unscheduleLesson",
   ]);
   if (!mutationOperations.has(command.operation)) {
     throw new SchoolHttpError(
@@ -159,11 +169,30 @@ export function routeSchoolCommand(
     activeRepository,
     lockService,
   );
+  const scheduleService = createScheduleService(
+    createScheduleLessonRepository(
+      mutationClient,
+      context.notionDataSourceId,
+    ),
+    lockService,
+  );
 
   let operation;
   switch (command.operation) {
     case "cancelLesson":
       operation = assessmentService.cancelLesson(context.userId, command);
+      break;
+    case "changeLessonDuration":
+      operation = scheduleService.changeLessonDuration(
+        context.userId,
+        command,
+      );
+      break;
+    case "clearDecisionRequest":
+      operation = scheduleService.clearDecisionRequest(
+        context.userId,
+        command,
+      );
       break;
     case "clearLearningEvidence":
       operation = assessmentService.clearLearningEvidence(
@@ -179,6 +208,18 @@ export function routeSchoolCommand(
         context.userId,
         command,
       );
+      break;
+    case "moveLesson":
+      operation = scheduleService.moveLesson(context.userId, command);
+      break;
+    case "pauseAndMoveLesson":
+      operation = scheduleService.pauseAndMoveLesson(
+        context.userId,
+        command,
+      );
+      break;
+    case "reorderLesson":
+      operation = scheduleService.reorderLesson(context.userId, command);
       break;
     case "startLesson":
       operation = activeService.startLesson(context.userId, command);
@@ -198,11 +239,26 @@ export function routeSchoolCommand(
     case "reopenLesson":
       operation = activeService.reopenLesson(context.userId, command);
       break;
+    case "requestCrossWeekMove":
+      operation = scheduleService.requestCrossWeekMove(
+        context.userId,
+        command,
+      );
+      break;
     case "restoreCancelledLesson":
       operation = assessmentService.restoreCancelledLesson(
         context.userId,
         command,
       );
+      break;
+    case "restoreMissedLesson":
+      operation = scheduleService.restoreMissedLesson(
+        context.userId,
+        command,
+      );
+      break;
+    case "unscheduleLesson":
+      operation = scheduleService.unscheduleLesson(context.userId, command);
       break;
     default:
       throw new SchoolHttpError(

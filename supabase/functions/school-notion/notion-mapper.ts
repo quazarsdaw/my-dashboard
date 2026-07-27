@@ -71,6 +71,7 @@ const decisionRequests = new Set<string>(LESSON_DECISION_REQUESTS);
 const dateOnlyPattern = /^(\d{4})-(\d{2})-(\d{2})$/;
 const timedIsoPattern =
   /^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+const lessonsWithCanonicalDuration = new WeakSet<Lesson>();
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -519,7 +520,7 @@ export function mapNotionPageToLesson(page: PageObjectResponse): Lesson {
     warnings.push({ code: "duration-mismatch" });
   }
 
-  return {
+  const lesson: Lesson = {
     artifactUrl,
     autonomy,
     comment,
@@ -551,4 +552,12 @@ export function mapNotionPageToLesson(page: PageObjectResponse): Lesson {
     warnings,
     week: normalizeWeek(rawWeek),
   };
+  if (canonicalDuration !== null) {
+    lessonsWithCanonicalDuration.add(lesson);
+  }
+  return lesson;
+}
+
+export function lessonHasCanonicalDuration(lesson: Lesson): boolean {
+  return lessonsWithCanonicalDuration.has(lesson);
 }

@@ -260,11 +260,8 @@ if (typeof Deno !== "undefined") {
 
     for (
       const destination of [
-        { date: "2026-08-02", kind: "date-only" },
-        { date: "2026-08-10", kind: "date-only" },
         { date: "2026-02-30", kind: "date-only" },
         { kind: "timed", start: "2026-08-03T14:15:00" },
-        { kind: "timed", start: "2026-08-10T14:15:00+05:00" },
       ]
     ) {
       expectInvalidCommand({
@@ -273,6 +270,32 @@ if (typeof Deno !== "undefined") {
         operation: "moveLesson",
         order: 100,
       });
+    }
+
+    for (
+      const destination of [
+        { date: "2026-08-02", kind: "date-only" },
+        { date: "2026-08-10", kind: "date-only" },
+        { kind: "timed", start: "2026-08-10T14:15:00+05:00" },
+      ]
+    ) {
+      try {
+        parseSchoolCommand({
+          destination,
+          lessonId: "lesson-id",
+          operation: "moveLesson",
+          order: 100,
+        });
+      } catch (error) {
+        assert(error instanceof SchoolHttpError, "cross-week error type");
+        assertEquals(
+          error.code,
+          "CROSS_WEEK_MOVE_REQUIRES_REVIEW",
+          "cross-week error code",
+        );
+        continue;
+      }
+      throw new Error("expected cross-week review conflict");
     }
   });
 

@@ -80,7 +80,18 @@ function isRealCalendarDate(
     date.getUTCDate() === day;
 }
 
-function parseActiveWeekDate(value: unknown): string {
+function crossWeekMoveRequiresReview(): never {
+  throw new SchoolHttpError(
+    409,
+    "CROSS_WEEK_MOVE_REQUIRES_REVIEW",
+    "cross-week move requires weekly review",
+  );
+}
+
+function parseActiveWeekDate(
+  value: unknown,
+  reportCrossWeek = false,
+): string {
   if (typeof value !== "string") {
     return invalidCommand();
   }
@@ -88,17 +99,21 @@ function parseActiveWeekDate(value: unknown): string {
   const match = value.match(dateOnlyPattern);
   if (
     !match ||
-    !isRealCalendarDate(match[1], match[2], match[3]) ||
-    value < activeWeekStart ||
-    value > activeWeekEnd
+    !isRealCalendarDate(match[1], match[2], match[3])
   ) {
     return invalidCommand();
+  }
+  if (value < activeWeekStart || value > activeWeekEnd) {
+    return reportCrossWeek ? crossWeekMoveRequiresReview() : invalidCommand();
   }
 
   return value;
 }
 
-function parseActiveWeekTimestamp(value: unknown): string {
+function parseActiveWeekTimestamp(
+  value: unknown,
+  reportCrossWeek = false,
+): string {
   if (typeof value !== "string") {
     return invalidCommand();
   }
@@ -107,11 +122,15 @@ function parseActiveWeekTimestamp(value: unknown): string {
   if (
     !match ||
     !isRealCalendarDate(match[1], match[2], match[3]) ||
-    !Number.isFinite(Date.parse(value)) ||
+    !Number.isFinite(Date.parse(value))
+  ) {
+    return invalidCommand();
+  }
+  if (
     value.slice(0, 10) < activeWeekStart ||
     value.slice(0, 10) > activeWeekEnd
   ) {
-    return invalidCommand();
+    return reportCrossWeek ? crossWeekMoveRequiresReview() : invalidCommand();
   }
 
   return value;
@@ -130,7 +149,7 @@ function parseDestination(
     hasExactKeys(value, ["date", "kind"])
   ) {
     return Object.freeze({
-      date: parseActiveWeekDate(value.date),
+      date: parseActiveWeekDate(value.date, true),
       kind: "date-only" as const,
     });
   }
@@ -141,7 +160,7 @@ function parseDestination(
   ) {
     return Object.freeze({
       kind: "timed" as const,
-      start: parseActiveWeekTimestamp(value.start),
+      start: parseActiveWeekTimestamp(value.start, true),
     });
   }
 

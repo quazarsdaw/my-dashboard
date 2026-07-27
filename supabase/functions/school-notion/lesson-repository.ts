@@ -3,7 +3,11 @@ import type {
   QueryDataSourceResponse,
 } from "@notionhq/client";
 import { SchoolHttpError } from "./errors.ts";
-import { mapNotionPageToLesson, READ_PROPERTY_NAMES } from "./notion-mapper.ts";
+import {
+  lessonHasCanonicalDuration,
+  mapNotionPageToLesson,
+  READ_PROPERTY_NAMES,
+} from "./notion-mapper.ts";
 import { buildWhitelistedProperties } from "./notion-properties.ts";
 import { assertLessonBelongsToSchool } from "./validation.ts";
 import type {
@@ -13,10 +17,12 @@ import type {
   LessonRepository,
   NotionPage,
   QueryLessonsInput,
+  ScheduleLessonRepository,
   SchoolCommand,
   SchoolNotionMutationClient,
   SchoolNotionReadClient,
 } from "./types.ts";
+import { ACTIVE_LESSON_WEEK } from "./types.ts";
 
 function isFullPage(
   result: QueryDataSourceResponse["results"][number],
@@ -79,7 +85,10 @@ export function createLessonRepository(
       return fullSchoolPage(page, notionDataSourceId);
     },
 
-    async listLessons(filter: LessonFilter): Promise<Lesson[]> {
+    async listLessons(
+      filter: LessonFilter,
+      renewBeforeNextPage?: () => Promise<void>,
+    ): Promise<Lesson[]> {
       const lessons: Lesson[] = [];
       const notionFilter = buildFilter(filter);
       let startCursor: string | undefined;
@@ -118,9 +127,33 @@ export function createLessonRepository(
           );
         }
 
+        await renewBeforeNextPage?.();
         startCursor = response.next_cursor;
       }
     },
+  });
+}
+
+export function createScheduleLessonRepository(
+  client: SchoolNotionMutationClient,
+  notionDataSourceId?: string,
+): ScheduleLessonRepository {
+  const activeRepository = createActiveLessonRepository(
+    client,
+    notionDataSourceId,
+  );
+  const lessonRepository = createLessonRepository(
+    client,
+    notionDataSourceId,
+  );
+
+  return Object.freeze({
+    ...activeRepository,
+    listWeekLessons: (renewBeforeNextPage?: () => Promise<void>) =>
+      lessonRepository.listLessons(
+        { week: ACTIVE_LESSON_WEEK },
+        renewBeforeNextPage,
+      ),
   });
 }
 
@@ -194,10 +227,21 @@ export function createActiveLessonRepository(
       command: SchoolCommand,
       currentLesson: Lesson,
     ): Promise<Lesson> {
-      const properties = buildWhitelistedProperties(
+      let properties = buildWhitelistedProperties(
         command,
         currentLesson,
       );
+      if (
+        !lessonHasCanonicalDuration(currentLesson) &&
+        !("Продолжительность, мин" in properties)
+      ) {
+        properties = {
+          ...properties,
+          "Продолжительность, мин": {
+            number: currentLesson.durationMinutes,
+          },
+        };
+      }
       const response = await client.updatePage(
         currentLesson.id,
         properties,
