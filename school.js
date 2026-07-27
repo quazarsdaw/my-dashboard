@@ -388,6 +388,20 @@
     };
   }
 
+  function timelineDragPreview(core, lesson, day, clientY, rect, bounds, zoomLevel) {
+    var destination = timelineDestination(core, day, clientY, rect, bounds, zoomLevel);
+    var schedule = core.scheduleForDestination(destination, lesson.durationMinutes);
+    var start = timeMinutes(schedule.start);
+    var end = timeMinutes(schedule.end);
+    var startMinute = bounds.startHour * 60;
+    return {
+      destination: destination,
+      schedule: schedule,
+      top: Math.max(0, core.timelineYForMinute(start, startMinute, zoomLevel.pixelsPerHour)),
+      height: Math.max(44, core.timelineYForMinute(end, start, zoomLevel.pixelsPerHour))
+    };
+  }
+
   function layoutTimedLessons(entries, pixelsPerHour) {
     var scale = Number.isFinite(Number(pixelsPerHour)) && Number(pixelsPerHour) > 0
       ? Number(pixelsPerHour)
@@ -2302,6 +2316,7 @@
     renderContentBlocks: renderContentBlocks,
     safeHttpsUrl: safeHttpsUrl,
     selectTodayFocus: selectTodayFocus,
+    timelineDragPreview: timelineDragPreview,
     timelineDestination: timelineDestination
   });
 });

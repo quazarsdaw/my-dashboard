@@ -333,6 +333,23 @@ test('timeline destination uses the active zoom step', () => {
   );
 });
 
+test('timeline drag preview snaps geometry and schedule to the active zoom step', () => {
+  const preview = SchoolUi.timelineDragPreview(
+    SchoolCore,
+    { durationMinutes: 45 },
+    '2026-08-03',
+    137,
+    { top: 10 },
+    { startHour: 9 },
+    { pixelsPerHour: 120, snapMinutes: 5 }
+  );
+
+  assert.equal(preview.destination.start, '2026-08-03T10:05:00+05:00');
+  assert.equal(preview.schedule.end, '2026-08-03T10:50:00+05:00');
+  assert.equal(preview.top, 130);
+  assert.equal(preview.height, 90);
+});
+
 test('short lesson cards keep a compact 44px visual minimum at every zoom level', () => {
   const lesson = {
     id: 'short',
