@@ -242,6 +242,9 @@ function interactiveDocument() {
     ['div', 'schoolReady'],
     ['section', 'schoolLoadingSkeleton'],
     ['span', 'schoolLoadingText'],
+    ['section', 'schoolSyncBanner'],
+    ['span', 'schoolSyncMessage'],
+    ['button', 'schoolSyncRetry'],
     ['div', 'schoolLessonDialog'],
     ['button', 'schoolLessonClose'],
     ['h2', 'schoolLessonTitle'],
@@ -298,6 +301,14 @@ test('school week exposes accessible timeline zoom controls', () => {
   assert.ok(html.includes('aria-label="Увеличить масштаб времени"'));
 });
 
+test('school shell exposes a global retry for failed notion revalidation', () => {
+  const html = read('school.html');
+  assert.ok(html.includes('id="schoolSyncBanner"'));
+  assert.ok(html.includes('id="schoolSyncMessage"'));
+  assert.ok(html.includes('id="schoolSyncRetry"'));
+  assert.ok(html.includes('Повторить чтение'));
+});
+
 test('loads mutation queue before the school controller', () => {
   const html = read('school.html');
   assert.ok(html.includes('school-mutation-queue.js'));
@@ -320,6 +331,88 @@ test('timeline destination uses the active zoom step', () => {
     ),
     { kind: 'timed', start: '2026-08-03T10:00:00+05:00' }
   );
+});
+
+test('short lesson cards keep a compact 44px visual minimum at every zoom level', () => {
+  const lesson = {
+    id: 'short',
+    order: 100,
+    schedule: {
+      start: '2026-08-03T14:00:00+05:00',
+      end: '2026-08-03T14:15:00+05:00'
+    }
+  };
+
+  [60, 90, 120, 180].forEach((pixelsPerHour) => {
+    const layout = SchoolUi.layoutTimedLessons([lesson], pixelsPerHour)[0];
+    const visualHeight = (layout.visualEnd - 14 * 60) / 60 * pixelsPerHour;
+    assert.ok(visualHeight >= 44, `${pixelsPerHour}px/hour keeps the touch target`);
+    assert.ok(visualHeight <= 45, `${pixelsPerHour}px/hour does not inflate the lesson`);
+  });
+});
+
+test('rapid wheel zoom coalesces anchor restoration and leaves boundary scroll native', () => {
+  let nextFrame = 0;
+  const frames = new Map();
+  const scrolls = [];
+  const runtime = {
+    requestAnimationFrame(callback) {
+      const id = ++nextFrame;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      frames.delete(id);
+    },
+    scrollBy(x, y) {
+      scrolls.push([x, y]);
+    }
+  };
+  const shell = {
+    classList: { add() {}, remove() {} },
+    getBoundingClientRect() {
+      return { top: 10, bottom: 610, height: 600 };
+    }
+  };
+  const document = {
+    getElementById(id) {
+      return id === 'schoolTimeShell' ? shell : null;
+    }
+  };
+  const controller = SchoolUi.createController({
+    api: {},
+    core: SchoolCore,
+    document,
+    runtime
+  });
+  function wheel(deltaY) {
+    return {
+      clientY: 70,
+      deltaY,
+      prevented: false,
+      preventDefault() {
+        this.prevented = true;
+      }
+    };
+  }
+
+  const first = wheel(-1);
+  const second = wheel(-1);
+  controller.handleTimelineWheel(first, shell, { startHour: 9, endHour: 20 });
+  controller.handleTimelineWheel(second, shell, { startHour: 9, endHour: 20 });
+  assert.equal(first.prevented, true);
+  assert.equal(second.prevented, true);
+  assert.equal(frames.size, 1, 'only the latest anchor restoration remains scheduled');
+  [...frames.values()][0]();
+  assert.deepEqual(scrolls, [[0, 60]], '10:00 remains under the cursor at ×2');
+
+  const third = wheel(-1);
+  controller.handleTimelineWheel(third, shell, { startHour: 9, endHour: 20 });
+  assert.equal(third.prevented, true);
+  [...frames.values()][0]();
+  const boundary = wheel(-1);
+  controller.handleTimelineWheel(boundary, shell, { startHour: 9, endHour: 20 });
+  assert.equal(boundary.prevented, false);
 });
 
 test('school styles distinguish quarter ten and five minute lines', () => {
@@ -975,6 +1068,42 @@ test('decision queue commands only clear persisted requests or resolve an explic
     false,
     'clear'
   ), null);
+});
+
+test('failed batch revalidation is visible globally and can be retried', async () => {
+  const ui = interactiveDocument();
+  let listCalls = 0;
+  let failRevalidation = true;
+  const controller = SchoolUi.createController({
+    api: {
+      async listLessons() {
+        listCalls += 1;
+        if (listCalls > 1 && failRevalidation) throw new Error('notion unavailable');
+        return [{ id: 'lesson-1', status: 'Запланирован' }];
+      },
+      async mutate() {
+        return { id: 'lesson-1', status: 'Запланирован' };
+      }
+    },
+    core: loadingCore(),
+    mutationQueue: SchoolMutationQueue,
+    document: ui.document
+  });
+
+  await controller.load();
+  await controller.runMutation(
+    { operation: 'moveLesson', lessonId: 'lesson-1' },
+    (lessons) => lessons
+  );
+  await assert.rejects(controller.whenMutationsIdle(), /notion unavailable/);
+  assert.equal(ui.nodes.get('schoolLessonDialog').hidden, true);
+  assert.equal(ui.nodes.get('schoolSyncBanner').hidden, false);
+  assert.match(ui.nodes.get('schoolSyncMessage').textContent, /контрольное чтение/i);
+
+  failRevalidation = false;
+  await controller.retryRevalidation();
+  assert.equal(ui.nodes.get('schoolSyncBanner').hidden, true);
+  assert.equal(listCalls, 3);
 });
 
 test('opening lessons is generation guarded and installs one dialog key handler', async () => {

@@ -388,7 +388,11 @@
     };
   }
 
-  function layoutTimedLessons(entries) {
+  function layoutTimedLessons(entries, pixelsPerHour) {
+    var scale = Number.isFinite(Number(pixelsPerHour)) && Number(pixelsPerHour) > 0
+      ? Number(pixelsPerHour)
+      : 60;
+    var minimumVisualMinutes = 44 * 60 / scale;
     var sorted = (Array.isArray(entries) ? entries : []).slice().sort(function (left, right) {
       return timeMinutes(left.schedule.start) - timeMinutes(right.schedule.start)
         || (Number.isFinite(Number(left.order)) ? Number(left.order) : 0)
@@ -412,7 +416,7 @@
       var start = timeMinutes(lesson.schedule.start);
       var actualEnd = timeMinutes(lesson.schedule.end);
       if (actualEnd < start) actualEnd += 24 * 60;
-      var visualEnd = Math.max(actualEnd, start + 44);
+      var visualEnd = Math.max(actualEnd, start + minimumVisualMinutes);
       if (group.length && start >= groupEnd) finishGroup();
       var lane = laneEnds.findIndex(function (laneEnd) { return laneEnd <= start; });
       if (lane === -1) {
@@ -621,6 +625,7 @@
   function createController(options) {
     options = isRecord(options) ? options : {};
     var documentRef = options.document === undefined ? (root && root.document) : options.document;
+    var runtime = options.runtime || root;
     var api = options.api || (root && root.SchoolApi);
     var core = options.core || (root && root.SchoolCore);
     var queueApi = options.mutationQueue || (root && root.SchoolMutationQueue);
@@ -639,6 +644,8 @@
     var currentContentLessonId = null;
     var mutationSequence = 0;
     var timelineZoomIndex = 0;
+    var timelineAnchorFrame = null;
+    var pendingTimelineAnchor = null;
     var draggedLessonId = null;
     var actionResolver = null;
     var actionPreviousFocus = null;
@@ -668,7 +675,7 @@
         if (readModel) buildModel();
       },
       onAfterBatchError: function () {
-        setMutationMessage('Изменения сохранены, но контрольное чтение не удалось.');
+        setSyncBanner('Изменения сохранены, но контрольное чтение не удалось.', true);
       }
     });
 
@@ -681,6 +688,13 @@
       var loadingText = byId('schoolLoadingText');
       if (skeleton) skeleton.hidden = !visible;
       if (loadingText) loadingText.textContent = message || 'Загружаю уроки из notion…';
+    }
+
+    function setSyncBanner(message, visible) {
+      var banner = byId('schoolSyncBanner');
+      var textNode = byId('schoolSyncMessage');
+      if (textNode) textNode.textContent = message || '';
+      if (banner) banner.hidden = !visible;
     }
 
     function setState(state, title, message) {
@@ -832,7 +846,15 @@
         return;
       }
 
-      var focusCard = element(documentRef, 'article', 'school-today-focus' + (focus.status === 'В процессе' ? ' is-active' : ''));
+      var focusSaving = pendingLessonIds.has(focus.id);
+      var focusCard = element(
+        documentRef,
+        'article',
+        'school-today-focus'
+          + (focus.status === 'В процессе' ? ' is-active' : '')
+          + (focusSaving ? ' is-saving' : '')
+      );
+      focusCard.setAttribute('aria-busy', focusSaving ? 'true' : 'false');
       var copy = element(documentRef, 'div');
       copy.appendChild(element(
         documentRef,
@@ -845,6 +867,7 @@
       focusMeta.appendChild(element(documentRef, 'span', '', focus.subject));
       focusMeta.appendChild(element(documentRef, 'span', '', scheduleText(focus)));
       focusMeta.appendChild(element(documentRef, 'span', '', focus.module));
+      if (focusSaving) focusMeta.appendChild(element(documentRef, 'span', 'school-saving-label', 'сохраняется'));
       copy.appendChild(focusMeta);
       focusCard.appendChild(copy);
       var action = element(
@@ -1008,7 +1031,7 @@
         var dayTimed = (scheduledByDay[day.date] || []).filter(function (lesson) {
           return lesson.schedule.kind === 'timed';
         });
-        layoutTimedLessons(dayTimed).forEach(function (layout) {
+        layoutTimedLessons(dayTimed, zoomLevel.pixelsPerHour).forEach(function (layout) {
           var lesson = layout.lesson;
           var start = timeMinutes(lesson.schedule.start);
           var card = element(documentRef, 'button', 'school-time-card');
@@ -1140,20 +1163,32 @@
       return render(readModel);
     }
 
-    function restoreTimelineAnchor(anchorMinute, clientY, bounds) {
-      if (!root || typeof root.requestAnimationFrame !== 'function') return;
-      root.requestAnimationFrame(function () {
+    function restoreTimelineAnchor(anchor, targetIndex) {
+      if (!runtime || typeof runtime.requestAnimationFrame !== 'function') {
+        pendingTimelineAnchor = null;
+        return;
+      }
+      if (
+        timelineAnchorFrame !== null &&
+        typeof runtime.cancelAnimationFrame === 'function'
+      ) {
+        runtime.cancelAnimationFrame(timelineAnchorFrame);
+      }
+      pendingTimelineAnchor = anchor;
+      var targetLevel = core.timelineZoomLevel(targetIndex);
+      timelineAnchorFrame = runtime.requestAnimationFrame(function () {
+        timelineAnchorFrame = null;
+        pendingTimelineAnchor = null;
         var nextShell = byId('schoolTimeShell');
         if (!nextShell || typeof nextShell.getBoundingClientRect !== 'function') return;
-        var nextLevel = core.timelineZoomLevel(timelineZoomIndex);
         var nextRect = nextShell.getBoundingClientRect();
         var nextY = core.timelineYForMinute(
-          anchorMinute,
-          bounds.startHour * 60,
-          nextLevel.pixelsPerHour
+          anchor.minute,
+          anchor.bounds.startHour * 60,
+          targetLevel.pixelsPerHour
         );
-        if (typeof root.scrollBy === 'function') {
-          root.scrollBy(0, nextRect.top + nextY - clientY);
+        if (typeof runtime.scrollBy === 'function') {
+          runtime.scrollBy(0, nextRect.top + nextY - anchor.clientY);
         }
       });
     }
@@ -1166,14 +1201,14 @@
       var nextShell = byId('schoolTimeShell');
       if (nextShell) {
         nextShell.classList.add('is-zooming');
-        if (root && typeof root.setTimeout === 'function') {
-          root.setTimeout(function () {
+        if (runtime && typeof runtime.setTimeout === 'function') {
+          runtime.setTimeout(function () {
             var currentShell = byId('schoolTimeShell');
             if (currentShell) currentShell.classList.remove('is-zooming');
           }, 140);
         }
       }
-      if (anchor) restoreTimelineAnchor(anchor.minute, anchor.clientY, anchor.bounds);
+      if (anchor) restoreTimelineAnchor(anchor, normalized);
       return true;
     }
 
@@ -1183,15 +1218,18 @@
       var nextIndex = core.nextTimelineZoomIndex(timelineZoomIndex, direction);
       if (nextIndex === timelineZoomIndex) return;
       event.preventDefault();
-      var rect = timeShell.getBoundingClientRect();
-      var current = core.timelineZoomLevel(timelineZoomIndex);
-      var anchorMinute = bounds.startHour * 60
-        + (event.clientY - rect.top) / current.pixelsPerHour * 60;
-      setTimelineZoom(nextIndex, {
-        minute: anchorMinute,
-        clientY: event.clientY,
-        bounds: bounds
-      });
+      var anchor = pendingTimelineAnchor;
+      if (!anchor) {
+        var rect = timeShell.getBoundingClientRect();
+        var current = core.timelineZoomLevel(timelineZoomIndex);
+        anchor = {
+          minute: bounds.startHour * 60
+            + (event.clientY - rect.top) / current.pixelsPerHour * 60,
+          clientY: event.clientY,
+          bounds: bounds
+        };
+      }
+      setTimelineZoom(nextIndex, anchor);
     }
 
     function zoomTimelineFromButton(direction) {
@@ -1206,20 +1244,25 @@
         return lesson.schedule && lesson.schedule.kind === 'timed';
       }));
       var rect = timeShell.getBoundingClientRect();
-      var viewportHeight = root && Number.isFinite(root.innerHeight) ? root.innerHeight : rect.bottom;
+      var viewportHeight = runtime && Number.isFinite(runtime.innerHeight)
+        ? runtime.innerHeight
+        : rect.bottom;
       var visibleTop = Math.max(0, rect.top);
       var visibleBottom = Math.min(viewportHeight, rect.bottom);
       var clientY = visibleBottom > visibleTop
         ? (visibleTop + visibleBottom) / 2
         : rect.top + Math.max(0, rect.height || 0) / 2;
-      var current = core.timelineZoomLevel(timelineZoomIndex);
-      var anchorMinute = bounds.startHour * 60
-        + (clientY - rect.top) / current.pixelsPerHour * 60;
-      setTimelineZoom(nextIndex, {
-        minute: anchorMinute,
-        clientY: clientY,
-        bounds: bounds
-      });
+      var anchor = pendingTimelineAnchor;
+      if (!anchor) {
+        var current = core.timelineZoomLevel(timelineZoomIndex);
+        anchor = {
+          minute: bounds.startHour * 60
+            + (clientY - rect.top) / current.pixelsPerHour * 60,
+          clientY: clientY,
+          bounds: bounds
+        };
+      }
+      setTimelineZoom(nextIndex, anchor);
     }
 
     function rebuildVisibleLessons() {
@@ -1247,7 +1290,19 @@
 
     async function revalidateAfterMutation() {
       confirmedLessons = await api.listLessons({ week: ACTIVE_WEEK });
-      return rebuildVisibleLessons();
+      var model = rebuildVisibleLessons();
+      setSyncBanner('', false);
+      return model;
+    }
+
+    async function retryRevalidation() {
+      setSyncBanner('Повторно читаю уроки из notion…', true);
+      try {
+        return await revalidateAfterMutation();
+      } catch (error) {
+        setSyncBanner('Контрольное чтение снова не удалось. Попробуйте ещё раз.', true);
+        throw error;
+      }
     }
 
     function runMutation(command, optimisticReducer) {
@@ -2080,6 +2135,7 @@
 
     async function load() {
       setState('loading', 'Загружаю уроки', 'Проверяю доступ к личной школе.');
+      setSyncBanner('', false);
       try {
         confirmedLessons = await api.listLessons({ week: ACTIVE_WEEK });
         optimisticMutations = [];
@@ -2122,6 +2178,10 @@
       var zoomIn = byId('schoolZoomIn');
       if (zoomIn) zoomIn.addEventListener('click', function () {
         zoomTimelineFromButton(1);
+      });
+      var syncRetry = byId('schoolSyncRetry');
+      if (syncRetry) syncRetry.addEventListener('click', function () {
+        retryRevalidation().catch(function () {});
       });
 
       var applySchedule = byId('schoolApplySchedule');
@@ -2183,9 +2243,11 @@
       closeDialog: closeDialog,
       getLessons: function () { return cloneLessons(lessons); },
       getReadModel: function () { return readModel; },
+      handleTimelineWheel: handleTimelineWheel,
       load: load,
       openLesson: openLesson,
       revalidateAfterMutation: revalidateAfterMutation,
+      retryRevalidation: retryRevalidation,
       render: render,
       runMutation: runMutation,
       selectView: selectView,
