@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" type="image/svg+xml" href="app-icon.svg">
-  <link rel="stylesheet" href="school.css?v=4">
+  <link rel="stylesheet" href="school.css?v=5">
   <title>Личная школа</title>
   <script src="profile-theme.js?v=401"></script>
   <script src="topbar.js?v=402" defer></script>
@@ -17,7 +17,7 @@
   <script src="school-core.js?v=4" defer></script>
   <script src="school-api.js" defer></script>
   <script src="school-mutation-queue.js?v=1" defer></script>
-  <script src="school.js?v=4" defer></script>
+  <script src="school.js?v=5" defer></script>
 </head>
 <body data-page="school">
   <main class="school-page" id="schoolApp" aria-busy="true">
@@ -48,6 +48,13 @@
     </section>
 
     <div class="school-ready" id="schoolReady" hidden>
+      <section class="school-loading-skeleton" id="schoolLoadingSkeleton" aria-live="polite">
+        <span id="schoolLoadingText">Загружаю уроки из notion…</span>
+        <div class="school-skeleton-card"></div>
+        <div class="school-skeleton-card"></div>
+        <div class="school-skeleton-card"></div>
+      </section>
+
       <section class="school-decisions" id="schoolDecisions" aria-labelledby="schoolDecisionsTitle"></section>
 
       <section id="schoolTodayPanel" class="school-panel" role="tabpanel" data-school-panel="today">

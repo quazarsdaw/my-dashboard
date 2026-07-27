@@ -115,6 +115,24 @@ function createQueueController({ mutate }) {
   });
 }
 
+function loadingCore() {
+  return {
+    buildReadModel(lessons) {
+      return {
+        lessons,
+        today: [],
+        weekDays: {},
+        diary: [],
+        progress: { completed: 0, total: lessons.length, partial: 0, missed: 0 },
+        activeLessons: [],
+        nextLesson: null,
+        persistedDecisions: [],
+        runtimeIssues: []
+      };
+    }
+  };
+}
+
 function interactiveDocument() {
   const listeners = new Map();
   const nodes = new Map();
@@ -218,6 +236,12 @@ function interactiveDocument() {
 
   [
     ['main', 'schoolApp'],
+    ['section', 'schoolState'],
+    ['strong', 'schoolStateTitle'],
+    ['span', 'schoolStateText'],
+    ['div', 'schoolReady'],
+    ['section', 'schoolLoadingSkeleton'],
+    ['span', 'schoolLoadingText'],
     ['div', 'schoolLessonDialog'],
     ['button', 'schoolLessonClose'],
     ['h2', 'schoolLessonTitle'],
@@ -227,6 +251,7 @@ function interactiveDocument() {
     ['article', 'schoolLessonContent']
   ].forEach(([tagName, id]) => node(tagName, id));
   nodes.get('schoolLessonDialog').hidden = true;
+  nodes.get('schoolReady').hidden = true;
   return { document, nodes };
 }
 
@@ -1022,6 +1047,49 @@ test('read-only controller normalizes loading and auth error states', async () =
     await controller.load();
     assert.deepEqual(states, ['loading', scenario.expected]);
   }
+});
+
+test('shows the school shell before the initial notion read resolves', async () => {
+  const pending = deferred();
+  const ui = interactiveDocument();
+  const html = read('school.html');
+  const css = read('school.css');
+  assert.ok(html.includes('id="schoolLoadingSkeleton"'));
+  assert.ok(html.includes('id="schoolLoadingText"'));
+  assert.ok(css.includes('@keyframes school-skeleton-pulse'));
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.school-skeleton-card \{ animation: none; \}/);
+  const controller = SchoolUi.createController({
+    api: { listLessons: () => pending.promise },
+    core: loadingCore(),
+    mutationQueue: SchoolMutationQueue,
+    document: ui.document
+  });
+
+  const loading = controller.load();
+  assert.equal(ui.nodes.get('schoolReady').hidden, false);
+  assert.equal(ui.nodes.get('schoolLoadingSkeleton').hidden, false);
+  assert.equal(ui.nodes.get('schoolApp').attributes['aria-busy'], 'true');
+  pending.resolve([queueLesson('lesson-1', '09:00')]);
+  await loading;
+  assert.equal(ui.nodes.get('schoolLoadingSkeleton').hidden, true);
+  assert.equal(ui.nodes.get('schoolApp').attributes['aria-busy'], 'false');
+});
+
+test('replaces the loading shell with a normalized auth error', async () => {
+  const ui = interactiveDocument();
+  const controller = SchoolUi.createController({
+    api: {
+      listLessons: () => Promise.reject(Object.assign(new Error('safe'), { status: 401 }))
+    },
+    core: loadingCore(),
+    mutationQueue: SchoolMutationQueue,
+    document: ui.document
+  });
+
+  await controller.load();
+  assert.equal(ui.nodes.get('schoolLoadingSkeleton').hidden, true);
+  assert.equal(ui.nodes.get('schoolReady').hidden, true);
+  assert.equal(ui.nodes.get('schoolStateTitle').textContent, 'Нужно войти');
 });
 
 test('school controller contains focus trap, escape close and restore behavior', () => {

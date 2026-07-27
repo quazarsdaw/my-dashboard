@@ -676,16 +676,25 @@
       return documentRef ? documentRef.getElementById(id) : null;
     }
 
+    function setLoadingShell(visible, message) {
+      var skeleton = byId('schoolLoadingSkeleton');
+      var loadingText = byId('schoolLoadingText');
+      if (skeleton) skeleton.hidden = !visible;
+      if (loadingText) loadingText.textContent = message || 'Загружаю уроки из notion…';
+    }
+
     function setState(state, title, message) {
       onState(state);
       if (!documentRef) return;
       var app = byId('schoolApp');
       var stateNode = byId('schoolState');
       var ready = byId('schoolReady');
+      var showsSchoolShell = state === 'loading' || state === 'ready';
       if (app) app.setAttribute('data-state', state);
       if (app) app.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
-      if (stateNode) stateNode.hidden = state === 'ready';
-      if (ready) ready.hidden = state !== 'ready';
+      if (stateNode) stateNode.hidden = showsSchoolShell;
+      if (ready) ready.hidden = !showsSchoolShell;
+      setLoadingShell(state === 'loading');
       if (byId('schoolStateTitle')) byId('schoolStateTitle').textContent = title || '';
       if (byId('schoolStateText')) byId('schoolStateText').textContent = message || '';
     }

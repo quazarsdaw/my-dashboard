@@ -171,6 +171,39 @@ a:focus-visible {
   line-height: 1.55;
 }
 
+.school-page[data-state="loading"] .school-ready > :not(.school-loading-skeleton) {
+  display: none;
+}
+
+.school-loading-skeleton {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  min-height: 280px;
+  padding-top: 28px;
+}
+
+.school-loading-skeleton > span {
+  grid-column: 1 / -1;
+  align-self: end;
+  color: var(--school-text-3);
+  font-family: var(--school-mono);
+  font-size: 10px;
+}
+
+.school-skeleton-card {
+  min-height: 172px;
+  border: 1px solid var(--school-line);
+  border-radius: 12px;
+  background: var(--school-surface);
+  animation: school-skeleton-pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes school-skeleton-pulse {
+  from { opacity: 0.42; }
+  to { opacity: 0.78; }
+}
+
 .school-section-head {
   display: flex;
   align-items: end;
@@ -1016,6 +1049,8 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
   .school-today-list,
   .school-unscheduled-list,
   .school-decision-groups { grid-template-columns: 1fr; }
+  .school-loading-skeleton { grid-template-columns: 1fr; }
+  .school-loading-skeleton .school-skeleton-card { min-height: 72px; }
   .school-mobile-days {
     display: flex;
     gap: 6px;
@@ -1073,6 +1108,7 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .school-skeleton-card { animation: none; }
   *,
   *::before,
   *::after {
