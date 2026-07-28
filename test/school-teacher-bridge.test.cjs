@@ -348,12 +348,13 @@ test('splits values on the first colon only', () => {
   assert.equal(parsed.values.comment, 'Причина: неверная переменная окружения');
 });
 
-test('rejects invalid status, result, autonomy and understanding', () => {
+test('rejects invalid status, result, autonomy, understanding and missed reason', () => {
   const cases = [
     ['STATUS', 'Готово', 'invalid-status'],
     ['RESULT', 'Отлично', 'invalid-result'],
     ['AUTONOMY', 'A4', 'invalid-autonomy'],
-    ['UNDERSTANDING', '2.5', 'invalid-understanding']
+    ['UNDERSTANDING', '2.5', 'invalid-understanding'],
+    ['MISSED_REASON', 'Не захотелось', 'invalid-missed-reason']
   ];
 
   cases.forEach(([key, value, errorCode]) => {
