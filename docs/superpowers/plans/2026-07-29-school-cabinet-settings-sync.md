@@ -871,8 +871,7 @@ if (!validation.valid) throw storeError('VALIDATION_ERROR', 'проверьте 
 var row = {
   user_id: auth.user.id,
   key: settings.REMOTE_KEY,
-  value: settings.serialize(validation.settings),
-  updated_at: new Date().toISOString()
+  value: settings.serialize(validation.settings)
 };
 
 var result = await auth.client
@@ -889,11 +888,18 @@ Cache и state обновляются только после успешного
 Проверить:
 
 ```javascript
-test('realtime applies only the current user settings key', async () => {
+test('realtime invalidates only the current user settings key', async () => {
   const app = makeStore({ user: { id: 'u1' } });
   await app.store.load();
   app.events.length = 0;
 
+  app.setRemoteRow({
+    value: JSON.stringify({
+      version: 1,
+      cabinets: { 'chatgpt-english': 'https://chatgpt.com/g/english' }
+    }),
+    updated_at: '2026-07-29T01:00:00.000Z'
+  });
   app.emitRealtime({
     eventType: 'UPDATE',
     new: {
@@ -906,6 +912,11 @@ test('realtime applies only the current user settings key', async () => {
       updated_at: '2026-07-29T01:00:00.000Z'
     }
   });
+  await waitFor(
+    () => app.store.getState().settings.cabinets['chatgpt-english'] ===
+      'https://chatgpt.com/g/english',
+    'realtime invalidation did not refresh'
+  );
 
   assert.equal(
     app.store.getState().settings.cabinets['chatgpt-english'],
@@ -920,7 +931,8 @@ test('realtime applies only the current user settings key', async () => {
 });
 ```
 
-Также проверить DELETE remote row → пустые settings; `destroy()` вызывает `removeChannel`.
+Также проверить, что payload не применяется напрямую, DELETE вызывает
+авторитетное чтение пустой remote row, а `destroy()` вызывает `removeChannel`.
 
 - [ ] **step 7: реализовать realtime lifecycle**
 
@@ -938,7 +950,10 @@ client
   .subscribe();
 ```
 
-Handler отдельно проверяет `payload.new/old.key === REMOTE_KEY` и current user id. При применении публикуется только нормализованный state:
+Handler отдельно проверяет `payload.new/old.key === REMOTE_KEY` и current user
+id. payload служит только инвалидизацией: после события выполняется
+коалесцированный `select` канонической строки, а публикуется только
+нормализованный результат этого чтения:
 
 ```javascript
 eventTarget.dispatchEvent(new CustomEvent(
@@ -949,14 +964,17 @@ eventTarget.dispatchEvent(new CustomEvent(
 
 Не логировать raw URL, session или Authorization.
 
-Incoming state применяется только если его валидный `updated_at` новее
-текущего state. Stale SELECT/realtime response игнорируется. DELETE принимается
-для текущей строки и сбрасывает settings в пустой versioned object.
+`value`, `updated_at` и `commit_timestamp` из realtime payload не применяются к
+state и не сравниваются. событие во время load или save гарантирует
+дополнительный `select` после завершения текущей операции. если событие пришло
+во время ожидающего `select`, его результат не применяется без последующей
+сверки. DELETE обрабатывается тем же путём: авторитетное чтение отсутствующей
+строки сбрасывает settings в пустой versioned object.
 
 - [ ] **step 8: добавить stale-response regression**
 
 ```javascript
-test('older realtime rows cannot overwrite newer confirmed settings', async () => {
+test('realtime payload cannot overwrite the authoritative cloud row', async () => {
   const app = makeStore({
     user: { id: 'u1' },
     remoteRow: {
@@ -969,6 +987,13 @@ test('older realtime rows cannot overwrite newer confirmed settings', async () =
   });
   await app.store.load();
 
+  app.setRemoteRow({
+    value: JSON.stringify({
+      version: 1,
+      cabinets: { 'chatgpt-software': 'https://chatgpt.com/g/current-cloud' }
+    }),
+    updated_at: '2026-07-29T03:00:00.000Z'
+  });
   app.emitRealtime({
     eventType: 'UPDATE',
     new: {
@@ -981,13 +1006,22 @@ test('older realtime rows cannot overwrite newer confirmed settings', async () =
       updated_at: '2026-07-29T01:00:00.000Z'
     }
   });
+  await waitFor(
+    () => app.store.getState().settings.cabinets['chatgpt-software'] ===
+      'https://chatgpt.com/g/current-cloud',
+    'realtime invalidation did not read the cloud row'
+  );
 
   assert.equal(
     app.store.getState().settings.cabinets['chatgpt-software'],
-    'https://chatgpt.com/g/new'
+    'https://chatgpt.com/g/current-cloud'
   );
 });
 ```
+
+Отдельные regressions покрывают событие во время медленного `select`, DELETE и
+realtime во время save. во всех случаях финальное состояние берётся повторным
+чтением remote row.
 
 - [ ] **step 9: focused GREEN и commit**
 
