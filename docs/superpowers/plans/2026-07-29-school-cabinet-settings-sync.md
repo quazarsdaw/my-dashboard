@@ -79,7 +79,7 @@ read-only проверка production-проекта `yiuiiixovxmoqifsdsuf` пе
 **Files:**
 
 - Create: GitHub issue, без изменения кода.
-- Create: output файла команды `npx --yes supabase@2.101.0 migration new harden_user_data_rls`.
+- Create: output файла команды `npx --yes supabase@2.110.0 migration new harden_user_data_rls`.
 - Create: `supabase/tests/user_data_rls.sql`
 
 **Interfaces:**
@@ -161,12 +161,12 @@ update и delete и без отдельного with check для update.
 Run:
 
 ```bash
-npx --yes supabase@2.101.0 --version
-npx --yes supabase@2.101.0 migration new --help
-npx --yes supabase@2.101.0 migration new harden_user_data_rls
+npx --yes supabase@2.110.0 --version
+npx --yes supabase@2.110.0 migration new --help
+npx --yes supabase@2.110.0 migration new harden_user_data_rls
 ```
 
-Expected: CLI сообщает `2.101.0` и создаёт один новый migration file с suffix `_harden_user_data_rls.sql`. Не переименовывать файл вручную.
+Expected: CLI сообщает `2.110.0` и создаёт один новый migration file с suffix `_harden_user_data_rls.sql`. Не переименовывать файл вручную. Версия `2.101.0` не используется: она не распознаёт уже существующий блок `[local_smtp]` в `supabase/config.toml`.
 
 - [ ] **step 4: сначала написать failing pgTAP contract**
 
@@ -284,10 +284,10 @@ rollback;
 Run:
 
 ```bash
-npx --yes supabase@2.101.0 test db supabase/tests/user_data_rls.sql
+npx --yes supabase@2.110.0 test db supabase/tests/user_data_rls.sql
 ```
 
-Expected: FAIL из-за отсутствующей local table либо на anon grants, количестве policies или explicit `WITH CHECK`. Если local Supabase ещё не запущен, сначала выполнить `npx --yes supabase@2.101.0 start`, затем повторить тест.
+Expected: FAIL из-за отсутствующей local table либо на anon grants, количестве policies или explicit `WITH CHECK`. Если local Supabase ещё не запущен, сначала выполнить `npx --yes supabase@2.110.0 start`, затем повторить тест.
 
 - [ ] **step 6: записать минимальную migration**
 
@@ -343,8 +343,8 @@ using ((select auth.uid()) = user_id);
 Run:
 
 ```bash
-npx --yes supabase@2.101.0 db reset
-npx --yes supabase@2.101.0 test db supabase/tests/user_data_rls.sql
+npx --yes supabase@2.110.0 db reset
+npx --yes supabase@2.110.0 test db supabase/tests/user_data_rls.sql
 ```
 
 Expected: migration применяется; 17 pgTAP assertions PASS. На production
@@ -1641,9 +1641,9 @@ Expected:
 Run from repository root:
 
 ```bash
-npx --yes supabase@2.101.0 db reset
-npx --yes supabase@2.101.0 test db supabase/tests/user_data_rls.sql
-npx --yes supabase@2.101.0 migration list --local
+npx --yes supabase@2.110.0 db reset
+npx --yes supabase@2.110.0 test db supabase/tests/user_data_rls.sql
+npx --yes supabase@2.110.0 migration list --local
 ```
 
 Через Supabase MCP повторно проверить production migration history и Security Advisor перед любым remote apply.
