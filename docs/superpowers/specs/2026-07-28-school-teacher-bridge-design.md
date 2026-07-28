@@ -252,4 +252,3 @@ rules, unicode/comment/url boundaries и отсутствие mutation. ui tests
 screenshots. destructive smoke не использует реальные 18 уроков: при
 необходимости используется временная явно тестовая карточка и затем
 проверяется её удаление.
-
