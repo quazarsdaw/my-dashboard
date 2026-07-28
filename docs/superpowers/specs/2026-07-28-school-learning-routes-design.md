@@ -279,7 +279,7 @@ type LessonRoute = Readonly<{
   cabinetId: string;
   cabinetLabel: string;
   platform: string;
-  cabinetKind: 'permanent' | 'temporary';
+  cabinetKind: 'permanent' | 'temporary' | 'unknown';
   cabinetUrl: string | null;
   teacherId: string;
   teacherLabel: string;
@@ -324,6 +324,8 @@ resolveLessonRoute(lesson, learningConfig)
 если lesson явно содержит неизвестный cabinet key:
 
 - key сохраняется в resolved route;
+- `cabinetLabel` равен raw key, `platform = 'Unknown'`,
+  `cabinetKind = 'unknown'`;
 - default cabinet не подставляется;
 - `cabinetUrl = null`;
 - `canOpenCabinet = false`;
