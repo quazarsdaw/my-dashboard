@@ -199,6 +199,82 @@ test('controller resolves the current lesson route through injected dependencies
   assert.equal(controller.getCurrentLessonRoute(), expectedRoute);
 });
 
+test('controller overlays synced cabinet settings without mutating static config', async () => {
+  const lesson = {
+    id: 'lesson-1',
+    title: 'Cold start «Прометея»',
+    subject: 'Software Engineering',
+    status: 'Запланирован',
+  };
+  const staticConfig = Object.freeze({
+    cabinets: Object.freeze({
+      'chatgpt-software': Object.freeze({
+        label: 'software',
+        platform: 'ChatGPT',
+        kind: 'permanent',
+        url: '',
+      }),
+    }),
+  });
+  const resolvedConfigs = [];
+  const controller = SchoolUi.createController({
+    api: {
+      listLessons: async () => [lesson],
+      getLessonContent: async () => ({ lesson, blocks: [] }),
+    },
+    core: loadingCore(),
+    document: null,
+    learningConfig: staticConfig,
+    cabinetSettingsCore: {
+      applyToConfig(base, settings) {
+        return {
+          ...base,
+          cabinets: {
+            ...base.cabinets,
+            'chatgpt-software': {
+              ...base.cabinets['chatgpt-software'],
+              url: settings.cabinets['chatgpt-software'] || '',
+            },
+          },
+        };
+      },
+    },
+    learningRoute: {
+      resolveLessonRoute(_lesson, config) {
+        if (!_lesson) return null;
+        resolvedConfigs.push(config);
+        return {
+          cabinetId: 'chatgpt-software',
+          cabinetUrl: config.cabinets['chatgpt-software'].url,
+        };
+      },
+      compactRouteLabels() {
+        return { desktop: 'ChatGPT', mobile: 'ChatGPT' };
+      },
+    },
+  });
+
+  await controller.load();
+  controller.applyCabinetSettings({
+    status: 'ready',
+    settings: {
+      version: 1,
+      cabinets: {
+        'chatgpt-software': 'https://chatgpt.com/g/software',
+      },
+    },
+  });
+
+  assert.equal(controller.getCurrentLessonRoute(), null);
+  await controller.openLesson('lesson-1');
+  assert.equal(
+    controller.getCurrentLessonRoute().cabinetUrl,
+    'https://chatgpt.com/g/software'
+  );
+  assert.equal(staticConfig.cabinets['chatgpt-software'].url, '');
+  assert.ok(resolvedConfigs.length > 0);
+});
+
 test('lesson card renders distinct desktop and mobile route labels as text', () => {
   const document = fakeDocument();
   const card = document.createElement('button');

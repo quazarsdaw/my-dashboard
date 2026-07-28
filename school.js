@@ -1115,6 +1115,10 @@
     return JSON.parse(JSON.stringify(Array.isArray(lessons) ? lessons : []));
   }
 
+  function cloneValue(value) {
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  }
+
   function createController(options) {
     options = isRecord(options) ? options : {};
     var documentRef = options.document === undefined ? (root && root.document) : options.document;
@@ -1124,7 +1128,12 @@
     var queueApi = options.mutationQueue || (root && root.SchoolMutationQueue);
     var teacherBridge = options.teacherBridge || (root && root.SchoolTeacherBridge);
     var learningRoute = options.learningRoute || (root && root.SchoolLearningRoute);
-    var learningConfig = options.learningConfig || (root && root.SchoolLearningConfig) || {};
+    var cabinetSettingsCore = options.cabinetSettingsCore ||
+      (root && root.SchoolCabinetSettings);
+    var baseLearningConfig = options.learningConfig ||
+      (root && root.SchoolLearningConfig) || {};
+    var cabinetSettingsState = null;
+    var effectiveLearningConfig = baseLearningConfig;
     var now = typeof options.now === 'function' ? options.now : function () { return new Date(); };
     var onState = typeof options.onState === 'function' ? options.onState : function () {};
     var lessons = [];
@@ -1160,7 +1169,20 @@
 
     function routeForLesson(lesson) {
       if (!learningRoute || typeof learningRoute.resolveLessonRoute !== 'function') return null;
-      return learningRoute.resolveLessonRoute(lesson, learningConfig);
+      return learningRoute.resolveLessonRoute(lesson, effectiveLearningConfig);
+    }
+
+    function applyCabinetSettings(nextState) {
+      cabinetSettingsState = nextState ? cloneValue(nextState) : null;
+      effectiveLearningConfig = cabinetSettingsCore &&
+        typeof cabinetSettingsCore.applyToConfig === 'function'
+        ? cabinetSettingsCore.applyToConfig(
+          baseLearningConfig,
+          nextState && nextState.settings
+        )
+        : baseLearningConfig;
+      if (readModel) render(readModel);
+      return cabinetSettingsState ? cloneValue(cabinetSettingsState) : null;
     }
 
     function routeLabelsForLesson(lesson) {
@@ -3613,9 +3635,13 @@
     }
 
     return Object.freeze({
+      applyCabinetSettings: applyCabinetSettings,
       bind: bind,
       closeDialog: closeDialog,
       finishTimelineZoom: finishTimelineZoom,
+      getCabinetSettingsState: function () {
+        return cabinetSettingsState ? cloneValue(cabinetSettingsState) : null;
+      },
       getCurrentLessonRoute: function () { return routeForLesson(currentLesson()); },
       getCurrentTeacherPrompt: getCurrentTeacherPrompt,
       getLessons: function () { return cloneLessons(lessons); },
@@ -3647,6 +3673,7 @@
       core: root.SchoolCore,
       mutationQueue: root.SchoolMutationQueue,
       document: root.document,
+      cabinetSettingsCore: root.SchoolCabinetSettings,
       learningConfig: root.SchoolLearningConfig,
       learningRoute: root.SchoolLearningRoute
     });
