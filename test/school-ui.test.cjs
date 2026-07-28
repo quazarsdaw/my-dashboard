@@ -12,6 +12,11 @@ function read(file) {
   return fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 }
 
+function htmlAttribute(tag, name) {
+  const match = tag.match(new RegExp(`(?:^|\\s)${name}\\s*=\\s*(["'])(.*?)\\1`, 'i'));
+  return match ? match[2] : null;
+}
+
 function assertSchoolAssetContract(html) {
   const expectedScripts = [
     'profile-theme.js?v=401',
@@ -25,14 +30,13 @@ function assertSchoolAssetContract(html) {
     'school-mutation-queue.js?v=1',
     'school.js?v=11'
   ];
-  const scripts = Array.from(
-    html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"[^>]*>/g),
-    (match) => match[1]
-  );
-  const stylesheets = Array.from(
-    html.matchAll(/<link\b(?=[^>]*\brel="stylesheet")[^>]*\bhref="([^"]+)"[^>]*>/g),
-    (match) => match[1]
-  );
+  const scripts = Array.from(html.matchAll(/<script\b[^>]*>/g), (match) =>
+    htmlAttribute(match[0], 'src')
+  ).filter(Boolean);
+  const stylesheets = Array.from(html.matchAll(/<link\b[^>]*>/g), (match) => match[0])
+    .filter((tag) => htmlAttribute(tag, 'rel') === 'stylesheet')
+    .map((tag) => htmlAttribute(tag, 'href'))
+    .filter(Boolean);
 
   assert.ok(html.includes('<body data-page="school">'));
   assert.deepEqual(stylesheets, ['school.css?v=11']);
@@ -350,6 +354,15 @@ test('school page cache contract rejects a legacy duplicate asset', () => {
   const legacyDuplicate = read('school.html').replace(
     '  <script src="school.js?v=11" defer></script>',
     '  <script src="school.js?v=10" defer></script>\n  <script src="school.js?v=11" defer></script>'
+  );
+
+  assert.throws(() => assertSchoolAssetContract(legacyDuplicate));
+});
+
+test('school page cache contract rejects a single-quoted legacy duplicate asset', () => {
+  const legacyDuplicate = read('school.html').replace(
+    '  <script src="school.js?v=11" defer></script>',
+    "  <script src='school.js?v=10' defer></script>\n  <script src=\"school.js?v=11\" defer></script>"
   );
 
   assert.throws(() => assertSchoolAssetContract(legacyDuplicate));
