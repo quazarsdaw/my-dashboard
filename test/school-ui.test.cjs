@@ -189,7 +189,7 @@ test('lesson card renders distinct desktop and mobile route labels as text', () 
   assert.equal(card.children[0].children[1].className, 'school-route-mobile');
 });
 
-function interactiveDocument() {
+function interactiveDocument(extraNodes = []) {
   const listeners = new Map();
   const nodes = new Map();
   let document;
@@ -308,7 +308,7 @@ function interactiveDocument() {
     ['div', 'schoolLessonMeta'],
     ['div', 'schoolContentState'],
     ['article', 'schoolLessonContent']
-  ].forEach(([tagName, id]) => node(tagName, id));
+  ].concat(extraNodes).forEach(([tagName, id]) => node(tagName, id));
   nodes.get('schoolLessonDialog').hidden = true;
   nodes.get('schoolReady').hidden = true;
   return { document, nodes };
@@ -724,6 +724,23 @@ test('controller rebuilds the same teacher prompt from reloaded notion content',
     spans: [{ text: 'Проверить чистый запуск.', annotations: {} }],
     children: []
   }];
+  const route = {
+    cabinetId: 'chatgpt-software',
+    cabinetLabel: 'ChatGPT · Software Engineering',
+    platform: 'ChatGPT',
+    cabinetKind: 'permanent',
+    cabinetUrl: 'https://chatgpt.com/g/software',
+    teacherId: 'chatgpt-main',
+    teacherLabel: 'ChatGPT · основной преподаватель',
+    modelHint: 'выберите основную модель вручную',
+    format: 'Сократовский урок',
+    resourceUrl: null,
+    usesDefaultCabinet: true,
+    usesDefaultTeacher: true,
+    canOpenCabinet: true,
+    warnings: [],
+    reviewer: null
+  };
   const controller = SchoolUi.createController({
     api: {
       listLessons: async () => [activeLesson],
@@ -732,12 +749,8 @@ test('controller rebuilds the same teacher prompt from reloaded notion content',
     core: loadingCore(),
     document: null,
     teacherBridge: SchoolTeacherBridge,
-    teacherConfig: {
-      'Software Engineering': {
-        label: 'Преподаватель Software Engineering',
-        url: ''
-      }
-    }
+    learningConfig: {},
+    learningRoute: { resolveLessonRoute: () => route }
   });
 
   await controller.load();
@@ -749,6 +762,144 @@ test('controller rebuilds the same teacher prompt from reloaded notion content',
   assert.equal(first, second);
   assert.match(first, /LESSON_REF: lesson-42/);
   assert.match(first, /Проверить чистый запуск\./);
+  assert.match(first, /CABINET: ChatGPT · Software Engineering/);
+  assert.match(first, /TEACHER: ChatGPT · основной преподаватель/);
+  assert.match(first, /MODEL_HINT: выберите основную модель вручную/);
+  assert.match(first, /LESSON_FORMAT: Сократовский урок/);
+});
+
+test('route drawer rows expose cabinet teacher model format resource and reviewer', () => {
+  assert.deepEqual(SchoolUi.routeDrawerRows({
+    cabinetLabel: 'YouTube',
+    cabinetKind: 'temporary',
+    platform: 'YouTube',
+    teacherLabel: 'Автор материала',
+    modelHint: null,
+    format: 'Видео + retrieval',
+    resourceUrl: 'https://youtu.be/abc',
+    warnings: [{ code: 'resource', message: 'warning text' }],
+    reviewer: {
+      cabinetLabel: 'ChatGPT · English & IELTS',
+      teacherLabel: 'ChatGPT · основной преподаватель'
+    }
+  }), {
+    cabinet: 'YouTube',
+    kind: 'временный',
+    teacher: 'Автор материала',
+    modelHint: '',
+    format: 'Видео + retrieval',
+    resource: 'https://youtu.be/abc',
+    reviewer: 'ChatGPT · English & IELTS · ChatGPT · основной преподаватель',
+    warnings: ['warning text'],
+    instruction: 'Скопируйте промт. Автоматический запуск этого кабинета появится в PR 3.'
+  });
+});
+
+test('route drawer rows distinguish permanent and unknown routes', () => {
+  assert.deepEqual(SchoolUi.routeDrawerRows({
+    cabinetLabel: 'ChatGPT · Mathematics',
+    cabinetKind: 'permanent',
+    platform: 'ChatGPT',
+    canOpenCabinet: false,
+    teacherLabel: 'ChatGPT · глубокое рассуждение',
+    modelHint: 'выберите сильную reasoning-модель вручную',
+    format: 'Сократовский урок',
+    resourceUrl: null,
+    warnings: [],
+    reviewer: null
+  }), {
+    cabinet: 'ChatGPT · Mathematics',
+    kind: 'постоянный',
+    teacher: 'ChatGPT · глубокое рассуждение',
+    modelHint: 'выберите сильную reasoning-модель вручную',
+    format: 'Сократовский урок',
+    resource: '',
+    reviewer: '',
+    warnings: [],
+    instruction: 'Ссылка кабинета ещё не настроена. Промт можно скопировать вручную.'
+  });
+
+  assert.equal(SchoolUi.routeDrawerRows({
+    cabinetLabel: 'missing-cabinet',
+    cabinetKind: 'unknown',
+    teacherLabel: 'missing-teacher',
+    modelHint: null,
+    format: 'Неизвестный формат',
+    resourceUrl: null,
+    warnings: [{ message: 'Проверьте маршрут урока' }],
+    reviewer: null
+  }).kind, 'неизвестный');
+});
+
+test('teacher launch target accepts only a configured safe ChatGPT route', () => {
+  assert.deepEqual(SchoolUi.teacherTargetForRoute({
+    platform: 'ChatGPT', cabinetKind: 'permanent', canOpenCabinet: true,
+    cabinetUrl: 'https://chatgpt.com/g/software',
+    teacherLabel: 'ChatGPT · основной преподаватель'
+  }), {
+    configured: true, label: 'ChatGPT · основной преподаватель',
+    url: 'https://chatgpt.com/g/software'
+  });
+  assert.deepEqual(SchoolUi.teacherTargetForRoute({
+    platform: 'Codex', cabinetKind: 'permanent', canOpenCabinet: false,
+    cabinetUrl: null, teacherLabel: 'Codex · coding agent'
+  }), { configured: false, label: 'Codex · coding agent', url: null });
+  assert.deepEqual(SchoolUi.teacherTargetForRoute({
+    platform: 'ChatGPT', cabinetKind: 'permanent', canOpenCabinet: false,
+    cabinetUrl: 'https://chatgpt.com/g/unconfigured', teacherLabel: 'Неизвестный'
+  }), { configured: false, label: 'Неизвестный', url: null });
+  assert.deepEqual(SchoolUi.teacherTargetForRoute({
+    platform: 'Unknown', cabinetKind: 'permanent', canOpenCabinet: true,
+    cabinetUrl: 'https://example.test/route', teacherLabel: 'Неизвестный'
+  }), { configured: false, label: 'Неизвестный', url: null });
+});
+
+test('read-only route keeps external launch disabled before strategy PR', async () => {
+  const ui = interactiveDocument([
+    ['section', 'schoolTeacherSection'], ['span', 'schoolTeacherStatus'],
+    ['p', 'schoolTeacherLabel'], ['p', 'schoolTeacherNote'],
+    ['button', 'schoolTeacherPrimary'], ['button', 'schoolTeacherCopy'],
+    ['button', 'schoolTeacherOpen'], ['button', 'schoolTeacherFinishRequest'],
+    ['button', 'schoolTeacherImport'], ['a', 'schoolTeacherFallbackLink'],
+    ['dl', 'schoolRouteSummary'], ['dd', 'schoolRouteCabinet'],
+    ['dd', 'schoolRouteKind'], ['dd', 'schoolRouteTeacher'],
+    ['div', 'schoolRouteModelRow'], ['dd', 'schoolRouteModel'],
+    ['dd', 'schoolRouteFormat'], ['div', 'schoolRouteResourceRow'],
+    ['dd', 'schoolRouteResource'], ['div', 'schoolRouteReviewerRow'],
+    ['dd', 'schoolRouteReviewer'], ['div', 'schoolRouteWarnings'],
+    ['div', 'schoolLessonActions'], ['details', 'schoolCancelledHistory'],
+    ['div', 'schoolCancelledHistoryContent']
+  ]);
+  const lesson = {
+    id: 'lesson-codex', title: 'Coding laboratory', subject: 'Software Engineering',
+    module: 'Debugging', status: 'В процессе', priority: 'Must', durationMinutes: 45,
+    schedule: { kind: 'date-only', date: '2026-08-03', start: null, end: null }
+  };
+  const route = {
+    cabinetId: 'codex-main', platform: 'Codex', cabinetKind: 'permanent', cabinetUrl: null,
+    canOpenCabinet: false, cabinetLabel: 'Codex', teacherId: 'codex-main',
+    teacherLabel: 'Codex · coding agent', modelHint: 'выберите coding-модель вручную',
+    format: 'Практическая лаборатория', resourceUrl: null, warnings: [], reviewer: null
+  };
+  const controller = SchoolUi.createController({
+    api: {
+      listLessons: async () => [lesson],
+      getLessonContent: async () => ({ lesson, blocks: [] })
+    },
+    core: loadingCore(), document: ui.document, teacherBridge: SchoolTeacherBridge,
+    learningConfig: {},
+    learningRoute: {
+      resolveLessonRoute: () => route,
+      compactRouteLabels: () => ({ desktop: 'Codex · coding agent', mobile: 'Codex' })
+    }
+  });
+  await controller.load();
+  await controller.openLesson('lesson-codex');
+  assert.equal(ui.nodes.get('schoolTeacherCopy').disabled, false);
+  assert.equal(ui.nodes.get('schoolTeacherOpen').disabled, true);
+  assert.equal(ui.nodes.get('schoolRouteCabinet').textContent, 'Codex');
+  assert.equal(ui.nodes.get('schoolRouteModel').textContent, 'выберите coding-модель вручную');
+  assert.equal(ui.nodes.get('schoolTeacherNote').textContent, 'Скопируйте промт и откройте Codex desktop вручную.');
 });
 
 test('school page cache-busts release candidate assets together', () => {

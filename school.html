@@ -216,11 +216,21 @@
         <div class="school-teacher-head">
           <div>
             <p class="school-section-kicker">Внешний диалог</p>
-            <h3 id="schoolTeacherTitle">Преподаватель</h3>
+            <h3 id="schoolTeacherTitle">Где проходит урок</h3>
           </div>
           <span id="schoolTeacherStatus"></span>
         </div>
         <p id="schoolTeacherLabel"></p>
+        <dl class="school-route-summary" id="schoolRouteSummary">
+          <div><dt>Кабинет</dt><dd id="schoolRouteCabinet"></dd></div>
+          <div><dt>Тип</dt><dd id="schoolRouteKind"></dd></div>
+          <div><dt>Преподаватель</dt><dd id="schoolRouteTeacher"></dd></div>
+          <div id="schoolRouteModelRow"><dt>Модель</dt><dd id="schoolRouteModel"></dd></div>
+          <div><dt>Формат</dt><dd id="schoolRouteFormat"></dd></div>
+          <div id="schoolRouteResourceRow"><dt>Ресурс</dt><dd id="schoolRouteResource"></dd></div>
+          <div id="schoolRouteReviewerRow"><dt>Проверяющий</dt><dd id="schoolRouteReviewer"></dd></div>
+        </dl>
+        <div class="school-route-warnings" id="schoolRouteWarnings" role="status"></div>
         <p class="school-teacher-note" id="schoolTeacherNote"></p>
         <div class="school-teacher-actions">
           <button class="is-primary" id="schoolTeacherPrimary" type="button">Посмотреть промт</button>

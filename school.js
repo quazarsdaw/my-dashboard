@@ -81,6 +81,58 @@
     }
   }
 
+  function routeDrawerRows(route) {
+    var item = isRecord(route) ? route : {};
+    var reviewer = isRecord(item.reviewer) ? item.reviewer : null;
+    var warnings = Array.isArray(item.warnings)
+      ? item.warnings.map(function (warning) {
+        return text(warning && warning.message);
+      }).filter(Boolean)
+      : [];
+    var kind = item.cabinetKind === 'permanent'
+      ? 'постоянный'
+      : item.cabinetKind === 'temporary'
+        ? 'временный'
+        : 'неизвестный';
+    var instruction = item.platform === 'Codex'
+      ? 'Скопируйте промт и откройте Codex desktop вручную.'
+      : item.platform === 'ChatGPT' && item.canOpenCabinet
+        ? 'Скопируйте промт и откройте постоянный кабинет преподавателя.'
+        : item.platform === 'ChatGPT'
+          ? 'Ссылка кабинета ещё не настроена. Промт можно скопировать вручную.'
+          : item.platform === 'None'
+            ? 'Выполните самостоятельную попытку; prompt остаётся доступен для проверки.'
+            : item.platform === 'Unknown'
+              ? 'Проверьте неизвестные значения маршрута. Открытие заблокировано.'
+              : 'Скопируйте промт. Автоматический запуск этого кабинета появится в PR 3.';
+    return {
+      cabinet: text(item.cabinetLabel),
+      kind: kind,
+      teacher: text(item.teacherLabel),
+      modelHint: text(item.modelHint),
+      format: text(item.format),
+      resource: text(item.resourceUrl),
+      reviewer: reviewer
+        ? [text(reviewer.cabinetLabel), text(reviewer.teacherLabel)].filter(Boolean).join(' · ')
+        : '',
+      warnings: warnings,
+      instruction: instruction
+    };
+  }
+
+  function teacherTargetForRoute(route) {
+    var chatGpt = route &&
+      route.platform === 'ChatGPT' &&
+      route.cabinetKind === 'permanent' &&
+      route.canOpenCabinet;
+    var url = chatGpt ? safeHttpsUrl(route.cabinetUrl) : null;
+    return {
+      configured: Boolean(url),
+      label: route ? text(route.teacherLabel) : 'Преподаватель',
+      url: url
+    };
+  }
+
   function copyPromptAndOpen(options) {
     options = isRecord(options) ? options : {};
     var runtime = options.runtime || root;
@@ -2556,18 +2608,7 @@
     }
 
     function teacherForLesson(lesson) {
-      if (!teacherBridge || typeof teacherBridge.resolveTeacher !== 'function') {
-        return { configured: false, label: 'Преподаватель', url: null };
-      }
-      var route = routeForLesson(lesson);
-      return teacherBridge.resolveTeacher(
-        route && route.platform === 'ChatGPT' && route.canOpenCabinet
-          ? {
-            label: route.teacherLabel,
-            url: route.cabinetUrl
-          }
-          : null
-      );
+      return teacherTargetForRoute(routeForLesson(lesson));
     }
 
     function getCurrentTeacherPrompt() {
@@ -2845,7 +2886,9 @@
       var section = byId('schoolTeacherSection');
       if (!section || !lesson || !teacherBridge) return;
       section.hidden = false;
-      var teacher = teacherForLesson(lesson);
+      var route = routeForLesson(lesson);
+      var rows = routeDrawerRows(route);
+      var teacher = teacherTargetForRoute(route);
       var active = lesson.status === 'В процессе';
       var finalized = FINAL_DIARY_STATUSES.indexOf(lesson.status) !== -1;
       var ready = currentContentLoaded && currentContentLessonId === lesson.id;
@@ -2854,16 +2897,34 @@
       byId('schoolTeacherStatus').textContent = active
         ? 'урок активен'
         : (finalized ? 'урок сохранён в дневнике' : 'предпросмотр');
-      byId('schoolTeacherNote').textContent = teacher.configured
-        ? (
-          active || finalized
-            ? 'Промт строится из текущей карточки и загруженного задания.'
-            : 'Начните урок, чтобы открыть постоянный диалог преподавателя.'
-        )
-        : (
-          'Ссылка преподавателя для этого предмета ещё не настроена. ' +
-          'Заполните ключ «' + lesson.subject + '» в school-teacher-config.js.'
-        );
+      var cabinet = byId('schoolRouteCabinet');
+      if (cabinet) cabinet.textContent = rows.cabinet;
+      var kind = byId('schoolRouteKind');
+      if (kind) kind.textContent = rows.kind;
+      var routeTeacher = byId('schoolRouteTeacher');
+      if (routeTeacher) routeTeacher.textContent = rows.teacher;
+      var model = byId('schoolRouteModel');
+      if (model) model.textContent = rows.modelHint;
+      var modelRow = byId('schoolRouteModelRow');
+      if (modelRow) modelRow.hidden = !rows.modelHint;
+      var format = byId('schoolRouteFormat');
+      if (format) format.textContent = rows.format;
+      var resource = byId('schoolRouteResource');
+      if (resource) resource.textContent = rows.resource;
+      var resourceRow = byId('schoolRouteResourceRow');
+      if (resourceRow) resourceRow.hidden = !rows.resource;
+      var reviewer = byId('schoolRouteReviewer');
+      if (reviewer) reviewer.textContent = rows.reviewer;
+      var reviewerRow = byId('schoolRouteReviewerRow');
+      if (reviewerRow) reviewerRow.hidden = !rows.reviewer;
+      var warnings = byId('schoolRouteWarnings');
+      clearNode(warnings);
+      if (warnings && documentRef) {
+        rows.warnings.forEach(function (message) {
+          warnings.appendChild(element(documentRef, 'p', '', message));
+        });
+      }
+      byId('schoolTeacherNote').textContent = rows.instruction;
       var primary = byId('schoolTeacherPrimary');
       primary.textContent = active || finalized
         ? (teacher.configured
@@ -3610,12 +3671,14 @@
     makeTimelineDragPreviewNodes: makeTimelineDragPreviewNodes,
     partitionDecisionItems: partitionDecisionItems,
     renderContentBlocks: renderContentBlocks,
+    routeDrawerRows: routeDrawerRows,
     safeHttpsUrl: safeHttpsUrl,
     selectTodayFocus: selectTodayFocus,
     setTransparentDragImage: setTransparentDragImage,
     syncAssessmentControlsForStatus: syncAssessmentControlsForStatus,
     timelineDragPreview: timelineDragPreview,
     timelineDestination: timelineDestination,
+    teacherTargetForRoute: teacherTargetForRoute,
     timelineDropDestination: timelineDropDestination
   });
 });

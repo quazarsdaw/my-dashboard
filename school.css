@@ -1172,6 +1172,37 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
   line-height: 1.5;
 }
 
+.school-route-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.school-route-summary > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--school-line);
+  border-radius: 10px;
+}
+
+.school-route-summary dt {
+  color: var(--school-text-3);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.school-route-summary dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.school-route-warnings { color: var(--school-warning); }
+
+@media (max-width: 760px) {
+  .school-route-summary { grid-template-columns: 1fr; }
+}
+
 .school-teacher-actions {
   display: flex;
   flex-wrap: wrap;
