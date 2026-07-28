@@ -307,7 +307,18 @@
     ].join('\n');
   }
 
-  function buildLessonTeacherPrompt(lesson, contentBlocks) {
+  function routeMetadata(route) {
+    var item = route && typeof route === 'object' ? route : {};
+    return [
+      text(item.cabinetLabel) ? 'CABINET: ' + text(item.cabinetLabel) : '',
+      text(item.teacherLabel) ? 'TEACHER: ' + text(item.teacherLabel) : '',
+      text(item.modelHint) ? 'MODEL_HINT: ' + text(item.modelHint) : '',
+      text(item.format) ? 'LESSON_FORMAT: ' + text(item.format) : '',
+      text(item.resourceUrl) ? 'RESOURCE: ' + text(item.resourceUrl) : ''
+    ].filter(Boolean);
+  }
+
+  function buildLessonTeacherPrompt(lesson, contentBlocks, route) {
     var item = lesson && typeof lesson === 'object' ? lesson : {};
     var lessonId = text(item.id);
     var metadata = [
@@ -320,7 +331,7 @@
         : '',
       'SCHEDULE: ' + formatSchedule(item.schedule),
       text(item.priority) ? 'PRIORITY: ' + text(item.priority) : ''
-    ].filter(Boolean).join('\n');
+    ].concat(routeMetadata(route)).filter(Boolean).join('\n');
     var assignment = contentBlocksToText(contentBlocks);
     var teacherRules = [
       'ПРАВИЛА ПРЕПОДАВАТЕЛЯ',

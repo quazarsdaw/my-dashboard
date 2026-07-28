@@ -131,6 +131,49 @@ test('prompt omits empty metadata and empty content sections', () => {
   assert.match(prompt, /\nЗАДАНИЕ\nПроверить запуск\./);
 });
 
+test('prompt includes resolved route metadata in a stable order', () => {
+  const prompt = SchoolTeacherBridge.buildLessonTeacherPrompt(
+    lesson(),
+    [],
+    {
+      cabinetLabel: 'Codex',
+      teacherLabel: 'Codex · coding agent',
+      modelHint: 'выберите coding-модель вручную',
+      format: 'Практическая лаборатория',
+      resourceUrl: 'https://example.com/project-context'
+    }
+  );
+
+  assert.match(
+    prompt,
+    /PRIORITY: Must\nCABINET: Codex\nTEACHER: Codex · coding agent\nMODEL_HINT: выберите coding-модель вручную\nLESSON_FORMAT: Практическая лаборатория\nRESOURCE: https:\/\/example\.com\/project-context/
+  );
+});
+
+test('prompt omits empty route metadata and keeps one unchanged result contract', () => {
+  const prompt = SchoolTeacherBridge.buildLessonTeacherPrompt(
+    lesson(),
+    [],
+    {
+      cabinetLabel: 'Самостоятельная практика',
+      teacherLabel: 'Самостоятельная работа',
+      modelHint: null,
+      format: 'Самостоятельная практика',
+      resourceUrl: null
+    }
+  );
+
+  assert.match(prompt, /^CABINET: Самостоятельная практика$/m);
+  assert.match(prompt, /^TEACHER: Самостоятельная работа$/m);
+  assert.doesNotMatch(prompt, /^MODEL_HINT:/m);
+  assert.doesNotMatch(prompt, /^RESOURCE:/m);
+  assert.equal(
+    prompt.split('=== LESSON RESULT ===').length - 1,
+    1
+  );
+  assert.match(prompt, /=== END LESSON RESULT ===/);
+});
+
 test('prompt recursively renders normalized blocks without raw notion data', () => {
   const prompt = SchoolTeacherBridge.buildLessonTeacherPrompt(lesson(), [
     richBlock('toggle', 'Подсказка', [
