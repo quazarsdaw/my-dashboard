@@ -10,6 +10,12 @@
     return typeof value === 'string' ? value.trim() : '';
   }
 
+  function ownValue(record, key) {
+    return record && Object.prototype.hasOwnProperty.call(record, key)
+      ? record[key]
+      : undefined;
+  }
+
   function overrideValue(override, key) {
     return override && text(override[key]) ? text(override[key]) : null;
   }
@@ -102,25 +108,37 @@
     });
   }
 
-  function reviewerFor(defaults, source) {
-    var cabinet = source.cabinets && source.cabinets[defaults.cabinetId];
-    var teacher = source.teachers && source.teachers[defaults.teacherId];
+  function reviewerFor(defaults, source, warnings) {
+    var cabinet = ownValue(source.cabinets, defaults.cabinetId);
+    var teacher = ownValue(source.teachers, defaults.teacherId);
     if (!cabinet || !teacher || text(cabinet.platform) !== 'ChatGPT') return null;
+    var rawUrl = text(cabinet.url);
+    var url = normalizeRouteUrl(rawUrl, HOSTS.ChatGPT);
+    if (!rawUrl) {
+      warnings.push(warning(
+        'missing-reviewer-url',
+        'Не задан URL проверяющего'
+      ));
+    } else if (!url) {
+      warnings.push(warning(
+        'invalid-reviewer-url',
+        'Некорректный URL проверяющего'
+      ));
+    }
     return Object.freeze({
       cabinetId: defaults.cabinetId,
       cabinetLabel: text(cabinet.label) || defaults.cabinetId,
       teacherId: defaults.teacherId,
       teacherLabel: text(teacher.label) || defaults.teacherId,
       modelHint: teacher && text(teacher.modelHint) || null,
-      url: normalizeRouteUrl(cabinet.url, HOSTS.ChatGPT)
+      url: url
     });
   }
 
   function resolveLessonRoute(lesson, config) {
     var item = lesson && typeof lesson === 'object' ? lesson : {};
     var source = config && typeof config === 'object' ? config : {};
-    var defaults = source.defaultsBySubject &&
-      source.defaultsBySubject[text(item.subject)] ||
+    var defaults = ownValue(source.defaultsBySubject, text(item.subject)) ||
       source.globalFallback || {};
     var override = item.routeOverride || {};
     var explicitCabinetId = overrideValue(override, 'cabinetId');
@@ -131,8 +149,8 @@
     var format = explicitFormat || text(defaults.format);
     var cabinets = source.cabinets || {};
     var teachers = source.teachers || {};
-    var cabinet = cabinets[cabinetId];
-    var teacher = teachers[teacherId];
+    var cabinet = ownValue(cabinets, cabinetId);
+    var teacher = ownValue(teachers, teacherId);
     var routeCabinet = resolveCabinet(cabinetId, cabinet);
     var routeTeacherLabel = teacher ? text(teacher.label) || teacherId : teacherId;
     var warnings = [];
@@ -206,7 +224,7 @@
     if (unknownOverride) canOpenCabinet = false;
 
     var reviewer = REVIEWER_PLATFORMS.indexOf(routeCabinet.platform) !== -1
-      ? reviewerFor(defaults, source)
+      ? reviewerFor(defaults, source, warnings)
       : null;
 
     return Object.freeze({

@@ -152,6 +152,19 @@ test('route uses self-study fallback for an unknown subject', () => {
   assert.equal(route.canOpenCabinet, false);
 });
 
+test('subject prototype keys use the global fallback', () => {
+  const config = loadConfig().SchoolLearningConfig;
+
+  ['toString', 'constructor', '__proto__'].forEach((subject) => {
+    const route = SchoolLearningRoute.resolveLessonRoute({ subject }, config);
+
+    assert.equal(route.cabinetId, 'self-study', subject);
+    assert.equal(route.teacherId, 'self-study', subject);
+    assert.equal(route.format, 'Самостоятельная практика', subject);
+    assert.equal(route.canOpenCabinet, false, subject);
+  });
+});
+
 test('known overrides replace fields independently and keep permanent resource supplementary', () => {
   const config = configWithUrls({
     'chatgpt-software': 'https://chatgpt.com/g/software'
@@ -341,6 +354,38 @@ test('unknown route values remain visible for correction', () => {
   assert.equal(route.format, 'Неизвестный формат');
 });
 
+test('prototype cabinet and teacher overrides stay unknown and cannot open', () => {
+  const config = configWithUrls({
+    'chatgpt-software': 'https://chatgpt.com/g/software'
+  });
+  const cases = [];
+  ['toString', 'constructor', '__proto__'].forEach((value) => {
+    cases.push(['cabinetId', value, 'unknown-cabinet']);
+    cases.push(['teacherId', value, 'unknown-teacher']);
+  });
+
+  cases.forEach(([field, value, warningCode]) => {
+    const route = SchoolLearningRoute.resolveLessonRoute({
+      subject: 'Software Engineering',
+      routeOverride: {
+        cabinetId: null,
+        teacherId: null,
+        format: null,
+        resourceUrl: null,
+        [field]: value
+      }
+    }, config);
+
+    assert.equal(route[field], value, `${field} ${value}`);
+    assert.equal(route.canOpenCabinet, false, `${field} ${value}`);
+    assert.equal(
+      route.warnings.some((item) => item.code === warningCode),
+      true,
+      `${field} ${value}`
+    );
+  });
+});
+
 test('external study route gets the subject ChatGPT reviewer', () => {
   const config = configWithUrls({
     'chatgpt-english': 'https://chatgpt.com/g/english'
@@ -366,6 +411,109 @@ test('external study route gets the subject ChatGPT reviewer', () => {
   assert.deepEqual(SchoolLearningRoute.compactRouteLabels(route), {
     desktop: 'YouTube · автор материала',
     mobile: 'YouTube'
+  });
+});
+
+test('external routes warn when the subject reviewer url is missing', () => {
+  const config = loadConfig().SchoolLearningConfig;
+  const cases = [
+    ['youtube', 'Видео + retrieval', 'https://youtu.be/abc'],
+    ['book-pdf', 'Чтение + retrieval', 'https://example.com/book.pdf'],
+    ['documentation', 'Чтение + retrieval', 'https://docs.example.com/guide']
+  ];
+
+  cases.forEach(([cabinetId, format, resourceUrl]) => {
+    const route = SchoolLearningRoute.resolveLessonRoute({
+      subject: 'Software Engineering',
+      routeOverride: {
+        cabinetId,
+        teacherId: 'material-author',
+        format,
+        resourceUrl
+      }
+    }, config);
+
+    assert.equal(route.reviewer.cabinetId, 'chatgpt-software', cabinetId);
+    assert.equal(route.reviewer.teacherId, 'chatgpt-main', cabinetId);
+    assert.equal(route.reviewer.url, null, cabinetId);
+    assert.equal(
+      route.warnings.some((item) => item.code === 'missing-reviewer-url'),
+      true,
+      cabinetId
+    );
+  });
+});
+
+test('external routes reject an invalid reviewer url without exposing it', () => {
+  const invalidUrl = 'https://chatgpt.com.attacker.example/reviewer';
+  const config = configWithUrls({ 'chatgpt-software': invalidUrl });
+  const cases = [
+    ['youtube', 'Видео + retrieval', 'https://youtu.be/abc'],
+    ['book-pdf', 'Чтение + retrieval', 'https://example.com/book.pdf'],
+    ['documentation', 'Чтение + retrieval', 'https://docs.example.com/guide']
+  ];
+
+  cases.forEach(([cabinetId, format, resourceUrl]) => {
+    const route = SchoolLearningRoute.resolveLessonRoute({
+      subject: 'Software Engineering',
+      routeOverride: {
+        cabinetId,
+        teacherId: 'material-author',
+        format,
+        resourceUrl
+      }
+    }, config);
+
+    assert.equal(route.reviewer.cabinetId, 'chatgpt-software', cabinetId);
+    assert.equal(route.reviewer.teacherId, 'chatgpt-main', cabinetId);
+    assert.equal(route.reviewer.url, null, cabinetId);
+    assert.equal(
+      route.warnings.some((item) => item.code === 'invalid-reviewer-url'),
+      true,
+      cabinetId
+    );
+    assert.equal(
+      route.warnings.some((item) => item.message.includes(invalidUrl)),
+      false,
+      cabinetId
+    );
+  });
+});
+
+test('external routes accept a valid reviewer url without reviewer warnings', () => {
+  const config = configWithUrls({
+    'chatgpt-software': 'https://chatgpt.com/g/software'
+  });
+  const cases = [
+    ['youtube', 'Видео + retrieval', 'https://youtu.be/abc'],
+    ['book-pdf', 'Чтение + retrieval', 'https://example.com/book.pdf'],
+    ['documentation', 'Чтение + retrieval', 'https://docs.example.com/guide']
+  ];
+
+  cases.forEach(([cabinetId, format, resourceUrl]) => {
+    const route = SchoolLearningRoute.resolveLessonRoute({
+      subject: 'Software Engineering',
+      routeOverride: {
+        cabinetId,
+        teacherId: 'material-author',
+        format,
+        resourceUrl
+      }
+    }, config);
+
+    assert.equal(
+      route.reviewer.url,
+      'https://chatgpt.com/g/software',
+      cabinetId
+    );
+    assert.equal(
+      route.warnings.some((item) => (
+        item.code === 'missing-reviewer-url' ||
+        item.code === 'invalid-reviewer-url'
+      )),
+      false,
+      cabinetId
+    );
   });
 });
 
