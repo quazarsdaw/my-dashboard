@@ -701,7 +701,7 @@ test('school page cache-busts release candidate assets together', () => {
   const html = read('school.html');
   assert.ok(html.includes('school-core.js?v=6'));
   assert.ok(html.includes('school.css?v=10'));
-  assert.ok(html.includes('school-teacher-config.js?v=1'));
+  assert.ok(html.includes('school-teacher-config.js?v=2'));
   assert.ok(html.includes('school-teacher-bridge.js?v=1'));
   assert.ok(html.includes('school.js?v=10'));
 });
