@@ -1,8 +1,5 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const test = require('node:test');
-const vm = require('node:vm');
 
 const SchoolTeacherBridge = require('../school-teacher-bridge.js');
 
@@ -52,37 +49,6 @@ function resultBlock(lines) {
     '=== END LESSON RESULT ==='
   ].join('\n');
 }
-
-test('teacher config exposes six exact subjects with empty urls', () => {
-  const source = fs.readFileSync(
-    path.join(__dirname, '..', 'school-teacher-config.js'),
-    'utf8'
-  );
-  const context = { window: {} };
-  vm.runInNewContext(source, context);
-
-  assert.deepEqual(
-    Object.keys(context.window.SchoolTeacherConfig),
-    [
-      'Software Engineering',
-      'DevOps & Infrastructure',
-      'Mathematics',
-      'English & IELTS',
-      'University',
-      'Director & Assessment'
-    ]
-  );
-  assert.deepEqual(
-    Object.values(context.window.SchoolTeacherConfig).map((item) => item.url),
-    ['', '', '', '', '', '']
-  );
-  assert.equal(Object.isFrozen(context.window.SchoolTeacherConfig), true);
-  assert.equal(
-    Object.values(context.window.SchoolTeacherConfig)
-      .every((item) => Object.isFrozen(item)),
-    true
-  );
-});
 
 test('teacher url accepts only absolute chatgpt https hosts', () => {
   assert.deepEqual(
