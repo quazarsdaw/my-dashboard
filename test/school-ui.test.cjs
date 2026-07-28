@@ -21,14 +21,16 @@ function assertSchoolAssetContract(html) {
   const expectedScripts = [
     'profile-theme.js?v=401',
     'topbar.js?v=403',
-    'supabase-sync.js?v=406-sb',
+    'supabase-sync.js?v=407-sb',
     'school-core.js?v=6',
     'school-api.js',
-    'school-teacher-config.js?v=2',
+    'school-teacher-config.js?v=3',
     'school-learning-route.js?v=1',
+    'school-cabinet-settings.js?v=1',
+    'school-cabinet-settings-store.js?v=1',
     'school-teacher-bridge.js?v=2',
     'school-mutation-queue.js?v=1',
-    'school.js?v=11'
+    'school.js?v=12'
   ];
   const scripts = Array.from(html.matchAll(/<script\b[^>]*>/g), (match) =>
     htmlAttribute(match[0], 'src')
@@ -41,6 +43,14 @@ function assertSchoolAssetContract(html) {
   assert.ok(html.includes('<body data-page="school">'));
   assert.deepEqual(stylesheets, ['school.css?v=11']);
   assert.deepEqual(scripts, expectedScripts);
+  assert.ok(html.includes('id="schoolSettingsOpen"'));
+  assert.ok(html.includes('aria-label="Настройки школы"'));
+  assert.ok(html.includes('id="schoolSettingsDialog"'));
+  assert.ok(html.includes('id="schoolSettingsForm"'));
+  assert.equal(
+    Array.from(html.matchAll(/data-school-cabinet-id=/g)).length,
+    12
+  );
 }
 
 function fakeDocument() {
