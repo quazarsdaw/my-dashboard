@@ -287,6 +287,27 @@ test('all primary pages load the soft profile theme before topbar', () => {
   });
 });
 
+test('school cabinet settings keep standard controls usable on touch screens', () => {
+  const html = read('school.html');
+  const css = read('school.css');
+
+  assert.ok(html.includes('aria-modal="true"'));
+  assert.ok(html.includes('id="schoolSettingsStatus"'));
+  assert.ok(html.includes('aria-live="polite"'));
+  assert.match(
+    css,
+    /\.school-settings-actions button[\s\S]*?min-height:\s*44px/
+  );
+  assert.match(
+    css,
+    /@media\s*\(pointer:\s*coarse\)[\s\S]*?\.school-settings-row button/
+  );
+  assert.match(
+    css,
+    /\.school-settings-row input\s*\{[^}]*min-width:\s*0/
+  );
+});
+
 test('topbar uses soft theme variables without owning page background', () => {
   const topbar = read('topbar.js');
 

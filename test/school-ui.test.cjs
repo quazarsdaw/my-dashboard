@@ -42,7 +42,7 @@ function assertSchoolAssetContract(html) {
     .filter(Boolean);
 
   assert.ok(html.includes('<body data-page="school">'));
-  assert.deepEqual(stylesheets, ['school.css?v=11']);
+  assert.deepEqual(stylesheets, ['school.css?v=12']);
   assert.deepEqual(scripts, expectedScripts);
   assert.ok(html.includes('id="schoolSettingsOpen"'));
   assert.ok(html.includes('aria-label="Настройки школы"'));
@@ -1810,6 +1810,26 @@ test('school layout keeps mobile targets accessible and document overflow contai
   assert.ok(css.includes('.school-mobile-days'));
   assert.ok(css.includes('.school-drawer'));
   assert.match(css, /\.school-time-card\s*\{[^}]*min-height:\s*44px/s);
+});
+
+test('school settings drawer is responsive accessible and overflow safe', () => {
+  const css = read('school.css');
+
+  assert.match(
+    css,
+    /\.school-settings-open\s*\{[\s\S]*?min-width:\s*44px/
+  );
+  assert.match(css, /\.school-settings-drawer\s*\{/);
+  assert.match(css, /\.school-settings-row\s*\{/);
+  assert.match(css, /\.school-settings-field-state\.is-error\s*\{/);
+  assert.match(
+    css,
+    /@media\s*\(max-width:\s*640px\)[\s\S]*?\.school-settings-drawer/
+  );
+  assert.doesNotMatch(
+    css,
+    /\.school-settings-row[^}]*overflow-x:\s*visible/
+  );
 });
 
 test('shared navigation places school between tracker and menu in eight columns', () => {
