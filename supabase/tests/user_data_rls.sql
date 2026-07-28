@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public;
 
-select plan(30);
+select plan(32);
 
 select has_table(
   'public',
@@ -159,6 +159,29 @@ values
   ('11111111-1111-4111-8111-111111111111', 'owner-seed', 'owner'),
   ('22222222-2222-4222-8222-222222222222', 'foreign-seed', 'foreign')
 on conflict (user_id, key) do update set value = excluded.value;
+
+select ok(
+  (
+    select updated_at > '2026-01-01'::timestamptz
+    from public.user_data
+    where user_id = '11111111-1111-4111-8111-111111111111'
+      and key = 'owner-seed'
+  ),
+  'insert receives a server timestamp'
+);
+update public.user_data
+set updated_at = '2000-01-01'::timestamptz
+where user_id = '11111111-1111-4111-8111-111111111111'
+  and key = 'owner-seed';
+select ok(
+  (
+    select updated_at > '2026-01-01'::timestamptz
+    from public.user_data
+    where user_id = '11111111-1111-4111-8111-111111111111'
+      and key = 'owner-seed'
+  ),
+  'update replaces a client timestamp with a server timestamp'
+);
 
 set local role authenticated;
 select set_config(

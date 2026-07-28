@@ -14,7 +14,7 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  new.updated_at = now();
+  new.updated_at = clock_timestamp();
   return new;
 end;
 $$;

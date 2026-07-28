@@ -24,12 +24,6 @@
     return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
   }
 
-  function timestamp(value) {
-    if (!value) return null;
-    var parsed = new Date(value).getTime();
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
   function create(options) {
     options = options || {};
     var settingsCore = options.settingsCore ||
@@ -67,9 +61,12 @@
     var destroyed = false;
     var operationGeneration = 0;
     var liveRevision = 0;
-    var serverVersionAt = null;
     var channelUserId = null;
     var channelReadyPromise = null;
+    var loadInProgress = 0;
+    var saveInProgress = 0;
+    var realtimeRefreshScheduled = false;
+    var realtimeRefreshRequested = false;
     var state = {
       status: 'idle',
       userId: null,
@@ -146,7 +143,7 @@
     function resetForAuthChange(shouldNotify) {
       operationGeneration += 1;
       liveRevision += 1;
-      serverVersionAt = null;
+      realtimeRefreshRequested = false;
       stopRealtime();
       replaceState({
         status: 'idle',
@@ -234,7 +231,6 @@
 
     function applyParsed(userId, parsed, updatedAt, source) {
       liveRevision += 1;
-      observeServerVersion(updatedAt);
       writeCache(userId, parsed.settings, updatedAt);
       return replaceState({
         status: 'ready',
@@ -261,16 +257,6 @@
       channelReadyPromise = null;
     }
 
-    function observeServerVersion(value) {
-      var nextVersion = timestamp(value);
-      if (
-        nextVersion !== null &&
-        (serverVersionAt === null || nextVersion > serverVersionAt)
-      ) {
-        serverVersionAt = nextVersion;
-      }
-    }
-
     function stopAuthWatch() {
       if (
         authSubscription &&
@@ -285,6 +271,34 @@
     function scheduleAuthLoad() {
       Promise.resolve().then(function () {
         if (destroyed) return;
+        load().catch(function () {
+          if (!destroyed) notify();
+        });
+      });
+    }
+
+    function scheduleRealtimeRefresh() {
+      realtimeRefreshRequested = true;
+      if (
+        destroyed ||
+        loadInProgress > 0 ||
+        saveInProgress > 0 ||
+        realtimeRefreshScheduled
+      ) {
+        return;
+      }
+      realtimeRefreshScheduled = true;
+      Promise.resolve().then(function () {
+        realtimeRefreshScheduled = false;
+        if (
+          destroyed ||
+          !realtimeRefreshRequested ||
+          !state.userId
+        ) {
+          realtimeRefreshRequested = false;
+          return;
+        }
+        realtimeRefreshRequested = false;
         load().catch(function () {
           if (!destroyed) notify();
         });
@@ -331,41 +345,8 @@
         return;
       }
 
-      var incomingVersion = timestamp(
-        payload.commit_timestamp || row.updated_at
-      );
-      if (
-        incomingVersion !== null &&
-        serverVersionAt !== null &&
-        incomingVersion <= serverVersionAt
-      ) {
-        return;
-      }
-      var updatedAt = row.updated_at || payload.commit_timestamp || null;
-      observeServerVersion(payload.commit_timestamp || updatedAt);
-
-      if (isDelete) {
-        liveRevision += 1;
-        removeCache(state.userId);
-        replaceState({
-          status: 'ready',
-          settings: emptySettings(),
-          updatedAt: updatedAt,
-          source: 'realtime',
-          warning: null,
-          error: null
-        }, true);
-        return;
-      }
-
-      var parsed = settingsCore.parseStoredValue(row.value);
-      if (parsed.warning) {
-        replaceState({
-          warning: parsed.warning
-        }, true);
-        return;
-      }
-      applyParsed(state.userId, parsed, updatedAt, 'realtime');
+      liveRevision += 1;
+      scheduleRealtimeRefresh();
     }
 
     function startRealtime(client, userId) {
@@ -431,7 +412,7 @@
       return channelReadyPromise;
     }
 
-    async function load() {
+    async function performLoad() {
       destroyed = false;
       var requestGeneration = ++operationGeneration;
       replaceState({ status: 'loading', error: null }, false);
@@ -536,7 +517,6 @@
         removeCache(userId);
       }
       liveRevision += 1;
-      observeServerVersion(result.data.updated_at);
       replaceState({
         status: 'ready',
         userId: userId,
@@ -552,7 +532,17 @@
       return getState();
     }
 
-    async function save(draft) {
+    function load() {
+      loadInProgress += 1;
+      return performLoad().finally(function () {
+        loadInProgress = Math.max(0, loadInProgress - 1);
+        if (loadInProgress === 0 && realtimeRefreshRequested) {
+          scheduleRealtimeRefresh();
+        }
+      });
+    }
+
+    async function performSave(draft) {
       var validation = settingsCore.validateDraft(draft);
       if (!validation.valid) {
         throw storeError('VALIDATION_ERROR', 'проверьте ссылки');
@@ -608,7 +598,7 @@
       }
 
       await ensureSameAuth(userId);
-      if (operationGeneration !== saveGeneration) {
+      if (state.userId !== userId) {
         throw storeError('AUTH_CHANGED', 'аккаунт изменился во время запроса');
       }
       var savedRow = result.data || row;
@@ -633,6 +623,16 @@
       return nextState;
     }
 
+    function save(draft) {
+      saveInProgress += 1;
+      return performSave(draft).finally(function () {
+        saveInProgress = Math.max(0, saveInProgress - 1);
+        if (saveInProgress === 0 && realtimeRefreshRequested) {
+          scheduleRealtimeRefresh();
+        }
+      });
+    }
+
     function subscribe(listener) {
       if (typeof listener !== 'function') {
         throw new TypeError('listener must be a function');
@@ -647,6 +647,7 @@
     function destroy() {
       destroyed = true;
       operationGeneration += 1;
+      realtimeRefreshRequested = false;
       stopRealtime();
       stopAuthWatch();
       listeners = [];
