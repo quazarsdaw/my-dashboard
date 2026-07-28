@@ -50,13 +50,15 @@
         setTimeout(resolve, milliseconds);
       });
     };
-    var now = options.now || function () {
-      return new Date();
-    };
     var listeners = [];
     var channel = null;
     var channelClient = null;
+    var authSubscription = null;
+    var authClient = null;
     var destroyed = false;
+    var operationGeneration = 0;
+    var liveRevision = 0;
+    var lastRealtimeCommitAt = null;
     var state = {
       status: 'idle',
       userId: null,
@@ -130,16 +132,20 @@
       );
     }
 
-    function resetForAuthChange() {
+    function resetForAuthChange(shouldNotify) {
+      operationGeneration += 1;
+      liveRevision += 1;
+      lastRealtimeCommitAt = null;
+      stopRealtime();
       replaceState({
         status: 'idle',
         userId: null,
         settings: emptySettings(),
         updatedAt: null,
-        source: 'empty',
+        source: 'auth',
         warning: null,
         error: null
-      }, false);
+      }, Boolean(shouldNotify));
     }
 
     async function ensureSameAuth(expectedUserId) {
@@ -147,14 +153,14 @@
       try {
         current = await authContext();
       } catch (error) {
-        resetForAuthChange();
+        resetForAuthChange(true);
         if (error && error.code === 'UNAUTHORIZED') {
           throw storeError('AUTH_CHANGED', 'аккаунт изменился во время запроса');
         }
         throw error;
       }
       if (!current.user || current.user.id !== expectedUserId) {
-        resetForAuthChange();
+        resetForAuthChange(true);
         throw storeError('AUTH_CHANGED', 'аккаунт изменился во время запроса');
       }
       return current;
@@ -215,15 +221,8 @@
       }
     }
 
-    function isNewer(updatedAt) {
-      var incoming = timestamp(updatedAt);
-      var current = timestamp(state.updatedAt);
-      if (incoming === null) return current === null;
-      if (current === null) return true;
-      return incoming > current;
-    }
-
     function applyParsed(userId, parsed, updatedAt, source) {
+      liveRevision += 1;
       writeCache(userId, parsed.settings, updatedAt);
       return replaceState({
         status: 'ready',
@@ -248,6 +247,54 @@
       channelClient = null;
     }
 
+    function stopAuthWatch() {
+      if (
+        authSubscription &&
+        typeof authSubscription.unsubscribe === 'function'
+      ) {
+        authSubscription.unsubscribe();
+      }
+      authSubscription = null;
+      authClient = null;
+    }
+
+    function scheduleAuthLoad() {
+      Promise.resolve().then(function () {
+        if (destroyed) return;
+        load().catch(function () {
+          if (!destroyed) notify();
+        });
+      });
+    }
+
+    function startAuthWatch(client) {
+      if (
+        destroyed ||
+        !client ||
+        !client.auth ||
+        typeof client.auth.onAuthStateChange !== 'function' ||
+        authClient === client
+      ) {
+        return;
+      }
+      stopAuthWatch();
+      authClient = client;
+      var result = client.auth.onAuthStateChange(function (_event, session) {
+        if (destroyed) return;
+        var nextUserId = session && session.user && session.user.id
+          ? session.user.id
+          : null;
+        if (nextUserId && nextUserId === state.userId) return;
+        resetForAuthChange(true);
+        if (nextUserId) scheduleAuthLoad();
+      });
+      authSubscription = result &&
+        result.data &&
+        result.data.subscription
+        ? result.data.subscription
+        : null;
+    }
+
     function handleRealtime(payload) {
       if (destroyed || !payload || !state.userId) return;
       var isDelete = payload.eventType === 'DELETE';
@@ -260,10 +307,21 @@
         return;
       }
 
+      var commitTimestamp = timestamp(payload.commit_timestamp);
+      if (
+        commitTimestamp !== null &&
+        lastRealtimeCommitAt !== null &&
+        commitTimestamp <= lastRealtimeCommitAt
+      ) {
+        return;
+      }
+      if (commitTimestamp !== null) {
+        lastRealtimeCommitAt = commitTimestamp;
+      }
       var updatedAt = row.updated_at || payload.commit_timestamp || null;
-      if (!isNewer(updatedAt)) return;
 
       if (isDelete) {
+        liveRevision += 1;
         removeCache(state.userId);
         replaceState({
           status: 'ready',
@@ -309,13 +367,14 @@
 
     async function load() {
       destroyed = false;
+      var requestGeneration = ++operationGeneration;
       replaceState({ status: 'loading', error: null }, false);
 
       var auth;
       try {
         auth = await authContext();
       } catch (error) {
-        resetForAuthChange();
+        resetForAuthChange(true);
         replaceState({
           status: 'error',
           error: safeError(
@@ -327,17 +386,22 @@
       }
 
       var userId = auth.user.id;
+      if (requestGeneration !== operationGeneration) {
+        throw storeError('AUTH_CHANGED', 'аккаунт изменился во время запроса');
+      }
+      var sameUser = state.userId === userId;
       replaceState({
         status: 'loading',
         userId: userId,
-        settings: emptySettings(),
-        updatedAt: null,
-        source: 'empty',
+        settings: sameUser ? state.settings : emptySettings(),
+        updatedAt: sameUser ? state.updatedAt : null,
+        source: sameUser ? state.source : 'empty',
         warning: null,
         error: null
       }, false);
+      startAuthWatch(auth.client);
 
-      var cached = readCache(userId);
+      var cached = sameUser ? null : readCache(userId);
       if (cached) {
         replaceState({
           status: 'loading',
@@ -346,6 +410,7 @@
           source: 'cache'
         }, true);
       }
+      var revisionBeforeSelect = liveRevision;
 
       var result;
       try {
@@ -360,6 +425,9 @@
       }
 
       await ensureSameAuth(userId);
+      if (requestGeneration !== operationGeneration) {
+        throw storeError('AUTH_CHANGED', 'аккаунт изменился во время запроса');
+      }
 
       if (!result || result.error) {
         var loadError = storeError(
@@ -373,7 +441,14 @@
         throw loadError;
       }
 
+      if (liveRevision !== revisionBeforeSelect && state.userId === userId) {
+        replaceState({ status: 'ready', error: null }, false);
+        startRealtime(auth.client, userId);
+        return getState();
+      }
+
       if (!result.data) {
+        liveRevision += 1;
         removeCache(userId);
         replaceState({
           status: 'ready',
@@ -388,24 +463,11 @@
         return getState();
       }
 
-      if (
-        state.source === 'cache' &&
-        state.updatedAt &&
-        result.data.updated_at &&
-        !isNewer(result.data.updated_at)
-      ) {
-        replaceState({
-          status: 'ready',
-          error: null
-        }, false);
-        startRealtime(auth.client, userId);
-        return getState();
-      }
-
       var parsed = settingsCore.parseStoredValue(result.data.value);
       if (parsed.warning) {
         removeCache(userId);
       }
+      liveRevision += 1;
       replaceState({
         status: 'ready',
         userId: userId,
@@ -430,6 +492,13 @@
 
       var auth = await authContext();
       var userId = auth.user.id;
+      if (state.userId !== userId || state.status !== 'ready') {
+        throw storeError(
+          'SETTINGS_NOT_READY',
+          'настройки текущего аккаунта ещё не загружены'
+        );
+      }
+      var saveGeneration = operationGeneration;
       var confirmedState = getState();
       replaceState({
         status: 'saving',
@@ -437,12 +506,10 @@
         error: null
       }, false);
 
-      var updatedAt = now().toISOString();
       var row = {
         user_id: userId,
         key: settingsCore.REMOTE_KEY,
-        value: settingsCore.serialize(validation.settings),
-        updated_at: updatedAt
+        value: settingsCore.serialize(validation.settings)
       };
       var result;
       try {
@@ -460,14 +527,22 @@
           'SAVE_FAILED',
           'не удалось сохранить настройки кабинетов'
         );
-        state = Object.assign({}, confirmedState, {
-          status: 'error',
-          error: safeError(saveError.code, saveError.message)
-        });
+        if (
+          state.userId === userId &&
+          operationGeneration === saveGeneration
+        ) {
+          state = Object.assign({}, confirmedState, {
+            status: 'error',
+            error: safeError(saveError.code, saveError.message)
+          });
+        }
         throw saveError;
       }
 
       await ensureSameAuth(userId);
+      if (operationGeneration !== saveGeneration) {
+        throw storeError('AUTH_CHANGED', 'аккаунт изменился во время запроса');
+      }
       var savedRow = result.data || row;
       var parsed = settingsCore.parseStoredValue(savedRow.value);
       if (parsed.warning) {
@@ -484,7 +559,7 @@
         );
       }
 
-      var savedAt = savedRow.updated_at || updatedAt;
+      var savedAt = savedRow.updated_at || null;
       var nextState = applyParsed(userId, parsed, savedAt, 'save');
       startRealtime(auth.client, userId);
       return nextState;
@@ -503,7 +578,9 @@
 
     function destroy() {
       destroyed = true;
+      operationGeneration += 1;
       stopRealtime();
+      stopAuthWatch();
       listeners = [];
     }
 

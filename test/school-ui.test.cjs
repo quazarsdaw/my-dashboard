@@ -27,11 +27,11 @@ function assertSchoolAssetContract(html) {
     'school-api.js',
     'school-teacher-config.js?v=3',
     'school-learning-route.js?v=1',
-    'school-cabinet-settings.js?v=1',
-    'school-cabinet-settings-store.js?v=1',
+    'school-cabinet-settings.js?v=2',
+    'school-cabinet-settings-store.js?v=2',
     'school-teacher-bridge.js?v=2',
     'school-mutation-queue.js?v=1',
-    'school.js?v=12'
+    'school.js?v=13'
   ];
   const scripts = Array.from(html.matchAll(/<script\b[^>]*>/g), (match) =>
     htmlAttribute(match[0], 'src')
@@ -739,6 +739,42 @@ test('remote settings never overwrite a dirty drawer without a choice', () => {
   assert.equal(app.nodes.get('schoolSettingsRemoteNotice').hidden, true);
 });
 
+test('account change closes a dirty drawer and removes the previous account urls', () => {
+  const app = settingsControllerHarness();
+  app.controller.openSettings();
+  app.controller.updateCabinetSettingsDraft(
+    'chatgpt-software',
+    'https://chatgpt.com/g/account-a-draft'
+  );
+
+  app.controller.receiveCabinetSettingsState({
+    status: 'idle',
+    userId: null,
+    settings: { version: 1, cabinets: {} },
+    updatedAt: null,
+    source: 'auth',
+    warning: null,
+    error: null,
+  });
+
+  assert.equal(app.nodes.get('schoolSettingsDialog').hidden, true);
+  assert.equal(app.nodes.get('schoolCabinetSoftware').value, '');
+  assert.equal(app.controller.getCabinetSettingsUiState().dirty, false);
+});
+
+test('teacher target revalidates the final ChatGPT hostname', () => {
+  const target = SchoolUi.teacherTargetForRoute({
+    platform: 'ChatGPT',
+    cabinetKind: 'permanent',
+    canOpenCabinet: true,
+    cabinetUrl: 'https://evil.example/g/copied-route',
+    teacherLabel: 'Преподаватель',
+  });
+
+  assert.equal(target.configured, false);
+  assert.equal(target.url, null);
+});
+
 test('closing settings restores focus to the gear button', async () => {
   const app = settingsControllerHarness();
   const open = app.nodes.get('schoolSettingsOpen');
@@ -782,8 +818,8 @@ test('school page loads the coherent read-only school release set in dependency 
 
 test('school page cache contract rejects a legacy duplicate asset', () => {
   const legacyDuplicate = read('school.html').replace(
-    '  <script src="school.js?v=12" defer></script>',
-    '  <script src="school.js?v=11" defer></script>\n  <script src="school.js?v=12" defer></script>'
+    '  <script src="school.js?v=13" defer></script>',
+    '  <script src="school.js?v=12" defer></script>\n  <script src="school.js?v=13" defer></script>'
   );
 
   assert.throws(() => assertSchoolAssetContract(legacyDuplicate));
@@ -791,8 +827,8 @@ test('school page cache contract rejects a legacy duplicate asset', () => {
 
 test('school page cache contract rejects a single-quoted legacy duplicate asset', () => {
   const legacyDuplicate = read('school.html').replace(
-    '  <script src="school.js?v=12" defer></script>',
-    "  <script src='school.js?v=11' defer></script>\n  <script src=\"school.js?v=12\" defer></script>"
+    '  <script src="school.js?v=13" defer></script>',
+    "  <script src='school.js?v=12' defer></script>\n  <script src=\"school.js?v=13\" defer></script>"
   );
 
   assert.throws(() => assertSchoolAssetContract(legacyDuplicate));

@@ -18,11 +18,11 @@
   <script src="school-api.js" defer></script>
   <script src="school-teacher-config.js?v=3" defer></script>
   <script src="school-learning-route.js?v=1" defer></script>
-  <script src="school-cabinet-settings.js?v=1" defer></script>
-  <script src="school-cabinet-settings-store.js?v=1" defer></script>
+  <script src="school-cabinet-settings.js?v=2" defer></script>
+  <script src="school-cabinet-settings-store.js?v=2" defer></script>
   <script src="school-teacher-bridge.js?v=2" defer></script>
   <script src="school-mutation-queue.js?v=1" defer></script>
-  <script src="school.js?v=12" defer></script>
+  <script src="school.js?v=13" defer></script>
 </head>
 <body data-page="school">
   <main class="school-page" id="schoolApp" aria-busy="true">
@@ -139,7 +139,7 @@
         <p>Выберите, какие значения оставить в открытой форме.</p>
         <div>
           <button id="schoolSettingsUseRemote" type="button">Применить новые</button>
-          <button id="schoolSettingsKeepDraft" type="button">Оставить мои</button>
+          <button id="schoolSettingsKeepDraft" type="button">Продолжить редактирование</button>
         </div>
       </section>
 
@@ -147,7 +147,7 @@
         <div class="school-settings-row">
           <label for="schoolCabinetSoftware">Software Engineering</label>
           <input id="schoolCabinetSoftware" type="url" inputmode="url"
-            autocomplete="url" maxlength="2048"
+            autocomplete="url"
             data-school-cabinet-id="chatgpt-software"
             aria-describedby="schoolCabinetSoftwareState">
           <span id="schoolCabinetSoftwareState"
@@ -159,7 +159,7 @@
         <div class="school-settings-row">
           <label for="schoolCabinetDevOps">DevOps &amp; Infrastructure</label>
           <input id="schoolCabinetDevOps" type="url" inputmode="url"
-            autocomplete="url" maxlength="2048"
+            autocomplete="url"
             data-school-cabinet-id="chatgpt-devops"
             aria-describedby="schoolCabinetDevOpsState">
           <span id="schoolCabinetDevOpsState"
@@ -171,7 +171,7 @@
         <div class="school-settings-row">
           <label for="schoolCabinetMathematics">Mathematics</label>
           <input id="schoolCabinetMathematics" type="url" inputmode="url"
-            autocomplete="url" maxlength="2048"
+            autocomplete="url"
             data-school-cabinet-id="chatgpt-mathematics"
             aria-describedby="schoolCabinetMathematicsState">
           <span id="schoolCabinetMathematicsState"
@@ -183,7 +183,7 @@
         <div class="school-settings-row">
           <label for="schoolCabinetEnglish">English &amp; IELTS</label>
           <input id="schoolCabinetEnglish" type="url" inputmode="url"
-            autocomplete="url" maxlength="2048"
+            autocomplete="url"
             data-school-cabinet-id="chatgpt-english"
             aria-describedby="schoolCabinetEnglishState">
           <span id="schoolCabinetEnglishState"
@@ -195,7 +195,7 @@
         <div class="school-settings-row">
           <label for="schoolCabinetUniversity">University</label>
           <input id="schoolCabinetUniversity" type="url" inputmode="url"
-            autocomplete="url" maxlength="2048"
+            autocomplete="url"
             data-school-cabinet-id="chatgpt-university"
             aria-describedby="schoolCabinetUniversityState">
           <span id="schoolCabinetUniversityState"
@@ -207,7 +207,7 @@
         <div class="school-settings-row">
           <label for="schoolCabinetDirector">Director &amp; Assessment</label>
           <input id="schoolCabinetDirector" type="url" inputmode="url"
-            autocomplete="url" maxlength="2048"
+            autocomplete="url"
             data-school-cabinet-id="chatgpt-director"
             aria-describedby="schoolCabinetDirectorState">
           <span id="schoolCabinetDirectorState"

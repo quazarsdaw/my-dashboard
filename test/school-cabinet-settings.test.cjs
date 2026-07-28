@@ -37,18 +37,24 @@ test('rejects unsafe urls without truncating them', () => {
   });
 });
 
-test('counts unicode code points and allows empty overrides', () => {
-  const accepted = `https://chatgpt.com/${'😀'.repeat(2028)}`;
-  const rejected = `https://chatgpt.com/${'😀'.repeat(2029)}`;
-
-  assert.equal(Array.from(accepted).length, 2048);
-  assert.equal(Array.from(rejected).length, 2049);
-  assert.equal(SchoolCabinetSettings.validateDraft({
+test('validates the canonical unicode url and round-trips it safely', () => {
+  const accepted = 'https://chatgpt.com/g/математика?тема=интегралы#урок';
+  const acceptedResult = SchoolCabinetSettings.validateDraft({
     'chatgpt-software': accepted,
     'chatgpt-devops': '   '
-  }).valid, true);
+  });
+  const rawWithinLimit = `https://chatgpt.com/${'😀'.repeat(2028)}`;
+
+  assert.equal(acceptedResult.valid, true);
+  assert.equal(
+    SchoolCabinetSettings.parseStoredValue(
+      SchoolCabinetSettings.serialize(acceptedResult.settings)
+    ).settings.cabinets['chatgpt-software'],
+    new URL(accepted).href
+  );
+  assert.equal(Array.from(rawWithinLimit).length, 2048);
   assert.equal(SchoolCabinetSettings.validateDraft({
-    'chatgpt-software': rejected
+    'chatgpt-software': rawWithinLimit
   }).valid, false);
 });
 
@@ -65,7 +71,7 @@ test('damaged json and unknown versions fail closed with a warning', () => {
   assert.equal(future.warning.code, 'UNSUPPORTED_VERSION');
 });
 
-test('stored values fail closed on unknown ids or invalid urls', () => {
+test('stored values ignore unknown ids but fail closed on invalid urls', () => {
   const unknown = SchoolCabinetSettings.parseStoredValue(JSON.stringify({
     version: 1,
     cabinets: {
@@ -80,8 +86,13 @@ test('stored values fail closed on unknown ids or invalid urls', () => {
     }
   });
 
-  assert.deepEqual(unknown.settings, { version: 1, cabinets: {} });
-  assert.equal(unknown.warning.code, 'UNKNOWN_CABINET');
+  assert.deepEqual(unknown.settings, {
+    version: 1,
+    cabinets: {
+      'chatgpt-software': 'https://chatgpt.com/g/software'
+    }
+  });
+  assert.equal(unknown.warning, null);
   assert.deepEqual(unsafe.settings, { version: 1, cabinets: {} });
   assert.equal(unsafe.warning.code, 'INVALID_STORED_URL');
 });

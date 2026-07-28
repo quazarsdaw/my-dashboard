@@ -81,6 +81,25 @@
     }
   }
 
+  function safeChatGptUrl(value) {
+    var parsed = safeHttpsUrl(value);
+    if (!parsed) return null;
+    try {
+      var url = new URL(parsed);
+      var hostname = url.hostname.toLowerCase();
+      var canonical = url.href;
+      if (
+        hostname !== 'chatgpt.com' &&
+        hostname !== 'chat.openai.com'
+      ) {
+        return null;
+      }
+      return Array.from(canonical).length <= 2048 ? canonical : null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
   function routeDrawerRows(route) {
     var item = isRecord(route) ? route : {};
     var reviewer = isRecord(item.reviewer) ? item.reviewer : null;
@@ -140,7 +159,7 @@
       route.platform === 'ChatGPT' &&
       route.cabinetKind === 'permanent' &&
       route.canOpenCabinet;
-    var url = chatGpt ? safeHttpsUrl(route.cabinetUrl) : null;
+    var url = chatGpt ? safeChatGptUrl(route.cabinetUrl) : null;
     return {
       configured: Boolean(url),
       label: route ? text(route.teacherLabel) : 'Преподаватель',
@@ -1378,8 +1397,33 @@
     }
 
     function receiveCabinetSettingsState(nextState) {
+      var previousUserId = cabinetSettingsState &&
+        cabinetSettingsState.userId
+        ? cabinetSettingsState.userId
+        : null;
+      var nextUserId = nextState && nextState.userId
+        ? nextState.userId
+        : null;
+      var authChanged = Boolean(
+        nextState &&
+        nextState.source === 'auth'
+      ) || Boolean(
+        previousUserId &&
+        previousUserId !== nextUserId
+      );
       applyCabinetSettings(nextState);
-      if (settingsDialogOpen() && settingsUiState && settingsUiState.dirty) {
+      if (authChanged) {
+        closeSettingsImmediately();
+        settingsUiState = cabinetSettingsDraft(
+          nextState && nextState.settings,
+          {},
+          cabinetSettingsCore
+        );
+      } else if (
+        settingsDialogOpen() &&
+        settingsUiState &&
+        settingsUiState.dirty
+      ) {
         settingsUiState = mergeCabinetSettingsState(
           settingsUiState,
           nextState
@@ -4144,6 +4188,7 @@
     renderContentBlocks: renderContentBlocks,
     routeDrawerRows: routeDrawerRows,
     safeHttpsUrl: safeHttpsUrl,
+    safeChatGptUrl: safeChatGptUrl,
     selectTodayFocus: selectTodayFocus,
     setTransparentDragImage: setTransparentDragImage,
     syncAssessmentControlsForStatus: syncAssessmentControlsForStatus,

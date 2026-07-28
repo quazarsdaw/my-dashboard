@@ -17,6 +17,10 @@ function makeStore(options = {}) {
   let currentUser = options.user === undefined ? { id: 'u1' } : options.user;
   let realtimeHandler = null;
   let removedChannels = 0;
+  let authHandler = null;
+  let authUnsubscribes = 0;
+  let currentSelectPromise = options.selectPromise || null;
+  let selectRequests = 0;
   const storageData = new Map(Object.entries(options.storage || {}));
   const storageReads = [];
   const storageWrites = [];
@@ -40,10 +44,14 @@ function makeStore(options = {}) {
     },
   };
 
-  function selectResult() {
-    if (options.selectPromise) return options.selectPromise;
+  function selectResult(userId) {
+    selectRequests += 1;
+    if (currentSelectPromise) return currentSelectPromise;
+    const remoteRow = options.remoteRowsByUser
+      ? options.remoteRowsByUser[userId]
+      : options.remoteRow;
     return Promise.resolve({
-      data: options.remoteRow === undefined ? null : options.remoteRow,
+      data: remoteRow === undefined ? null : remoteRow,
       error: options.selectError || null,
     });
   }
@@ -51,16 +59,20 @@ function makeStore(options = {}) {
   function makeBuilder() {
     let operation = 'select';
     let upsertedRow = null;
+    let selectedUserId = null;
     const builder = {
       select() {
         return builder;
       },
       eq(column, value) {
-        if (operation === 'select') selectFilters.push([column, value]);
+        if (operation === 'select') {
+          selectFilters.push([column, value]);
+          if (column === 'user_id') selectedUserId = value;
+        }
         return builder;
       },
       maybeSingle() {
-        return selectResult();
+        return selectResult(selectedUserId);
       },
       upsert(row) {
         operation = 'upsert';
@@ -100,6 +112,18 @@ function makeStore(options = {}) {
           },
           error: null,
         });
+      },
+      onAuthStateChange(handler) {
+        authHandler = handler;
+        return {
+          data: {
+            subscription: {
+              unsubscribe() {
+                authUnsubscribes += 1;
+              },
+            },
+          },
+        };
       },
     },
     from(table) {
@@ -168,12 +192,29 @@ function makeStore(options = {}) {
     setUser(user) {
       currentUser = user;
     },
+    emitAuth(user) {
+      currentUser = user;
+      assert.ok(authHandler, 'auth handler should be installed');
+      authHandler(
+        user ? 'SIGNED_IN' : 'SIGNED_OUT',
+        user ? { user } : null
+      );
+    },
+    setSelectPromise(promise) {
+      currentSelectPromise = promise;
+    },
     emitRealtime(payload) {
       assert.ok(realtimeHandler, 'realtime handler should be installed');
       realtimeHandler(payload);
     },
     get removedChannels() {
       return removedChannels;
+    },
+    get authUnsubscribes() {
+      return authUnsubscribes;
+    },
+    get selectRequests() {
+      return selectRequests;
     },
   };
 }
@@ -219,6 +260,7 @@ test('load scopes remote row and cache to current auth user', async () => {
 
 test('save writes serialized text and never accepts a foreign user id', async () => {
   const app = makeStore({ user: { id: 'u1' } });
+  await app.store.load();
 
   await app.store.save({
     'chatgpt-mathematics': 'https://chatgpt.com/g/math',
@@ -285,7 +327,7 @@ test('response from previous auth user is discarded', async () => {
   assert.equal(app.store.getState().userId, null);
 });
 
-test('older select rows cannot overwrite a newer user-scoped cache', async () => {
+test('remote source of truth replaces a future-dated user-scoped cache', async () => {
   const app = makeStore({
     user: { id: 'u1' },
     remoteRow: {
@@ -312,9 +354,132 @@ test('older select rows cannot overwrite a newer user-scoped cache', async () =>
 
   assert.equal(
     state.settings.cabinets['chatgpt-software'],
-    'https://chatgpt.com/g/new'
+    'https://chatgpt.com/g/old'
   );
-  assert.equal(state.source, 'cache');
+  assert.equal(state.source, 'remote');
+});
+
+test('a slow refresh cannot overwrite newer realtime settings', async () => {
+  const app = makeStore({
+    user: { id: 'u1' },
+    remoteRow: {
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/initial',
+        },
+      }),
+      updated_at: '2026-07-29T01:00:00.000Z',
+    },
+  });
+  await app.store.load();
+
+  const pending = deferred();
+  app.setSelectPromise(pending.promise);
+  const refreshPromise = app.store.refresh();
+  while (app.selectRequests < 2) await Promise.resolve();
+  app.emitRealtime({
+    eventType: 'UPDATE',
+    new: {
+      user_id: 'u1',
+      key: 'school_cabinet_urls_v1',
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/realtime',
+        },
+      }),
+      updated_at: '2026-07-29T03:00:00.000Z',
+    },
+  });
+  pending.resolve({
+    data: {
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/stale-select',
+        },
+      }),
+      updated_at: '2026-07-29T02:00:00.000Z',
+    },
+    error: null,
+  });
+
+  await refreshPromise;
+  assert.equal(
+    app.store.getState().settings.cabinets['chatgpt-software'],
+    'https://chatgpt.com/g/realtime'
+  );
+  assert.equal(app.store.getState().source, 'realtime');
+});
+
+test('auth switch clears account A before loading and saving account B', async () => {
+  const app = makeStore({
+    user: { id: 'u1' },
+    remoteRow: {
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/account-a',
+        },
+      }),
+      updated_at: '2026-07-29T01:00:00.000Z',
+    },
+  });
+  await app.store.load();
+
+  app.emitAuth({ id: 'u2' });
+  assert.equal(app.store.getState().userId, null);
+  assert.deepEqual(app.store.getState().settings.cabinets, {});
+
+  await assert.rejects(
+    app.store.save({
+      'chatgpt-software': 'https://chatgpt.com/g/account-a',
+    }),
+    (error) => error.code === 'SETTINGS_NOT_READY'
+  );
+  assert.equal(app.upserts.length, 0);
+});
+
+test('logout and login automatically load only the next account settings', async () => {
+  const app = makeStore({
+    user: { id: 'u1' },
+    remoteRowsByUser: {
+      u1: {
+        value: JSON.stringify({
+          version: 1,
+          cabinets: {
+            'chatgpt-software': 'https://chatgpt.com/g/account-a',
+          },
+        }),
+        updated_at: '2026-07-29T01:00:00.000Z',
+      },
+      u2: {
+        value: JSON.stringify({
+          version: 1,
+          cabinets: {
+            'chatgpt-software': 'https://chatgpt.com/g/account-b',
+          },
+        }),
+        updated_at: '2026-07-29T02:00:00.000Z',
+      },
+    },
+  });
+  await app.store.load();
+
+  app.emitAuth(null);
+  assert.equal(app.store.getState().userId, null);
+  assert.deepEqual(app.store.getState().settings.cabinets, {});
+
+  app.emitAuth({ id: 'u2' });
+  while (app.selectRequests < 2) await Promise.resolve();
+  while (app.store.getState().status !== 'ready') await Promise.resolve();
+
+  assert.equal(app.store.getState().userId, 'u2');
+  assert.equal(
+    app.store.getState().settings.cabinets['chatgpt-software'],
+    'https://chatgpt.com/g/account-b'
+  );
 });
 
 test('realtime applies only the current user settings key', async () => {
@@ -364,7 +529,7 @@ test('realtime applies only the current user settings key', async () => {
   assert.equal(app.events.length, 1);
 });
 
-test('older realtime rows cannot overwrite newer confirmed settings', async () => {
+test('older realtime commits cannot overwrite a newer realtime commit', async () => {
   const app = makeStore({
     user: { id: 'u1' },
     remoteRow: {
@@ -381,22 +546,38 @@ test('older realtime rows cannot overwrite newer confirmed settings', async () =
 
   app.emitRealtime({
     eventType: 'UPDATE',
+    commit_timestamp: '2026-07-29T03:00:00.000Z',
     new: {
       user_id: 'u1',
       key: 'school_cabinet_urls_v1',
       value: JSON.stringify({
         version: 1,
         cabinets: {
-          'chatgpt-software': 'https://chatgpt.com/g/old',
+          'chatgpt-software': 'https://chatgpt.com/g/newer-realtime',
         },
       }),
-      updated_at: '2026-07-29T01:00:00.000Z',
+      updated_at: '2026-07-29T03:00:00.000Z',
+    },
+  });
+  app.emitRealtime({
+    eventType: 'UPDATE',
+    commit_timestamp: '2026-07-29T02:00:00.000Z',
+    new: {
+      user_id: 'u1',
+      key: 'school_cabinet_urls_v1',
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/older-realtime',
+        },
+      }),
+      updated_at: '2026-07-29T02:00:00.000Z',
     },
   });
 
   assert.equal(
     app.store.getState().settings.cabinets['chatgpt-software'],
-    'https://chatgpt.com/g/new'
+    'https://chatgpt.com/g/newer-realtime'
   );
 });
 
@@ -431,6 +612,7 @@ test('realtime delete resets the current row and destroy removes channel', async
 
   app.store.destroy();
   assert.equal(app.removedChannels, 1);
+  assert.equal(app.authUnsubscribes, 1);
 });
 
 test('load requires a current authenticated session', async () => {

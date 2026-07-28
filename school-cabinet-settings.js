@@ -44,7 +44,11 @@
       ) {
         return { valid: false, value: null, code: 'INVALID_URL' };
       }
-      return { valid: true, value: parsed.href };
+      var canonical = parsed.href;
+      if (Array.from(canonical).length > 2048) {
+        return { valid: false, value: null, code: 'URL_TOO_LONG' };
+      }
+      return { valid: true, value: canonical };
     } catch (_error) {
       return { valid: false, value: null, code: 'INVALID_URL' };
     }
@@ -119,18 +123,13 @@
       };
     }
 
-    var cabinetIds = Object.keys(parsed.cabinets);
-    var hasUnknownCabinet = cabinetIds.some(function (cabinetId) {
-      return CABINET_IDS.indexOf(cabinetId) === -1;
+    var knownCabinets = {};
+    CABINET_IDS.forEach(function (cabinetId) {
+      if (Object.prototype.hasOwnProperty.call(parsed.cabinets, cabinetId)) {
+        knownCabinets[cabinetId] = parsed.cabinets[cabinetId];
+      }
     });
-    if (hasUnknownCabinet) {
-      return {
-        settings: emptySettings(),
-        warning: warning('UNKNOWN_CABINET', 'Настройки содержат неизвестный кабинет')
-      };
-    }
-
-    var result = validateDraft(parsed.cabinets);
+    var result = validateDraft(knownCabinets);
     if (!result.valid) {
       return {
         settings: emptySettings(),
