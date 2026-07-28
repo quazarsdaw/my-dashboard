@@ -423,6 +423,21 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
   line-height: 1.35;
 }
 
+.school-card-route {
+  display: block;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--school-text-2);
+  font-family: var(--school-mono);
+  font-size: 9px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.school-card-route.is-warning { color: var(--school-warning); }
+.school-route-mobile { display: none; }
+
 .school-time { color: var(--school-text-2); }
 .school-priority {
   color: var(--school-accent);
@@ -758,6 +773,10 @@ button.school-lesson-card:hover { border-color: rgba(125, 211, 252, 0.25); }
   line-height: 1.12;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.school-time-card .school-card-route {
+  margin-top: 2px;
+  font-size: 6.5px;
 }
 .school-time-card .school-card-meta {
   flex-wrap: nowrap;
@@ -1367,6 +1386,11 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
   .school-diary-columns { grid-template-columns: 78px 1fr 1.5fr 0.9fr; }
   .school-diary-columns span:nth-child(n + 5) { display: none; }
   .school-diary-score { display: none; }
+}
+
+@media (max-width: 760px) {
+  .school-route-desktop { display: none; }
+  .school-route-mobile { display: inline; }
 }
 
 @media (max-width: 620px) {

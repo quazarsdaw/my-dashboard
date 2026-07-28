@@ -135,6 +135,60 @@ function loadingCore() {
   };
 }
 
+test('controller resolves the current lesson route through injected dependencies', async () => {
+  const activeLesson = {
+    id: 'lesson-42',
+    title: 'Cold start «Прометея»',
+    subject: 'Software Engineering',
+    status: 'В процессе'
+  };
+  const expectedRoute = {
+    cabinetId: 'chatgpt-software',
+    cabinetLabel: 'ChatGPT · Software Engineering'
+  };
+  const controller = SchoolUi.createController({
+    api: {
+      listLessons: async () => [activeLesson],
+      getLessonContent: async () => ({ lesson: activeLesson, blocks: [] })
+    },
+    core: loadingCore(),
+    document: null,
+    learningConfig: { marker: 'config' },
+    learningRoute: {
+      resolveLessonRoute(lesson, config) {
+        assert.equal(lesson.id, 'lesson-42');
+        assert.equal(config.marker, 'config');
+        return expectedRoute;
+      }
+    }
+  });
+
+  await controller.load();
+  await controller.openLesson('lesson-42');
+  assert.equal(controller.getCurrentLessonRoute(), expectedRoute);
+});
+
+test('lesson card renders distinct desktop and mobile route labels as text', () => {
+  const document = fakeDocument();
+  const card = document.createElement('button');
+
+  SchoolUi.appendLessonRoute(
+    card,
+    document,
+    {
+      desktop: 'Codex · coding agent',
+      mobile: 'Codex'
+    }
+  );
+
+  assert.equal(card.children.length, 1);
+  assert.equal(card.children[0].className, 'school-card-route');
+  assert.equal(card.children[0].children[0].textContent, 'Codex · coding agent');
+  assert.equal(card.children[0].children[1].textContent, 'Codex');
+  assert.equal(card.children[0].children[0].className, 'school-route-desktop');
+  assert.equal(card.children[0].children[1].className, 'school-route-mobile');
+});
+
 function interactiveDocument() {
   const listeners = new Map();
   const nodes = new Map();

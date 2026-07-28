@@ -829,10 +829,33 @@
     return '';
   }
 
-  function appendLessonDetails(card, documentRef, lesson, conflictIds, isSaving, shortBreakIds) {
+  function appendLessonRoute(card, documentRef, labels) {
+    if (!card || !documentRef || !labels) return;
+    var line = element(
+      documentRef,
+      'span',
+      'school-card-route' + (labels.warning ? ' is-warning' : '')
+    );
+    line.appendChild(element(
+      documentRef,
+      'span',
+      'school-route-desktop',
+      labels.desktop
+    ));
+    line.appendChild(element(
+      documentRef,
+      'span',
+      'school-route-mobile',
+      labels.mobile
+    ));
+    card.appendChild(line);
+  }
+
+  function appendLessonDetails(card, documentRef, lesson, conflictIds, isSaving, shortBreakIds, routeLabels) {
     if (lesson.status === 'Отменён') card.className += ' is-canceled';
     card.appendChild(element(documentRef, 'span', 'school-card-subject', lesson.subject));
     card.appendChild(element(documentRef, 'strong', 'school-card-title', lesson.title));
+    appendLessonRoute(card, documentRef, routeLabels);
     var meta = element(documentRef, 'span', 'school-card-meta');
     meta.appendChild(element(documentRef, 'span', 'school-time', scheduleText(lesson)));
     if (lesson.schedule.kind === 'timed') {
@@ -857,7 +880,7 @@
     }
   }
 
-  function makeLessonCard(documentRef, lesson, openLesson, conflictIds, configureCard, pendingLessonIds, shortBreakIds) {
+  function makeLessonCard(documentRef, lesson, openLesson, conflictIds, configureCard, pendingLessonIds, shortBreakIds, routeLabels) {
     var card = element(documentRef, 'button', 'school-lesson-card');
     card.type = 'button';
     card.setAttribute('aria-label', 'Открыть урок: ' + lesson.title);
@@ -868,7 +891,8 @@
       lesson,
       conflictIds,
       Boolean(pendingLessonIds && pendingLessonIds.has(lesson.id)),
-      shortBreakIds
+      shortBreakIds,
+      routeLabels
     );
     if (typeof configureCard === 'function') configureCard(card, lesson);
     return card;
@@ -1032,7 +1056,8 @@
     var core = options.core || (root && root.SchoolCore);
     var queueApi = options.mutationQueue || (root && root.SchoolMutationQueue);
     var teacherBridge = options.teacherBridge || (root && root.SchoolTeacherBridge);
-    var teacherConfig = options.teacherConfig || (root && root.SchoolTeacherConfig) || {};
+    var learningRoute = options.learningRoute || (root && root.SchoolLearningRoute);
+    var learningConfig = options.learningConfig || (root && root.SchoolLearningConfig) || {};
     var now = typeof options.now === 'function' ? options.now : function () { return new Date(); };
     var onState = typeof options.onState === 'function' ? options.onState : function () {};
     var lessons = [];
@@ -1065,6 +1090,22 @@
     var transparentDragImage = null;
     var actionResolver = null;
     var actionPreviousFocus = null;
+
+    function routeForLesson(lesson) {
+      if (!learningRoute || typeof learningRoute.resolveLessonRoute !== 'function') return null;
+      return learningRoute.resolveLessonRoute(lesson, learningConfig);
+    }
+
+    function routeLabelsForLesson(lesson) {
+      var route = routeForLesson(lesson);
+      if (!route || typeof learningRoute.compactRouteLabels !== 'function') return null;
+      var labels = learningRoute.compactRouteLabels(route);
+      return {
+        desktop: labels.desktop,
+        mobile: labels.mobile,
+        warning: Array.isArray(route.warnings) && route.warnings.length > 0
+      };
+    }
     var queue = queueApi.create({
       execute: async function (entry) {
         try {
@@ -1279,6 +1320,7 @@
         focus.status === 'В процессе' ? 'В процессе' : (today.indexOf(focus) !== -1 ? 'Следующий сегодня' : 'Следующий урок')
       ));
       copy.appendChild(element(documentRef, 'h3', '', focus.title));
+      appendLessonRoute(copy, documentRef, routeLabelsForLesson(focus));
       var focusMeta = element(documentRef, 'div', 'school-focus-meta');
       focusMeta.appendChild(element(documentRef, 'span', '', focus.subject));
       focusMeta.appendChild(element(documentRef, 'span', '', scheduleText(focus)));
@@ -1307,7 +1349,9 @@
             openLesson,
             null,
             configureDraggable,
-            pendingLessonIds
+            pendingLessonIds,
+            null,
+            routeLabelsForLesson(lesson)
           ));
         });
         rootNode.appendChild(list);
@@ -1412,7 +1456,8 @@
             conflictIds,
             configureDraggable,
             pendingLessonIds,
-            shortBreakIds
+            shortBreakIds,
+            routeLabelsForLesson(lesson)
           );
           configureAllDayDropTarget(allDayCard, day.date, lesson);
           dayColumn.appendChild(allDayCard);
@@ -1493,7 +1538,8 @@
             lesson,
             conflictIds,
             pendingLessonIds.has(lesson.id),
-            shortBreakIds
+            shortBreakIds,
+            routeLabelsForLesson(lesson)
           );
           configureDraggable(card, lesson);
           timeDay.appendChild(card);
@@ -1530,7 +1576,8 @@
             conflictIds,
             configureDraggable,
             pendingLessonIds,
-            shortBreakIds
+            shortBreakIds,
+            routeLabelsForLesson(lesson)
           ));
         });
         details.appendChild(list);
@@ -2512,8 +2559,14 @@
       if (!teacherBridge || typeof teacherBridge.resolveTeacher !== 'function') {
         return { configured: false, label: 'Преподаватель', url: null };
       }
+      var route = routeForLesson(lesson);
       return teacherBridge.resolveTeacher(
-        lesson && teacherConfig ? teacherConfig[lesson.subject] : null
+        route && route.platform === 'ChatGPT' && route.canOpenCabinet
+          ? {
+            label: route.teacherLabel,
+            url: route.cabinetUrl
+          }
+          : null
       );
     }
 
@@ -2527,7 +2580,8 @@
       ) return '';
       return teacherBridge.buildLessonTeacherPrompt(
         lesson,
-        currentContentBlocks
+        currentContentBlocks,
+        routeForLesson(lesson)
       );
     }
 
@@ -3486,6 +3540,7 @@
       bind: bind,
       closeDialog: closeDialog,
       finishTimelineZoom: finishTimelineZoom,
+      getCurrentLessonRoute: function () { return routeForLesson(currentLesson()); },
       getCurrentTeacherPrompt: getCurrentTeacherPrompt,
       getLessons: function () { return cloneLessons(lessons); },
       getReadModel: function () { return readModel; },
@@ -3515,7 +3570,9 @@
       api: root.SchoolApi,
       core: root.SchoolCore,
       mutationQueue: root.SchoolMutationQueue,
-      document: root.document
+      document: root.document,
+      learningConfig: root.SchoolLearningConfig,
+      learningRoute: root.SchoolLearningRoute
     });
     root.SchoolController = controller;
     controller.bind();
@@ -3534,6 +3591,7 @@
     allDayDropOrder: allDayDropOrder,
     allDayDropPlacement: allDayDropPlacement,
     applyTimelineGeometry: applyTimelineGeometry,
+    appendLessonRoute: appendLessonRoute,
     applyTeacherResultToControls: applyTeacherResultToControls,
     assessmentDraft: assessmentDraft,
     copyPromptAndOpen: copyPromptAndOpen,
