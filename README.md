@@ -1,34 +1,37 @@
 # my dashboard
 
-## постоянные диалоги преподавателей школы
+## постоянные кабинеты школы
 
-школьный модуль не использует openai api и не хранит историю chatgpt.
-dashboard только формирует текст урока, открывает внешний постоянный диалог и
-детерминированно разбирает итоговый блок.
+`SchoolLearningConfig.cabinets` в `school-teacher-config.js` — единственный
+источник постоянных кабинетов. школьный модуль не использует openai api и не
+хранит историю chatgpt: dashboard формирует текст урока, открывает внешний
+кабинет и детерминированно разбирает итоговый блок.
 
-чтобы подключить преподавателей:
+чтобы безопасно изменить постоянный кабинет:
 
-1. создайте по одному постоянному диалогу chatgpt для каждого предмета;
-2. скопируйте url каждого диалога;
-3. откройте `school-teacher-config.js`;
-4. вставьте url в значение `url` строго у соответствующего предмета;
-5. обновите cache-busting версию `school-teacher-config.js` в `school.html`,
-   если файл уже кэшировался в production;
-6. откройте урок и убедитесь, что подпись преподавателя соответствует предмету.
+1. найдите permanent cabinet key в `SchoolLearningConfig.cabinets`;
+2. измените только его поле `url`;
+3. проверьте `https`, exact hostname и отсутствие username/password в url;
+4. не записывайте url в notion, localstorage, supabase или lesson;
+5. при следующем изменении обновите `school-teacher-config.js?v=2` в
+   `school.html`;
+6. откройте один урок и проверьте cabinet, teacher и format;
+7. подтвердите, что `LESSON_REF` и import result не изменились.
 
-пример:
+пример permanent кабинета:
 
 ```javascript
-'Software Engineering': Object.freeze({
-  label: 'Преподаватель Software Engineering',
+'chatgpt-software': {
+  label: 'ChatGPT · Software Engineering',
+  platform: 'ChatGPT',
+  kind: 'permanent',
   url: 'https://chatgpt.com/g/example'
-})
+}
 ```
 
-разрешены только абсолютные `https`-ссылки с hostname:
-
-- `chatgpt.com`;
-- `chat.openai.com`.
+для chatgpt допустимы только `chatgpt.com` и `chat.openai.com`. в mvp нет
+codex url. для cursor допустим только `cursor.com`. temporary resource не
+переносится в permanent config.
 
 пустая или некорректная ссылка не блокирует урок: промт можно скопировать
 вручную, а интерфейс показывает ключ, который нужно настроить. ссылки являются

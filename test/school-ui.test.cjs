@@ -314,20 +314,23 @@ function interactiveDocument(extraNodes = []) {
   return { document, nodes };
 }
 
-test('school page loads shared dashboard dependencies before read-only school scripts', () => {
+test('school page loads the coherent read-only school release set in dependency order', () => {
   const html = read('school.html');
   const scripts = [
     'profile-theme.js?v=401',
     'topbar.js?v=403',
     'supabase-sync.js?v=406-sb',
-    'school-core.js',
+    'school-core.js?v=6',
     'school-api.js',
-    'school-teacher-config.js',
-    'school-teacher-bridge.js',
-    'school.js'
+    'school-teacher-config.js?v=2',
+    'school-learning-route.js?v=1',
+    'school-teacher-bridge.js?v=2',
+    'school-mutation-queue.js?v=1',
+    'school.js?v=11'
   ];
 
   assert.ok(html.includes('<body data-page="school">'));
+  assert.ok(html.includes('school.css?v=11'));
   scripts.forEach((script) => assert.ok(html.includes(script), script));
   scripts.slice(1).forEach((script, index) => {
     assert.ok(html.indexOf(scripts[index]) < html.indexOf(script), `${scripts[index]} before ${script}`);
@@ -900,15 +903,6 @@ test('read-only route keeps external launch disabled before strategy PR', async 
   assert.equal(ui.nodes.get('schoolRouteCabinet').textContent, 'Codex');
   assert.equal(ui.nodes.get('schoolRouteModel').textContent, 'выберите coding-модель вручную');
   assert.equal(ui.nodes.get('schoolTeacherNote').textContent, 'Скопируйте промт и откройте Codex desktop вручную.');
-});
-
-test('school page cache-busts release candidate assets together', () => {
-  const html = read('school.html');
-  assert.ok(html.includes('school-core.js?v=6'));
-  assert.ok(html.includes('school.css?v=10'));
-  assert.ok(html.includes('school-teacher-config.js?v=2'));
-  assert.ok(html.includes('school-teacher-bridge.js?v=1'));
-  assert.ok(html.includes('school.js?v=10'));
 });
 
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
