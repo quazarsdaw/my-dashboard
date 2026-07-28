@@ -21,6 +21,7 @@ function makeStore(options = {}) {
   let authUnsubscribes = 0;
   let currentSelectPromise = options.selectPromise || null;
   let selectRequests = 0;
+  let realtimeSubscribeHandler = null;
   const storageData = new Map(Object.entries(options.storage || {}));
   const storageReads = [];
   const storageWrites = [];
@@ -139,7 +140,14 @@ function makeStore(options = {}) {
           realtimeHandler = handler;
           return this;
         },
-        subscribe() {
+        subscribe(handler) {
+          realtimeSubscribeHandler = handler || null;
+          if (
+            typeof handler === 'function' &&
+            !options.deferRealtimeSubscribe
+          ) {
+            handler('SUBSCRIBED');
+          }
           return this;
         },
       };
@@ -206,6 +214,20 @@ function makeStore(options = {}) {
     emitRealtime(payload) {
       assert.ok(realtimeHandler, 'realtime handler should be installed');
       realtimeHandler(payload);
+    },
+    confirmRealtime() {
+      assert.ok(
+        realtimeSubscribeHandler,
+        'realtime subscribe handler should be installed'
+      );
+      realtimeSubscribeHandler('SUBSCRIBED');
+    },
+    failRealtime(status = 'CHANNEL_ERROR') {
+      assert.ok(
+        realtimeSubscribeHandler,
+        'realtime subscribe handler should be installed'
+      );
+      realtimeSubscribeHandler(status);
     },
     get removedChannels() {
       return removedChannels;
@@ -413,6 +435,82 @@ test('a slow refresh cannot overwrite newer realtime settings', async () => {
   assert.equal(app.store.getState().source, 'realtime');
 });
 
+test('initial load confirms realtime subscription before taking its select snapshot', async () => {
+  const pending = deferred();
+  const app = makeStore({
+    user: { id: 'u1' },
+    deferRealtimeSubscribe: true,
+    selectPromise: pending.promise,
+  });
+  const loadPromise = app.store.load();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(app.selectRequests, 0);
+  app.confirmRealtime();
+  while (app.selectRequests < 1) await Promise.resolve();
+  app.emitRealtime({
+    eventType: 'UPDATE',
+    commit_timestamp: '2026-07-29T03:00:00.000Z',
+    new: {
+      user_id: 'u1',
+      key: 'school_cabinet_urls_v1',
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/realtime',
+        },
+      }),
+      updated_at: '2026-07-29T03:00:00.000Z',
+    },
+  });
+  pending.resolve({
+    data: {
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/stale-select',
+        },
+      }),
+      updated_at: '2026-07-29T02:00:00.000Z',
+    },
+    error: null,
+  });
+
+  await loadPromise;
+  assert.equal(
+    app.store.getState().settings.cabinets['chatgpt-software'],
+    'https://chatgpt.com/g/realtime'
+  );
+});
+
+test('realtime subscription failure falls back to an authoritative select', async () => {
+  const app = makeStore({
+    user: { id: 'u1' },
+    deferRealtimeSubscribe: true,
+    remoteRow: {
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/remote-fallback',
+        },
+      }),
+      updated_at: '2026-07-29T03:00:00.000Z',
+    },
+  });
+  const loadPromise = app.store.load();
+  await Promise.resolve();
+  await Promise.resolve();
+  app.failRealtime();
+
+  const state = await loadPromise;
+  assert.equal(
+    state.settings.cabinets['chatgpt-software'],
+    'https://chatgpt.com/g/remote-fallback'
+  );
+  assert.equal(state.source, 'remote');
+});
+
 test('auth switch clears account A before loading and saving account B', async () => {
   const app = makeStore({
     user: { id: 'u1' },
@@ -578,6 +676,67 @@ test('older realtime commits cannot overwrite a newer realtime commit', async ()
   assert.equal(
     app.store.getState().settings.cabinets['chatgpt-software'],
     'https://chatgpt.com/g/newer-realtime'
+  );
+});
+
+test('delayed realtime cannot overwrite a newer select or save', async () => {
+  const app = makeStore({
+    user: { id: 'u1' },
+    remoteRow: {
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/new-select',
+        },
+      }),
+      updated_at: '2026-07-29T04:00:00.000Z',
+    },
+    savedUpdatedAt: '2026-07-29T06:00:00.000Z',
+  });
+  await app.store.load();
+
+  app.emitRealtime({
+    eventType: 'UPDATE',
+    commit_timestamp: '2026-07-29T03:00:00.000Z',
+    new: {
+      user_id: 'u1',
+      key: 'school_cabinet_urls_v1',
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/old-before-select',
+        },
+      }),
+      updated_at: '2026-07-29T03:00:00.000Z',
+    },
+  });
+  assert.equal(
+    app.store.getState().settings.cabinets['chatgpt-software'],
+    'https://chatgpt.com/g/new-select'
+  );
+
+  await app.store.save({
+    'chatgpt-software': 'https://chatgpt.com/g/new-save',
+  });
+  assert.equal('updated_at' in app.upserts[0], false);
+  app.emitRealtime({
+    eventType: 'UPDATE',
+    commit_timestamp: '2026-07-29T05:00:00.000Z',
+    new: {
+      user_id: 'u1',
+      key: 'school_cabinet_urls_v1',
+      value: JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/old-before-save',
+        },
+      }),
+      updated_at: '2026-07-29T05:00:00.000Z',
+    },
+  });
+  assert.equal(
+    app.store.getState().settings.cabinets['chatgpt-software'],
+    'https://chatgpt.com/g/new-save'
   );
 });
 

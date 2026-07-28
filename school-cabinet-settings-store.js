@@ -50,6 +50,15 @@
         setTimeout(resolve, milliseconds);
       });
     };
+    var scheduleTimeout = options.setTimeout ||
+      (root && root.setTimeout) ||
+      setTimeout;
+    var cancelTimeout = options.clearTimeout ||
+      (root && root.clearTimeout) ||
+      clearTimeout;
+    var realtimeTimeoutMs = Number.isFinite(options.realtimeTimeoutMs)
+      ? Math.max(1000, options.realtimeTimeoutMs)
+      : 5000;
     var listeners = [];
     var channel = null;
     var channelClient = null;
@@ -58,7 +67,9 @@
     var destroyed = false;
     var operationGeneration = 0;
     var liveRevision = 0;
-    var lastRealtimeCommitAt = null;
+    var serverVersionAt = null;
+    var channelUserId = null;
+    var channelReadyPromise = null;
     var state = {
       status: 'idle',
       userId: null,
@@ -135,7 +146,7 @@
     function resetForAuthChange(shouldNotify) {
       operationGeneration += 1;
       liveRevision += 1;
-      lastRealtimeCommitAt = null;
+      serverVersionAt = null;
       stopRealtime();
       replaceState({
         status: 'idle',
@@ -223,6 +234,7 @@
 
     function applyParsed(userId, parsed, updatedAt, source) {
       liveRevision += 1;
+      observeServerVersion(updatedAt);
       writeCache(userId, parsed.settings, updatedAt);
       return replaceState({
         status: 'ready',
@@ -245,6 +257,18 @@
       }
       channel = null;
       channelClient = null;
+      channelUserId = null;
+      channelReadyPromise = null;
+    }
+
+    function observeServerVersion(value) {
+      var nextVersion = timestamp(value);
+      if (
+        nextVersion !== null &&
+        (serverVersionAt === null || nextVersion > serverVersionAt)
+      ) {
+        serverVersionAt = nextVersion;
+      }
     }
 
     function stopAuthWatch() {
@@ -307,18 +331,18 @@
         return;
       }
 
-      var commitTimestamp = timestamp(payload.commit_timestamp);
+      var incomingVersion = timestamp(
+        payload.commit_timestamp || row.updated_at
+      );
       if (
-        commitTimestamp !== null &&
-        lastRealtimeCommitAt !== null &&
-        commitTimestamp <= lastRealtimeCommitAt
+        incomingVersion !== null &&
+        serverVersionAt !== null &&
+        incomingVersion <= serverVersionAt
       ) {
         return;
       }
-      if (commitTimestamp !== null) {
-        lastRealtimeCommitAt = commitTimestamp;
-      }
       var updatedAt = row.updated_at || payload.commit_timestamp || null;
+      observeServerVersion(payload.commit_timestamp || updatedAt);
 
       if (isDelete) {
         liveRevision += 1;
@@ -345,24 +369,66 @@
     }
 
     function startRealtime(client, userId) {
+      if (
+        channel &&
+        channelClient === client &&
+        channelUserId === userId &&
+        channelReadyPromise
+      ) {
+        return channelReadyPromise;
+      }
       stopRealtime();
       if (
         !client ||
         typeof client.channel !== 'function' ||
         destroyed
       ) {
-        return;
+        return Promise.resolve(false);
       }
       channelClient = client;
-      channel = client
+      channelUserId = userId;
+      var candidate = client
         .channel('school-cabinet-settings:' + userId)
         .on('postgres_changes', {
           event: '*',
           schema: 'public',
           table: 'user_data',
           filter: 'user_id=eq.' + userId
-        }, handleRealtime)
-        .subscribe();
+        }, handleRealtime);
+      channel = candidate;
+      channelReadyPromise = new Promise(function (resolve) {
+        var settled = false;
+        var timer = scheduleTimeout(function () {
+          settle(false);
+        }, realtimeTimeoutMs);
+        function settle(ready) {
+          if (settled) return;
+          settled = true;
+          cancelTimeout(timer);
+          resolve(ready);
+          if (!ready && channel === candidate) {
+            if (typeof client.removeChannel === 'function') {
+              client.removeChannel(candidate);
+            }
+            channel = null;
+            channelClient = null;
+            channelUserId = null;
+            channelReadyPromise = null;
+          }
+        }
+        candidate.subscribe(function (status) {
+          if (status === 'SUBSCRIBED') {
+            settle(true);
+          } else if (
+            status === 'CHANNEL_ERROR' ||
+            status === 'TIMED_OUT' ||
+            status === 'CLOSED'
+          ) {
+            settle(false);
+          }
+        });
+      });
+      return channelReadyPromise;
     }
 
     async function load() {
@@ -400,6 +466,10 @@
         error: null
       }, false);
       startAuthWatch(auth.client);
+      await startRealtime(auth.client, userId);
+      if (requestGeneration !== operationGeneration) {
+        throw storeError('AUTH_CHANGED', 'аккаунт изменился во время запроса');
+      }
 
       var cached = sameUser ? null : readCache(userId);
       if (cached) {
@@ -443,7 +513,6 @@
 
       if (liveRevision !== revisionBeforeSelect && state.userId === userId) {
         replaceState({ status: 'ready', error: null }, false);
-        startRealtime(auth.client, userId);
         return getState();
       }
 
@@ -459,7 +528,6 @@
           warning: null,
           error: null
         }, true);
-        startRealtime(auth.client, userId);
         return getState();
       }
 
@@ -468,6 +536,7 @@
         removeCache(userId);
       }
       liveRevision += 1;
+      observeServerVersion(result.data.updated_at);
       replaceState({
         status: 'ready',
         userId: userId,
@@ -480,7 +549,6 @@
       if (!parsed.warning) {
         writeCache(userId, parsed.settings, result.data.updated_at);
       }
-      startRealtime(auth.client, userId);
       return getState();
     }
 

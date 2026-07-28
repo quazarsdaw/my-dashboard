@@ -8,6 +8,27 @@ create table if not exists public.user_data (
 
 alter table public.user_data enable row level security;
 
+create or replace function public.set_user_data_updated_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+revoke all
+on function public.set_user_data_updated_at()
+from public, anon, authenticated;
+
+drop trigger if exists user_data_set_updated_at on public.user_data;
+create trigger user_data_set_updated_at
+before insert or update on public.user_data
+for each row
+execute function public.set_user_data_updated_at();
+
 drop policy if exists "Users can manage their own data" on public.user_data;
 
 revoke all privileges on table public.user_data from anon;

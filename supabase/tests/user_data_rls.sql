@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public;
 
-select plan(28);
+select plan(30);
 
 select has_table(
   'public',
@@ -126,6 +126,26 @@ select ok(
       and cmd = 'DELETE'
   ),
   'delete policy has ownership predicate'
+);
+
+select is(
+  (
+    select count(*)::integer
+    from pg_trigger
+    where tgrelid = 'public.user_data'::regclass
+      and tgname = 'user_data_set_updated_at'
+      and not tgisinternal
+  ),
+  1,
+  'user_data has one server timestamp trigger'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.set_user_data_updated_at()',
+    'execute'
+  ),
+  'authenticated cannot call the timestamp trigger function directly'
 );
 
 insert into auth.users (id)
