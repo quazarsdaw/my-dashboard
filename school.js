@@ -84,6 +84,11 @@
   function routeDrawerRows(route) {
     var item = isRecord(route) ? route : {};
     var reviewer = isRecord(item.reviewer) ? item.reviewer : null;
+    var warningCodes = Array.isArray(item.warnings)
+      ? item.warnings.map(function (warning) {
+        return text(warning && warning.code);
+      })
+      : [];
     var warnings = Array.isArray(item.warnings)
       ? item.warnings.map(function (warning) {
         return text(warning && warning.message);
@@ -94,10 +99,20 @@
       : item.cabinetKind === 'temporary'
         ? 'временный'
         : 'неизвестный';
+    var hasUnknownRouteValue = warningCodes.some(function (code) {
+      return code === 'unknown-cabinet' ||
+        code === 'unknown-teacher' ||
+        code === 'unknown-format';
+    });
+    var hasInvalidCabinetUrl = warningCodes.indexOf('invalid-cabinet-url') !== -1;
     var instruction = item.platform === 'Codex'
       ? 'Скопируйте промт и откройте Codex desktop вручную.'
       : item.platform === 'ChatGPT' && item.canOpenCabinet
         ? 'Скопируйте промт и откройте постоянный кабинет преподавателя.'
+        : item.platform === 'ChatGPT' && hasUnknownRouteValue
+          ? 'Проверьте маршрут урока: неизвестные значения блокируют открытие. Промт можно скопировать вручную.'
+          : item.platform === 'ChatGPT' && hasInvalidCabinetUrl
+            ? 'URL постоянного кабинета некорректен. Промт можно скопировать вручную.'
         : item.platform === 'ChatGPT'
           ? 'Ссылка кабинета ещё не настроена. Промт можно скопировать вручную.'
           : item.platform === 'None'
@@ -2893,7 +2908,7 @@
       var finalized = FINAL_DIARY_STATUSES.indexOf(lesson.status) !== -1;
       var ready = currentContentLoaded && currentContentLessonId === lesson.id;
       byId('schoolTeacherLabel').textContent =
-        'ChatGPT · ' + (teacher.label || lesson.subject);
+        rows.teacher || teacher.label || lesson.subject;
       byId('schoolTeacherStatus').textContent = active
         ? 'урок активен'
         : (finalized ? 'урок сохранён в дневнике' : 'предпросмотр');

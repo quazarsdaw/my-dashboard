@@ -863,6 +863,27 @@ test('route drawer rows distinguish permanent and unknown routes', () => {
     warnings: [{ message: 'Проверьте маршрут урока' }],
     reviewer: null
   }).kind, 'неизвестный');
+
+  ['unknown-teacher', 'unknown-format'].forEach((code) => {
+    assert.equal(SchoolUi.routeDrawerRows({
+      cabinetLabel: 'ChatGPT · Software Engineering',
+      cabinetKind: 'permanent',
+      platform: 'ChatGPT',
+      cabinetUrl: 'https://chatgpt.com/g/software',
+      canOpenCabinet: false,
+      teacherLabel: 'Неизвестный преподаватель',
+      format: 'Неизвестный формат',
+      warnings: [{ code, message: 'Проверьте маршрут урока' }]
+    }).instruction, 'Проверьте маршрут урока: неизвестные значения блокируют открытие. Промт можно скопировать вручную.');
+  });
+
+  assert.equal(SchoolUi.routeDrawerRows({
+    cabinetLabel: 'ChatGPT · Software Engineering',
+    cabinetKind: 'permanent',
+    platform: 'ChatGPT',
+    canOpenCabinet: false,
+    warnings: [{ code: 'invalid-cabinet-url', message: 'Некорректный URL постоянного кабинета' }]
+  }).instruction, 'URL постоянного кабинета некорректен. Промт можно скопировать вручную.');
 });
 
 test('teacher launch target accepts only a configured safe ChatGPT route', () => {
@@ -931,9 +952,66 @@ test('read-only route keeps external launch disabled before strategy PR', async 
   await controller.openLesson('lesson-codex');
   assert.equal(ui.nodes.get('schoolTeacherCopy').disabled, false);
   assert.equal(ui.nodes.get('schoolTeacherOpen').disabled, true);
+  assert.equal(ui.nodes.get('schoolTeacherLabel').textContent, 'Codex · coding agent');
   assert.equal(ui.nodes.get('schoolRouteCabinet').textContent, 'Codex');
   assert.equal(ui.nodes.get('schoolRouteModel').textContent, 'выберите coding-модель вручную');
   assert.equal(ui.nodes.get('schoolTeacherNote').textContent, 'Скопируйте промт и откройте Codex desktop вручную.');
+});
+
+test('teacher heading follows resolved ChatGPT external and unknown route labels', async () => {
+  const routes = [
+    {
+      id: 'chatgpt', platform: 'ChatGPT', cabinetKind: 'permanent',
+      cabinetUrl: 'https://chatgpt.com/g/software', canOpenCabinet: true,
+      cabinetLabel: 'ChatGPT · Software Engineering',
+      teacherLabel: 'ChatGPT · основной преподаватель', format: 'Сократовский урок', warnings: []
+    },
+    {
+      id: 'youtube', platform: 'YouTube', cabinetKind: 'temporary', cabinetUrl: null,
+      canOpenCabinet: false, cabinetLabel: 'YouTube', teacherLabel: 'Автор материала',
+      format: 'Видео + retrieval', warnings: []
+    },
+    {
+      id: 'unknown', platform: 'Unknown', cabinetKind: 'unknown', cabinetUrl: null,
+      canOpenCabinet: false, cabinetLabel: 'missing-cabinet', teacherLabel: 'missing-teacher',
+      format: 'Неизвестный формат', warnings: [{ code: 'unknown-teacher', message: 'Проверьте маршрут урока' }]
+    }
+  ];
+  for (const route of routes) {
+    const ui = interactiveDocument([
+      ['section', 'schoolTeacherSection'], ['span', 'schoolTeacherStatus'],
+      ['p', 'schoolTeacherLabel'], ['p', 'schoolTeacherNote'],
+      ['button', 'schoolTeacherPrimary'], ['button', 'schoolTeacherCopy'],
+      ['button', 'schoolTeacherOpen'], ['button', 'schoolTeacherFinishRequest'],
+      ['button', 'schoolTeacherImport'], ['a', 'schoolTeacherFallbackLink'],
+      ['dd', 'schoolRouteCabinet'], ['dd', 'schoolRouteKind'], ['dd', 'schoolRouteTeacher'],
+      ['div', 'schoolRouteModelRow'], ['dd', 'schoolRouteModel'], ['dd', 'schoolRouteFormat'],
+      ['div', 'schoolRouteResourceRow'], ['dd', 'schoolRouteResource'],
+      ['div', 'schoolRouteReviewerRow'], ['dd', 'schoolRouteReviewer'],
+      ['div', 'schoolRouteWarnings'], ['div', 'schoolLessonActions'],
+      ['details', 'schoolCancelledHistory'], ['div', 'schoolCancelledHistoryContent']
+    ]);
+    const lesson = {
+      id: `lesson-${route.id}`, title: route.id, subject: 'Software Engineering',
+      status: 'В процессе', priority: 'Must', durationMinutes: 45,
+      schedule: { kind: 'date-only', date: '2026-08-03', start: null, end: null }
+    };
+    const controller = SchoolUi.createController({
+      api: {
+        listLessons: async () => [lesson],
+        getLessonContent: async () => ({ lesson, blocks: [] })
+      },
+      core: loadingCore(), document: ui.document, teacherBridge: SchoolTeacherBridge,
+      learningConfig: {},
+      learningRoute: {
+        resolveLessonRoute: () => route,
+        compactRouteLabels: () => ({ desktop: route.teacherLabel, mobile: route.platform })
+      }
+    });
+    await controller.load();
+    await controller.openLesson(lesson.id);
+    assert.equal(ui.nodes.get('schoolTeacherLabel').textContent, route.teacherLabel);
+  }
 });
 
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
