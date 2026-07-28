@@ -451,6 +451,7 @@
       ));
       return {
         canApply: false,
+        canApplyToForm: false,
         errors: errors,
         requiresArtifactConfirmation: false,
         values: values,
@@ -621,6 +622,16 @@
 
     return {
       canApply: errors.length === 0,
+      canApplyToForm: Boolean(values.status) && !errors.some(function (error) {
+        return [
+          'markers-missing',
+          'lesson-ref-mismatch',
+          'duplicate-key',
+          'invalid-status'
+        ].indexOf(error.code) !== -1 ||
+          error.code === 'required-field' &&
+          (error.field === 'lessonId' || error.field === 'status');
+      }),
       errors: errors,
       requiresArtifactConfirmation: (
         values.status === 'Пропущен' && Boolean(values.artifactUrl)

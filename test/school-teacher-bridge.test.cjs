@@ -411,6 +411,27 @@ test('missing status-specific fields are reported beside their fields', () => {
       .map((error) => error.field),
     ['missedReason']
   );
+  assert.equal(completed.canApplyToForm, true);
+  assert.equal(missed.canApplyToForm, true);
+});
+
+test('fatal marker, reference and status errors cannot be applied to the form', () => {
+  const markerError = SchoolTeacherBridge.parseLessonResultBlock(
+    'STATUS: Выполнен',
+    'lesson-42'
+  );
+  const referenceError = SchoolTeacherBridge.parseLessonResultBlock(resultBlock([
+    'LESSON_REF: another-lesson',
+    'STATUS: Выполнен'
+  ]), 'lesson-42');
+  const statusError = SchoolTeacherBridge.parseLessonResultBlock(resultBlock([
+    'LESSON_REF: lesson-42',
+    'STATUS: Готово'
+  ]), 'lesson-42');
+
+  assert.equal(markerError.canApplyToForm, false);
+  assert.equal(referenceError.canApplyToForm, false);
+  assert.equal(statusError.canApplyToForm, false);
 });
 
 test('artifact accepts only absolute https urls up to 2048 characters', () => {
@@ -502,4 +523,3 @@ test('parser ignores text outside markers and reports it', () => {
   assert.ok(parsed.warnings.some((warning) => warning.code === 'outside-text-ignored'));
   assert.equal(Object.values(parsed.values).includes('Вот мой комментарий до блока.'), false);
 });
-
