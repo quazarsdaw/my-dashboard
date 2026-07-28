@@ -12,6 +12,33 @@ function read(file) {
   return fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 }
 
+function assertSchoolAssetContract(html) {
+  const expectedScripts = [
+    'profile-theme.js?v=401',
+    'topbar.js?v=403',
+    'supabase-sync.js?v=406-sb',
+    'school-core.js?v=6',
+    'school-api.js',
+    'school-teacher-config.js?v=2',
+    'school-learning-route.js?v=1',
+    'school-teacher-bridge.js?v=2',
+    'school-mutation-queue.js?v=1',
+    'school.js?v=11'
+  ];
+  const scripts = Array.from(
+    html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"[^>]*>/g),
+    (match) => match[1]
+  );
+  const stylesheets = Array.from(
+    html.matchAll(/<link\b(?=[^>]*\brel="stylesheet")[^>]*\bhref="([^"]+)"[^>]*>/g),
+    (match) => match[1]
+  );
+
+  assert.ok(html.includes('<body data-page="school">'));
+  assert.deepEqual(stylesheets, ['school.css?v=11']);
+  assert.deepEqual(scripts, expectedScripts);
+}
+
 function fakeDocument() {
   function node(tagName) {
     return {
@@ -316,25 +343,16 @@ function interactiveDocument(extraNodes = []) {
 
 test('school page loads the coherent read-only school release set in dependency order', () => {
   const html = read('school.html');
-  const scripts = [
-    'profile-theme.js?v=401',
-    'topbar.js?v=403',
-    'supabase-sync.js?v=406-sb',
-    'school-core.js?v=6',
-    'school-api.js',
-    'school-teacher-config.js?v=2',
-    'school-learning-route.js?v=1',
-    'school-teacher-bridge.js?v=2',
-    'school-mutation-queue.js?v=1',
-    'school.js?v=11'
-  ];
+  assertSchoolAssetContract(html);
+});
 
-  assert.ok(html.includes('<body data-page="school">'));
-  assert.ok(html.includes('school.css?v=11'));
-  scripts.forEach((script) => assert.ok(html.includes(script), script));
-  scripts.slice(1).forEach((script, index) => {
-    assert.ok(html.indexOf(scripts[index]) < html.indexOf(script), `${scripts[index]} before ${script}`);
-  });
+test('school page cache contract rejects a legacy duplicate asset', () => {
+  const legacyDuplicate = read('school.html').replace(
+    '  <script src="school.js?v=11" defer></script>',
+    '  <script src="school.js?v=10" defer></script>\n  <script src="school.js?v=11" defer></script>'
+  );
+
+  assert.throws(() => assertSchoolAssetContract(legacyDuplicate));
 });
 
 test('school shell exposes the teacher section, import dialog and explicit final status', () => {
