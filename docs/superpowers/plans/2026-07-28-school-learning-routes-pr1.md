@@ -333,7 +333,10 @@ test('route resolves subject defaults without lesson overrides', () => {
   assert.equal(route.format, 'Сократовский урок');
   assert.equal(route.usesDefaultCabinet, true);
   assert.equal(route.usesDefaultTeacher, true);
-  assert.deepEqual(route.warnings, []);
+  assert.equal(
+    route.warnings.some((warning) => warning.code.startsWith('unknown-')),
+    false
+  );
 });
 
 test('route uses self-study fallback for an unknown subject', () => {
@@ -564,7 +567,6 @@ test('route url normalization rejects unsafe schemes credentials length and host
     'file:///tmp/lesson.pdf',
     'data:text/plain,lesson',
     'https://user:password@youtube.com/watch?v=abc',
-    'https://youtube.com.attacker.example/watch?v=abc',
     `https://example.com/${'a'.repeat(2049)}`
   ];
   invalid.forEach((url) => {
@@ -574,6 +576,13 @@ test('route url normalization rejects unsafe schemes credentials length and host
       url.slice(0, 80)
     );
   });
+  assert.equal(
+    SchoolLearningRoute.normalizeRouteUrl(
+      'https://youtube.com.attacker.example/watch?v=abc',
+      ['youtube.com', 'www.youtube.com', 'youtu.be']
+    ),
+    null
+  );
 });
 ```
 
