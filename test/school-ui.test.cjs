@@ -259,6 +259,101 @@ function interactiveDocument() {
   return { document, nodes };
 }
 
+function timelineDocument(scrollMetricsForCreation = () => ({ scrollHeight: 1000, clientHeight: 500 })) {
+  const nodes = new Map();
+  const timelineScrolls = [];
+  let timeScrollCount = 0;
+
+  function node(tagName, initialId = '') {
+    const style = {
+      setProperty(name, value) {
+        this[name] = String(value);
+      }
+    };
+    const value = {
+      tagName: tagName.toUpperCase(),
+      attributes: {},
+      children: [],
+      className: '',
+      hidden: false,
+      style,
+      textContent: '',
+      scrollTop: 0,
+      appendChild(child) {
+        this.children.push(child);
+        return child;
+      },
+      removeChild(child) {
+        const index = this.children.indexOf(child);
+        if (index !== -1) this.children.splice(index, 1);
+      },
+      get firstChild() {
+        return this.children[0] || null;
+      },
+      setAttribute(name, valueToSet) {
+        this.attributes[name] = String(valueToSet);
+      },
+      getAttribute(name) {
+        return this.attributes[name];
+      },
+      addEventListener() {}
+    };
+    value.classList = {
+      add(name) {
+        const names = new Set(value.className.split(/\s+/).filter(Boolean));
+        names.add(name);
+        value.className = [...names].join(' ');
+      },
+      remove(name) {
+        value.className = value.className.split(/\s+/).filter((entry) => entry && entry !== name).join(' ');
+      },
+      contains(name) {
+        return value.className.split(/\s+/).includes(name);
+      },
+      toggle(name, force) {
+        if (force === undefined ? !this.contains(name) : force) this.add(name);
+        else this.remove(name);
+      }
+    };
+    Object.defineProperty(value, 'id', {
+      get() {
+        return this._id || '';
+      },
+      set(id) {
+        this._id = id;
+        if (id) {
+          nodes.set(id, value);
+          if (id === 'schoolTimeScroll') {
+            const metrics = scrollMetricsForCreation(timeScrollCount++) || {};
+            value.scrollHeight = metrics.scrollHeight;
+            value.clientHeight = metrics.clientHeight;
+            timelineScrolls.push(value);
+          }
+        }
+      }
+    });
+    if (initialId) value.id = initialId;
+    return value;
+  }
+
+  ['schoolWeek', 'schoolMobileDays'].forEach((id) => node('div', id));
+  return {
+    document: {
+      createElement(tagName) {
+        return node(tagName);
+      },
+      getElementById(id) {
+        return nodes.get(id) || null;
+      },
+      querySelectorAll() {
+        return [];
+      }
+    },
+    nodes,
+    timelineScrolls
+  };
+}
+
 test('school page loads shared dashboard dependencies before read-only school scripts', () => {
   const html = read('school.html');
   const scripts = [
@@ -280,8 +375,8 @@ test('school page loads shared dashboard dependencies before read-only school sc
 test('school page cache-busts release candidate assets together', () => {
   const html = read('school.html');
   assert.ok(html.includes('school-core.js?v=6'));
-  assert.ok(html.includes('school.css?v=10'));
-  assert.ok(html.includes('school.js?v=10'));
+  assert.ok(html.includes('school.css?v=11'));
+  assert.ok(html.includes('school.js?v=11'));
 });
 
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
@@ -895,6 +990,88 @@ test('controller rolls back optimistic lessons when mutation fails', async () =>
   assert.ok(rendered.some((statuses) => statuses[0] === 'В процессе'));
   assert.deepEqual(rendered.at(-1), ['Запланирован']);
   assert.deepEqual(controller.getLessons(), initial);
+});
+
+test('week rerenders retain the internal timeline scroll through optimistic success, rollback and revalidation', async () => {
+  const ui = timelineDocument((creation) => (
+    creation < 6
+      ? { scrollHeight: 1000, clientHeight: 500 }
+      : creation < 11
+        ? { scrollHeight: 680, clientHeight: 500 }
+        : { scrollHeight: 0, clientHeight: 0 }
+  ));
+  let mutationCount = 0;
+  const lesson = queueLesson('lesson-1', '14:00');
+  const core = Object.assign({}, SchoolCore, {
+    buildReadModel(lessons) {
+      return {
+        lessons,
+        today: [],
+        weekDays: { '2026-08-03': lessons },
+        diary: [],
+        progress: { completed: 0, total: lessons.length, partial: 0, missed: 0 },
+        activeLessons: [],
+        nextLesson: null,
+        persistedDecisions: [],
+        runtimeIssues: []
+      };
+    }
+  });
+  const controller = SchoolUi.createController({
+    api: {
+      async listLessons() {
+        return [structuredClone(lesson)];
+      },
+      async mutate() {
+        mutationCount += 1;
+        if (mutationCount === 2) throw new Error('rollback');
+        return { id: lesson.id };
+      }
+    },
+    core,
+    mutationQueue: SchoolMutationQueue,
+    document: ui.document,
+    now: () => new Date('2026-08-03T14:00:00+05:00')
+  });
+
+  await controller.load();
+  ui.nodes.get('schoolTimeScroll').scrollTop = 420;
+  await controller.runMutation(
+    { operation: 'moveLesson', lessonId: lesson.id },
+    (lessons) => lessons
+  );
+  await controller.whenMutationsIdle();
+  assert.ok(
+    ui.timelineScrolls.slice(1).every((viewport) => viewport.scrollTop === 420),
+    'optimistic, queue and revalidation rerenders keep the late-hour viewport'
+  );
+
+  const rollbackStart = ui.timelineScrolls.length;
+  ui.nodes.get('schoolTimeScroll').scrollTop = 420;
+  await assert.rejects(
+    controller.runMutation(
+      { operation: 'moveLesson', lessonId: lesson.id },
+      (lessons) => lessons
+    ),
+    /rollback/
+  );
+  await controller.whenMutationsIdle();
+  assert.ok(
+    ui.timelineScrolls.slice(rollbackStart).every((viewport) => viewport.scrollTop === 180),
+    'rollback and revalidation clamp the preserved position to the new viewport range'
+  );
+
+  const unmeasuredStart = ui.timelineScrolls.length;
+  ui.nodes.get('schoolTimeScroll').scrollTop = 120;
+  await controller.runMutation(
+    { operation: 'moveLesson', lessonId: lesson.id },
+    (lessons) => lessons
+  );
+  await controller.whenMutationsIdle();
+  assert.ok(
+    ui.timelineScrolls.slice(unmeasuredStart).every((viewport) => viewport.scrollTop === 120),
+    'rerenders keep the position until a hidden viewport can be measured'
+  );
 });
 
 test('successful mutation revalidates from notion and rechecks active lessons', async () => {

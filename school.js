@@ -1110,6 +1110,10 @@
       var rootNode = byId('schoolWeek');
       var mobileRoot = byId('schoolMobileDays');
       if (!rootNode || !mobileRoot) return;
+      var previousTimeScroll = byId('schoolTimeScroll');
+      var previousScrollTop = previousTimeScroll && Number.isFinite(Number(previousTimeScroll.scrollTop))
+        ? Math.max(0, Number(previousTimeScroll.scrollTop))
+        : null;
       timelineGeometryRegistry = null;
       clearNode(rootNode);
       clearNode(mobileRoot);
@@ -1296,6 +1300,14 @@
       timeScroll.appendChild(timeShell);
       shell.appendChild(timeScroll);
       rootNode.appendChild(shell);
+      if (previousScrollTop !== null) {
+        var scrollHeight = Number(timeScroll.scrollHeight);
+        var clientHeight = Number(timeScroll.clientHeight);
+        var maximumScrollTop = scrollHeight - clientHeight;
+        timeScroll.scrollTop = Number.isFinite(maximumScrollTop) && clientHeight > 0 && scrollHeight >= clientHeight
+          ? Math.min(previousScrollTop, maximumScrollTop)
+          : previousScrollTop;
+      }
 
       var unscheduled = lessons.filter(function (lesson) {
         return lesson.schedule && lesson.schedule.kind === 'unscheduled';
