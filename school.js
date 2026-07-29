@@ -838,6 +838,7 @@
     var timelineZoomFrame = null;
     var timelineZoomAnimation = null;
     var timelineGeometryRegistry = null;
+    var weekTimelineScrollTop = null;
     var draggedLessonId = null;
     var activeTimelineDragPreview = null;
     var activeAllDayDropPreview = null;
@@ -1106,14 +1107,36 @@
       });
     }
 
+    function rememberWeekTimelineScroll(timeScroll) {
+      if (!timeScroll) return;
+      var scrollHeight = Number(timeScroll.scrollHeight);
+      var clientHeight = Number(timeScroll.clientHeight);
+      var maximumScrollTop = scrollHeight - clientHeight;
+      var scrollTop = Number(timeScroll.scrollTop);
+      if (
+        !Number.isFinite(scrollTop) ||
+        !Number.isFinite(maximumScrollTop) ||
+        clientHeight <= 0 ||
+        maximumScrollTop <= 0
+      ) return;
+      weekTimelineScrollTop = Math.max(0, Math.min(scrollTop, maximumScrollTop));
+    }
+
+    function restoreWeekTimelineScroll(timeScroll) {
+      if (!timeScroll || weekTimelineScrollTop === null) return;
+      var scrollHeight = Number(timeScroll.scrollHeight);
+      var clientHeight = Number(timeScroll.clientHeight);
+      var maximumScrollTop = scrollHeight - clientHeight;
+      if (!Number.isFinite(maximumScrollTop) || clientHeight <= 0 || maximumScrollTop <= 0) return;
+      timeScroll.scrollTop = Math.min(weekTimelineScrollTop, maximumScrollTop);
+    }
+
     function renderWeek(model) {
       var rootNode = byId('schoolWeek');
       var mobileRoot = byId('schoolMobileDays');
       if (!rootNode || !mobileRoot) return;
       var previousTimeScroll = byId('schoolTimeScroll');
-      var previousScrollTop = previousTimeScroll && Number.isFinite(Number(previousTimeScroll.scrollTop))
-        ? Math.max(0, Number(previousTimeScroll.scrollTop))
-        : null;
+      rememberWeekTimelineScroll(previousTimeScroll);
       timelineGeometryRegistry = null;
       clearNode(rootNode);
       clearNode(mobileRoot);
@@ -1295,19 +1318,15 @@
       timeShell.addEventListener('wheel', function (event) {
         handleTimelineWheel(event, timeShell, bounds);
       }, { passive: false });
+      timeScroll.addEventListener('scroll', function () {
+        rememberWeekTimelineScroll(timeScroll);
+      });
       timelineGeometryRegistry = geometryRegistry;
       applyTimelineGeometry(core, geometryRegistry, zoomLevel.pixelsPerHour / 60);
       timeScroll.appendChild(timeShell);
       shell.appendChild(timeScroll);
       rootNode.appendChild(shell);
-      if (previousScrollTop !== null) {
-        var scrollHeight = Number(timeScroll.scrollHeight);
-        var clientHeight = Number(timeScroll.clientHeight);
-        var maximumScrollTop = scrollHeight - clientHeight;
-        timeScroll.scrollTop = Number.isFinite(maximumScrollTop) && clientHeight > 0 && scrollHeight >= clientHeight
-          ? Math.min(previousScrollTop, maximumScrollTop)
-          : previousScrollTop;
-      }
+      restoreWeekTimelineScroll(timeScroll);
 
       var unscheduled = lessons.filter(function (lesson) {
         return lesson.schedule && lesson.schedule.kind === 'unscheduled';
@@ -2543,8 +2562,14 @@
 
     function selectView(view) {
       if (['today', 'week', 'diary'].indexOf(view) === -1) return false;
+      if (!documentRef) {
+        currentView = view;
+        return true;
+      }
+      if (currentView === 'week' && view !== 'week') {
+        rememberWeekTimelineScroll(byId('schoolTimeScroll'));
+      }
       currentView = view;
-      if (!documentRef) return true;
       documentRef.querySelectorAll('[data-school-view]').forEach(function (tab) {
         var active = tab.getAttribute('data-school-view') === view;
         tab.classList.toggle('is-active', active);
@@ -2554,6 +2579,7 @@
       documentRef.querySelectorAll('[data-school-panel]').forEach(function (panel) {
         panel.hidden = panel.getAttribute('data-school-panel') !== view;
       });
+      if (view === 'week') restoreWeekTimelineScroll(byId('schoolTimeScroll'));
       return true;
     }
 

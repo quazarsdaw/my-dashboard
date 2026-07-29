@@ -354,6 +354,128 @@ function timelineDocument(scrollMetricsForCreation = () => ({ scrollHeight: 1000
   };
 }
 
+function timelineLifecycleDocument() {
+  const nodes = new Map();
+  let weekPanel;
+
+  function node(tagName, initialId = '') {
+    const listeners = new Map();
+    const value = {
+      tagName: tagName.toUpperCase(),
+      attributes: {},
+      children: [],
+      className: '',
+      hidden: false,
+      style: {
+        setProperty(name, propertyValue) {
+          this[name] = String(propertyValue);
+        }
+      },
+      textContent: '',
+      appendChild(child) {
+        this.children.push(child);
+        return child;
+      },
+      removeChild(child) {
+        const index = this.children.indexOf(child);
+        if (index !== -1) this.children.splice(index, 1);
+      },
+      get firstChild() {
+        return this.children[0] || null;
+      },
+      setAttribute(name, attributeValue) {
+        this.attributes[name] = String(attributeValue);
+      },
+      getAttribute(name) {
+        return this.attributes[name];
+      },
+      addEventListener(type, listener) {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(listener);
+      },
+      dispatch(type) {
+        [...(listeners.get(type) || [])].forEach((listener) => listener({ target: value }));
+      }
+    };
+    value.classList = {
+      add(name) {
+        const names = new Set(value.className.split(/\s+/).filter(Boolean));
+        names.add(name);
+        value.className = [...names].join(' ');
+      },
+      remove(name) {
+        value.className = value.className.split(/\s+/).filter((entry) => entry && entry !== name).join(' ');
+      },
+      contains(name) {
+        return value.className.split(/\s+/).includes(name);
+      },
+      toggle(name, force) {
+        if (force === undefined ? !this.contains(name) : force) this.add(name);
+        else this.remove(name);
+      }
+    };
+    Object.defineProperty(value, 'id', {
+      get() {
+        return this._id || '';
+      },
+      set(id) {
+        this._id = id;
+        if (id) nodes.set(id, value);
+        if (id === 'schoolTimeScroll') {
+          let storedScrollTop = 0;
+          Object.defineProperties(value, {
+            clientHeight: {
+              get() {
+                return weekPanel && weekPanel.hidden ? 0 : 500;
+              }
+            },
+            scrollHeight: {
+              get() {
+                return weekPanel && weekPanel.hidden ? 0 : 1000;
+              }
+            },
+            scrollTop: {
+              get() {
+                return weekPanel && weekPanel.hidden ? 0 : storedScrollTop;
+              },
+              set(next) {
+                if (!(weekPanel && weekPanel.hidden)) storedScrollTop = Number(next) || 0;
+              }
+            }
+          });
+        }
+      }
+    });
+    if (initialId) value.id = initialId;
+    return value;
+  }
+
+  const todayPanel = node('section', 'schoolTodayPanel');
+  todayPanel.setAttribute('data-school-panel', 'today');
+  weekPanel = node('section', 'schoolWeekPanel');
+  weekPanel.hidden = true;
+  weekPanel.setAttribute('data-school-panel', 'week');
+  const diaryPanel = node('section', 'schoolDiaryPanel');
+  diaryPanel.hidden = true;
+  diaryPanel.setAttribute('data-school-panel', 'diary');
+  ['schoolWeek', 'schoolMobileDays'].forEach((id) => node('div', id));
+
+  return {
+    document: {
+      createElement(tagName) {
+        return node(tagName);
+      },
+      getElementById(id) {
+        return nodes.get(id) || null;
+      },
+      querySelectorAll(selector) {
+        return selector === '[data-school-panel]' ? [todayPanel, weekPanel, diaryPanel] : [];
+      }
+    },
+    nodes
+  };
+}
+
 test('school page loads shared dashboard dependencies before read-only school scripts', () => {
   const html = read('school.html');
   const scripts = [
@@ -375,8 +497,8 @@ test('school page loads shared dashboard dependencies before read-only school sc
 test('school page cache-busts release candidate assets together', () => {
   const html = read('school.html');
   assert.ok(html.includes('school-core.js?v=6'));
-  assert.ok(html.includes('school.css?v=11'));
-  assert.ok(html.includes('school.js?v=11'));
+  assert.ok(html.includes('school.css?v=12'));
+  assert.ok(html.includes('school.js?v=12'));
 });
 
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
@@ -996,9 +1118,7 @@ test('week rerenders retain the internal timeline scroll through optimistic succ
   const ui = timelineDocument((creation) => (
     creation < 6
       ? { scrollHeight: 1000, clientHeight: 500 }
-      : creation < 11
-        ? { scrollHeight: 680, clientHeight: 500 }
-        : { scrollHeight: 0, clientHeight: 0 }
+      : { scrollHeight: 680, clientHeight: 500 }
   ));
   let mutationCount = 0;
   const lesson = queueLesson('lesson-1', '14:00');
@@ -1060,18 +1180,82 @@ test('week rerenders retain the internal timeline scroll through optimistic succ
     ui.timelineScrolls.slice(rollbackStart).every((viewport) => viewport.scrollTop === 180),
     'rollback and revalidation clamp the preserved position to the new viewport range'
   );
+});
 
-  const unmeasuredStart = ui.timelineScrolls.length;
-  ui.nodes.get('schoolTimeScroll').scrollTop = 120;
+test('hidden week rerenders restore the remembered timeline position after the tab becomes visible', async () => {
+  const ui = timelineLifecycleDocument();
+  let mutationCount = 0;
+  const lesson = queueLesson('lesson-1', '14:00');
+  const core = Object.assign({}, SchoolCore, {
+    buildReadModel(lessons) {
+      return {
+        lessons,
+        today: [],
+        weekDays: { '2026-08-03': lessons },
+        diary: [],
+        progress: { completed: 0, total: lessons.length, partial: 0, missed: 0 },
+        activeLessons: [],
+        nextLesson: null,
+        persistedDecisions: [],
+        runtimeIssues: []
+      };
+    }
+  });
+  const controller = SchoolUi.createController({
+    api: {
+      async listLessons() {
+        return [structuredClone(lesson)];
+      },
+      async mutate() {
+        mutationCount += 1;
+        if (mutationCount === 2) throw new Error('rollback');
+        return { id: lesson.id };
+      }
+    },
+    core,
+    mutationQueue: SchoolMutationQueue,
+    document: ui.document,
+    now: () => new Date('2026-08-03T14:00:00+05:00')
+  });
+
+  await controller.load();
+  controller.selectView('week');
+  const visibleViewport = ui.nodes.get('schoolTimeScroll');
+  visibleViewport.scrollTop = 420;
+  visibleViewport.dispatch('scroll');
+  controller.selectView('today');
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 0, 'hidden viewport exposes browser scrolltop zero');
+
+  await controller.runMutation(
+    { operation: 'moveLesson', lessonId: lesson.id },
+    (lessons) => lessons
+  );
+  await assert.rejects(
+    controller.runMutation(
+      { operation: 'moveLesson', lessonId: lesson.id },
+      (lessons) => lessons
+    ),
+    /rollback/
+  );
+  await controller.whenMutationsIdle();
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 0, 'hidden setters do not retain scrolltop');
+
+  controller.selectView('week');
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 420);
+
+  const diaryViewport = ui.nodes.get('schoolTimeScroll');
+  diaryViewport.scrollTop = 360;
+  diaryViewport.dispatch('scroll');
+  controller.selectView('diary');
   await controller.runMutation(
     { operation: 'moveLesson', lessonId: lesson.id },
     (lessons) => lessons
   );
   await controller.whenMutationsIdle();
-  assert.ok(
-    ui.timelineScrolls.slice(unmeasuredStart).every((viewport) => viewport.scrollTop === 120),
-    'rerenders keep the position until a hidden viewport can be measured'
-  );
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 0, 'diary keeps the week viewport hidden');
+
+  controller.selectView('week');
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 360);
 });
 
 test('successful mutation revalidates from notion and rechecks active lessons', async () => {
