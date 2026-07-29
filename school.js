@@ -1539,13 +1539,14 @@
 
     function handleTimelineWheel(event, timeShell, bounds) {
       if (!event || !event.deltaY) return;
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
       var zoomDelta = -Number(event.deltaY);
       var canZoom = zoomDelta > 0 ? targetTimelineScale < 3 : targetTimelineScale > 1;
       if (!canZoom) {
         timelineWheelDelta = 0;
         return;
       }
-      event.preventDefault();
       var anchor = createTimelineAnchor(timeShell, bounds, event.clientY);
       timelineWheelDelta = core.accumulateTimelineWheel(timelineWheelDelta, zoomDelta);
       var consumed = core.consumeTimelineWheel(timelineWheelDelta);

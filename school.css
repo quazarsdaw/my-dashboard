@@ -1249,7 +1249,7 @@ button.school-diary-row:hover { background: rgba(255, 255, 255, 0.025); }
   .school-week-day-head strong { font-size: 12px; }
   .school-time-scroll {
     height: auto;
-    overflow-y: visible;
+    overflow: visible;
     overscroll-behavior-y: auto;
     scrollbar-gutter: auto;
   }

@@ -523,6 +523,7 @@ test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
   function wheel(deltaY) {
     return {
       clientY: 70,
+      ctrlKey: true,
       deltaY,
       prevented: false,
       preventDefault() {
@@ -563,6 +564,69 @@ test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
   assert.ok(Math.abs(scrolls.reduce((sum, entry) => sum + entry[1], 0) - 6) < 0.001);
 });
 
+test('timeline wheel zoom requires ctrl or meta and keeps modifier input claimed at limits', () => {
+  const shell = {
+    classList: { add() {}, remove() {} },
+    getBoundingClientRect() {
+      return { top: 0, bottom: 600, height: 600 };
+    }
+  };
+  const controller = SchoolUi.createController({
+    api: {},
+    core: SchoolCore,
+    document: { getElementById() { return shell; } },
+    runtime: {
+      matchMedia() {
+        return { matches: true };
+      },
+      requestAnimationFrame() {
+        throw new Error('reduced motion must not schedule a frame');
+      },
+      scrollBy() {}
+    }
+  });
+  function wheel(deltaY, modifiers) {
+    return {
+      clientY: 70,
+      deltaY,
+      ...modifiers,
+      prevented: false,
+      preventDefault() {
+        this.prevented = true;
+      }
+    };
+  }
+
+  const atMinimum = wheel(60, { ctrlKey: true });
+  controller.handleTimelineWheel(atMinimum, shell, { startHour: 9, endHour: 20 });
+  assert.equal(atMinimum.prevented, true);
+  assert.equal(controller.getTimelineZoomState().currentScale, 1);
+
+  const ordinaryScroll = wheel(-60, {});
+  controller.handleTimelineWheel(ordinaryScroll, shell, { startHour: 9, endHour: 20 });
+  assert.equal(ordinaryScroll.prevented, false);
+  assert.equal(controller.getTimelineZoomState().currentScale, 1);
+
+  const ctrlZoom = wheel(-60, { ctrlKey: true });
+  controller.handleTimelineWheel(ctrlZoom, shell, { startHour: 9, endHour: 20 });
+  assert.equal(ctrlZoom.prevented, true);
+  assert.equal(controller.getTimelineZoomState().currentScale, 1.1);
+
+  for (let index = 0; index < 19; index += 1) {
+    controller.handleTimelineWheel(
+      wheel(-60, { metaKey: true }),
+      shell,
+      { startHour: 9, endHour: 20 }
+    );
+  }
+  assert.equal(controller.getTimelineZoomState().currentScale, 3);
+
+  const atLimit = wheel(-60, { metaKey: true });
+  controller.handleTimelineWheel(atLimit, shell, { startHour: 9, endHour: 20 });
+  assert.equal(atLimit.prevented, true);
+  assert.equal(controller.getTimelineZoomState().currentScale, 3);
+});
+
 test('reduced motion applies zoom immediately and drag finalization cancels animation', () => {
   let nextFrame = 0;
   const frames = new Map();
@@ -595,6 +659,7 @@ test('reduced motion applies zoom immediately and drag finalization cancels anim
   });
   const animatedWheel = {
     clientY: 70,
+    ctrlKey: true,
     deltaY: -60,
     preventDefault() {}
   };
@@ -620,6 +685,7 @@ test('reduced motion applies zoom immediately and drag finalization cancels anim
   });
   reduced.handleTimelineWheel({
     clientY: 70,
+    ctrlKey: true,
     deltaY: -60,
     preventDefault() {}
   }, shell, { startHour: 9, endHour: 20 });
@@ -684,7 +750,7 @@ test('school timeline returns to document scrolling on mobile', () => {
 
   assert.match(
     mobile,
-    /\.school-time-scroll\s*\{[^}]*height:\s*auto[^}]*overflow-y:\s*visible/s
+    /\.school-time-scroll\s*\{[^}]*height:\s*auto[^}]*overflow:\s*visible/s
   );
 });
 

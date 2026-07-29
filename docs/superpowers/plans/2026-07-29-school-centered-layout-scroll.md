@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** центрировать страницу школы в области шириной до `1100 px` и перенести длинную временную сетку в отдельный вертикальный viewport без поломки zoom, drag-and-drop и мобильного режима.
+**Goal:** центрировать страницу школы в области шириной до `1100 px` и перенести длинную временную сетку в отдельный вертикальный viewport без поломки zoom по `ctrl` или `⌘` + wheel, drag-and-drop и мобильного режима.
 
 **Architecture:** статические заголовки недели и зона «без времени» остаются непосредственными дочерними элементами `.school-week-shell`, а существующий `.school-time-shell` получает единственную новую обёртку `.school-time-scroll`. Геометрия таймлайна не меняется; zoom сохраняет точку под курсором изменением `scrollTop` внутреннего viewport вместо `window.scrollBy`.
 
@@ -14,6 +14,9 @@
 - высота внутреннего временного viewport на desktop/tablet равна `clamp(520px, 68dvh, 760px)`.
 - `.school-week-head` и `.school-all-day-grid` находятся вне вертикально прокручиваемого viewport.
 - при ширине до `620 px` вложенная вертикальная прокрутка отключается и сохраняется обычный document scroll.
+- обычный wheel и trackpad прокручивают внутренний viewport; zoom запускается
+  только по `ctrl` или `⌘` + wheel и всегда отменяет browser zoom, включая
+  границы масштаба.
 - `.topbar`, `.bottombar` и другие страницы дашборда не изменяются.
 - zoom корректирует только `schoolTimeScroll.scrollTop`; `window.scrollBy` для timeline anchor не используется.
 - drag snap, preview, mutation queue, статусы и счётчик переносов не меняются.
@@ -186,7 +189,7 @@ shell.appendChild(timeScroll);
 ```css
 .school-time-scroll {
   height: auto;
-  overflow-y: visible;
+  overflow: visible;
   overscroll-behavior-y: auto;
   scrollbar-gutter: auto;
 }
@@ -246,6 +249,10 @@ git commit -m "сузить школу и добавить прокрутку р
 
 В тесте `small wheel deltas accumulate into a smooth cursor-anchored zoom`
 заменить `runtime.scrollBy`-модель на внутренний viewport:
+
+Во всех fixtures zoom-wheel передавать `ctrlKey: true` или `metaKey: true`.
+Отдельная регрессия оставляет обычный wheel без модификатора нативной
+прокрутке viewport и проверяет `preventDefault()` для обоих пределов zoom.
 
 ```js
 let nextFrame = 0;
@@ -594,7 +601,7 @@ Check:
 2. topbar and bottombar remain full inset width;
 3. day headings and «без времени» stay visible while hours scroll internally;
 4. the document does not grow to the full zoomed timeline height;
-5. wheel zoom keeps the minute under the cursor and does not move the page;
+5. `ctrl` или `⌘` + wheel zoom keeps the minute under the cursor and does not move the page;
 6. `−` and `+` use the visible center of the internal viewport;
 7. scroll to late hours works with mouse wheel and trackpad;
 8. start a drag near a viewport edge, observe native internal autoscroll, then
