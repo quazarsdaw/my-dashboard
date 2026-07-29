@@ -1190,6 +1190,8 @@
       });
       shell.appendChild(allDayGrid);
 
+      var timeScroll = element(documentRef, 'div', 'school-time-scroll');
+      timeScroll.id = 'schoolTimeScroll';
       var timeShell = element(documentRef, 'div', 'school-time-shell');
       timeShell.id = 'schoolTimeShell';
       var geometryRegistry = {
@@ -1280,7 +1282,8 @@
       }, { passive: false });
       timelineGeometryRegistry = geometryRegistry;
       applyTimelineGeometry(core, geometryRegistry, zoomLevel.pixelsPerHour / 60);
-      shell.appendChild(timeShell);
+      timeScroll.appendChild(timeShell);
+      shell.appendChild(timeScroll);
       rootNode.appendChild(shell);
 
       var unscheduled = lessons.filter(function (lesson) {

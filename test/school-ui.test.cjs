@@ -652,6 +652,42 @@ test('school layout keeps mobile targets accessible and document overflow contai
   assert.match(css, /\.school-time-card\s*\{[^}]*min-height:\s*44px/s);
 });
 
+test('school centers the desktop page and scrolls only the timed week grid', () => {
+  const css = read('school.css');
+  const source = read('school.js');
+  const headAppend = source.indexOf('shell.appendChild(head)');
+  const allDayAppend = source.indexOf('shell.appendChild(allDayGrid)');
+  const scrollCreate = source.indexOf(
+    "var timeScroll = element(documentRef, 'div', 'school-time-scroll')"
+  );
+  const scrollAppend = source.indexOf('timeScroll.appendChild(timeShell)');
+  const shellAppend = source.indexOf('shell.appendChild(timeScroll)');
+
+  assert.match(
+    css,
+    /\.school-page\s*\{[^}]*width:\s*min\(1100px,\s*100%\)/s
+  );
+  assert.match(
+    css,
+    /\.school-time-scroll\s*\{[^}]*height:\s*clamp\(520px,\s*68dvh,\s*760px\)[^}]*overflow-y:\s*auto/s
+  );
+  assert.ok(scrollCreate !== -1);
+  assert.ok(headAppend < scrollCreate, 'day headings stay outside the scroll viewport');
+  assert.ok(allDayAppend < scrollCreate, 'all-day lessons stay outside the scroll viewport');
+  assert.ok(scrollCreate < scrollAppend);
+  assert.ok(scrollAppend < shellAppend);
+});
+
+test('school timeline returns to document scrolling on mobile', () => {
+  const css = read('school.css');
+  const mobile = css.slice(css.indexOf('@media (max-width: 620px)'));
+
+  assert.match(
+    mobile,
+    /\.school-time-scroll\s*\{[^}]*height:\s*auto[^}]*overflow-y:\s*visible/s
+  );
+});
+
 test('shared navigation places school between tracker and menu in eight columns', () => {
   const topbar = read('topbar.js');
   const tracker = topbar.indexOf('data-page="tracker"');
