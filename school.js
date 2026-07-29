@@ -498,6 +498,17 @@
     };
   }
 
+  function visibleTimelineClientY(timeRect, viewportRect) {
+    if (!timeRect) return null;
+    if (!viewportRect) {
+      return timeRect.top + Math.max(0, Number(timeRect.height) || 0) / 2;
+    }
+    var visibleTop = Math.max(timeRect.top, viewportRect.top);
+    var visibleBottom = Math.min(timeRect.bottom, viewportRect.bottom);
+    if (visibleBottom > visibleTop) return (visibleTop + visibleBottom) / 2;
+    return timeRect.top + Math.max(0, Number(timeRect.height) || 0) / 2;
+  }
+
   function layoutTimedLessons(entries, pixelsPerHour) {
     var scale = Number.isFinite(Number(pixelsPerHour)) && Number(pixelsPerHour) > 0
       ? Number(pixelsPerHour)
@@ -1411,9 +1422,14 @@
     }
 
     function restoreTimelineAnchor(anchor) {
-      if (!anchor || !runtime || typeof runtime.scrollBy !== 'function') return;
+      if (!anchor) return;
       var shell = byId('schoolTimeShell');
-      if (!shell || typeof shell.getBoundingClientRect !== 'function') return;
+      var viewport = byId('schoolTimeScroll');
+      if (
+        !shell ||
+        !viewport ||
+        typeof shell.getBoundingClientRect !== 'function'
+      ) return;
       var rect = shell.getBoundingClientRect();
       var nextY = core.timelineYForMinute(
         anchor.minute,
@@ -1421,7 +1437,9 @@
         core.timelinePixelsPerHour(timelineScale)
       );
       var delta = rect.top + nextY - anchor.clientY;
-      if (Math.abs(delta) > 0.001) runtime.scrollBy(0, delta);
+      if (Math.abs(delta) > 0.001) {
+        viewport.scrollTop = (Number(viewport.scrollTop) || 0) + delta;
+      }
     }
 
     function applyCurrentTimelineScale(scale, anchor) {
@@ -1571,17 +1589,20 @@
         return lesson.schedule && lesson.schedule.kind === 'timed';
       }));
       var rect = timeShell.getBoundingClientRect();
-      var viewportHeight = runtime && Number.isFinite(runtime.innerHeight)
-        ? runtime.innerHeight
-        : rect.bottom;
-      var visibleTop = Math.max(0, rect.top);
-      var visibleBottom = Math.min(viewportHeight, rect.bottom);
-      var clientY = visibleBottom > visibleTop
-        ? (visibleTop + visibleBottom) / 2
-        : rect.top + Math.max(0, rect.height || 0) / 2;
+      var viewport = byId('schoolTimeScroll');
+      var viewportRect = viewport && typeof viewport.getBoundingClientRect === 'function'
+        ? viewport.getBoundingClientRect()
+        : null;
+      if (!viewportRect) {
+        var viewportHeight = runtime && Number.isFinite(runtime.innerHeight)
+          ? runtime.innerHeight
+          : rect.bottom;
+        viewportRect = { top: 0, bottom: viewportHeight, height: viewportHeight };
+      }
+      var clientY = visibleTimelineClientY(rect, viewportRect);
       setTimelineZoomTarget(
         nextScale,
-        createTimelineAnchor(timeShell, bounds, clientY)
+        clientY === null ? null : createTimelineAnchor(timeShell, bounds, clientY)
       );
     }
 
@@ -2827,6 +2848,7 @@
     setTransparentDragImage: setTransparentDragImage,
     timelineDragPreview: timelineDragPreview,
     timelineDestination: timelineDestination,
-    timelineDropDestination: timelineDropDestination
+    timelineDropDestination: timelineDropDestination,
+    visibleTimelineClientY: visibleTimelineClientY
   });
 });

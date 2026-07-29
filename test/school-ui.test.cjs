@@ -482,8 +482,20 @@ test('applies continuous timeline geometry in place without rebuilding the week'
 test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
   let nextFrame = 0;
   const frames = new Map();
-  const scrolls = [];
-  let shellTop = 10;
+  let windowScrollCalls = 0;
+  const viewport = {
+    scrollTop: 100,
+    getBoundingClientRect() {
+      return { top: 10, bottom: 610, height: 600 };
+    }
+  };
+  const shell = {
+    classList: { add() {}, remove() {} },
+    getBoundingClientRect() {
+      const top = 10 - viewport.scrollTop;
+      return { top, bottom: top + 660, height: 660 };
+    }
+  };
   const runtime = {
     requestAnimationFrame(callback) {
       const id = ++nextFrame;
@@ -493,20 +505,15 @@ test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
     cancelAnimationFrame(id) {
       frames.delete(id);
     },
-    scrollBy(x, y) {
-      scrolls.push([x, y]);
-      shellTop -= y;
-    }
-  };
-  const shell = {
-    classList: { add() {}, remove() {} },
-    getBoundingClientRect() {
-      return { top: shellTop, bottom: shellTop + 600, height: 600 };
+    scrollBy() {
+      windowScrollCalls += 1;
     }
   };
   const document = {
     getElementById(id) {
-      return id === 'schoolTimeShell' ? shell : null;
+      if (id === 'schoolTimeShell') return shell;
+      if (id === 'schoolTimeScroll') return viewport;
+      return null;
     }
   };
   const controller = SchoolUi.createController({
@@ -561,7 +568,25 @@ test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
     wheelDelta: 0,
     animating: false
   });
-  assert.ok(Math.abs(scrolls.reduce((sum, entry) => sum + entry[1], 0) - 6) < 0.001);
+  assert.ok(Math.abs(viewport.scrollTop - 116) < 0.001);
+  assert.equal(windowScrollCalls, 0);
+});
+
+test('timeline button zoom centers the visible part of the internal viewport', () => {
+  assert.equal(
+    SchoolUi.visibleTimelineClientY(
+      { top: -100, bottom: 680, height: 780 },
+      { top: 100, bottom: 500, height: 400 }
+    ),
+    300
+  );
+  assert.equal(
+    SchoolUi.visibleTimelineClientY(
+      { top: 700, bottom: 1480, height: 780 },
+      { top: 100, bottom: 500, height: 400 }
+    ),
+    1090
+  );
 });
 
 test('timeline wheel zoom requires ctrl or meta and keeps modifier input claimed at limits', () => {
@@ -630,6 +655,12 @@ test('timeline wheel zoom requires ctrl or meta and keeps modifier input claimed
 test('reduced motion applies zoom immediately and drag finalization cancels animation', () => {
   let nextFrame = 0;
   const frames = new Map();
+  const viewport = {
+    scrollTop: 100,
+    getBoundingClientRect() {
+      return { top: 10, bottom: 610, height: 600 };
+    }
+  };
   const shell = {
     classList: { add() {}, remove() {} },
     getBoundingClientRect() {
@@ -638,7 +669,9 @@ test('reduced motion applies zoom immediately and drag finalization cancels anim
   };
   const document = {
     getElementById(id) {
-      return id === 'schoolTimeShell' ? shell : null;
+      if (id === 'schoolTimeShell') return shell;
+      if (id === 'schoolTimeScroll') return viewport;
+      return null;
     }
   };
   const animated = SchoolUi.createController({
@@ -654,7 +687,9 @@ test('reduced motion applies zoom immediately and drag finalization cancels anim
       cancelAnimationFrame(id) {
         frames.delete(id);
       },
-      scrollBy() {}
+      scrollBy() {
+        throw new Error('timeline zoom must not scroll the window');
+      }
     }
   });
   const animatedWheel = {
@@ -680,9 +715,12 @@ test('reduced motion applies zoom immediately and drag finalization cancels anim
       requestAnimationFrame() {
         throw new Error('reduced motion must not schedule a frame');
       },
-      scrollBy() {}
+      scrollBy() {
+        throw new Error('timeline zoom must not scroll the window');
+      }
     }
   });
+  viewport.scrollTop = 100;
   reduced.handleTimelineWheel({
     clientY: 70,
     ctrlKey: true,
@@ -690,6 +728,7 @@ test('reduced motion applies zoom immediately and drag finalization cancels anim
     preventDefault() {}
   }, shell, { startHour: 9, endHour: 20 });
   assert.equal(reduced.getTimelineZoomState().currentScale, 1.1);
+  assert.ok(viewport.scrollTop > 100);
 });
 
 test('school styles distinguish quarter ten and five minute lines', () => {
