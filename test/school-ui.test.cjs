@@ -280,8 +280,8 @@ test('school page loads shared dashboard dependencies before read-only school sc
 test('school page cache-busts release candidate assets together', () => {
   const html = read('school.html');
   assert.ok(html.includes('school-core.js?v=6'));
-  assert.ok(html.includes('school.css?v=9'));
-  assert.ok(html.includes('school.js?v=9'));
+  assert.ok(html.includes('school.css?v=10'));
+  assert.ok(html.includes('school.js?v=10'));
 });
 
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
