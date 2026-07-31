@@ -81,6 +81,231 @@
     }
   }
 
+  function copyPromptAndOpen(options) {
+    options = isRecord(options) ? options : {};
+    var runtime = options.runtime || root;
+    var teacher = isRecord(options.teacher) ? options.teacher : {};
+    var prompt = text(options.prompt);
+    var copyText = typeof options.copyText === 'function'
+      ? options.copyText
+      : function () { return Promise.reject(new Error('clipboard unavailable')); };
+    var onClipboardFallback = typeof options.onClipboardFallback === 'function'
+      ? options.onClipboardFallback
+      : function () {};
+    var onPopupBlocked = typeof options.onPopupBlocked === 'function'
+      ? options.onPopupBlocked
+      : function () {};
+    var popup = null;
+    var popupBlocked = false;
+
+    if (teacher.configured && teacher.url) {
+      try {
+        popup = runtime && typeof runtime.open === 'function'
+          ? runtime.open('about:blank', '_blank')
+          : null;
+      } catch (_error) {
+        popup = null;
+      }
+      popupBlocked = !popup;
+      if (popup) {
+        try {
+          popup.opener = null;
+          if (
+            popup.document &&
+            popup.document.head &&
+            typeof popup.document.createElement === 'function'
+          ) {
+            var referrerPolicy = popup.document.createElement('meta');
+            referrerPolicy.setAttribute('name', 'referrer');
+            referrerPolicy.setAttribute('content', 'no-referrer');
+            popup.document.head.appendChild(referrerPolicy);
+          }
+        } catch (_error) {}
+      }
+    }
+
+    function reportPopupBlocked() {
+      try {
+        onPopupBlocked(teacher.url);
+      } catch (_error) {}
+    }
+
+    function navigatePopup() {
+      if (!popup || !popup.location || typeof popup.location.replace !== 'function') {
+        if (popupBlocked) reportPopupBlocked();
+        return false;
+      }
+      try {
+        popup.location.replace(teacher.url);
+        return true;
+      } catch (_error) {
+        popupBlocked = true;
+        reportPopupBlocked();
+        return false;
+      }
+    }
+
+    var copyResult;
+    try {
+      copyResult = copyText(prompt);
+    } catch (error) {
+      copyResult = Promise.reject(error);
+    }
+    return Promise.resolve(copyResult).then(function () {
+      var opened = navigatePopup();
+      return {
+        copied: true,
+        opened: opened,
+        popupBlocked: popupBlocked
+      };
+    }).catch(function () {
+      try {
+        onClipboardFallback(prompt);
+      } catch (_error) {}
+      var opened = navigatePopup();
+      return {
+        copied: false,
+        opened: opened,
+        popupBlocked: popupBlocked
+      };
+    });
+  }
+
+  function controlFrom(documentRef, id) {
+    return documentRef && typeof documentRef.getElementById === 'function'
+      ? documentRef.getElementById(id)
+      : null;
+  }
+
+  function applyTeacherResultToControls(documentRef, values) {
+    var result = isRecord(values) ? values : {};
+    var assignments = {
+      schoolLessonFinalStatus: result.status || '',
+      schoolLessonResult: result.result || '',
+      schoolLessonAutonomy: result.autonomy || '',
+      schoolLessonUnderstanding: result.understanding === null ||
+          result.understanding === undefined
+        ? ''
+        : String(result.understanding),
+      schoolLessonComment: text(result.comment),
+      schoolLessonArtifact: result.artifactUrl || '',
+      schoolLessonMissedReason: result.missedReason || ''
+    };
+
+    Object.keys(assignments).forEach(function (id) {
+      var control = controlFrom(documentRef, id);
+      if (!control) return;
+      control.value = assignments[id];
+      if (control.classList) control.classList.add('is-teacher-filled');
+      if (control._schoolTeacherEditBound) return;
+      control._schoolTeacherEditBound = true;
+      ['input', 'change'].forEach(function (eventName) {
+        if (typeof control.addEventListener !== 'function') return;
+        control.addEventListener(eventName, function () {
+          if (control.classList) control.classList.remove('is-teacher-filled');
+        });
+      });
+    });
+    return assignments;
+  }
+
+  function syncAssessmentControlsForStatus(documentRef, status) {
+    var result = controlFrom(documentRef, 'schoolLessonResult');
+    var autonomy = controlFrom(documentRef, 'schoolLessonAutonomy');
+    var understanding = controlFrom(documentRef, 'schoolLessonUnderstanding');
+    var missedReason = controlFrom(documentRef, 'schoolLessonMissedReason');
+    if (status === 'Пропущен') {
+      if (result) result.value = '';
+      if (autonomy) autonomy.value = '';
+      if (understanding) understanding.value = '';
+      return;
+    }
+    if (missedReason) missedReason.value = '';
+    if (status === 'Частично выполнен' && result) {
+      result.value = 'Требует повторения';
+    } else if (status === 'Выполнен' && result && !result.value) {
+      result.value = 'Зачёт';
+    }
+  }
+
+  function assessmentDraft(documentRef, lesson, teacherBridge) {
+    var bridge = teacherBridge || (root && root.SchoolTeacherBridge) || {};
+    var errors = [];
+    function value(id) {
+      var control = controlFrom(documentRef, id);
+      return control && typeof control.value === 'string' ? control.value : '';
+    }
+    var status = value('schoolLessonFinalStatus');
+    var result = value('schoolLessonResult');
+    var autonomy = value('schoolLessonAutonomy');
+    var understandingValue = value('schoolLessonUnderstanding');
+    var comment = value('schoolLessonComment').trim();
+    var artifact = value('schoolLessonArtifact').trim();
+    var missedReason = value('schoolLessonMissedReason');
+    var understanding = understandingValue === '' ? null : Number(understandingValue);
+    var command = {
+      operation: 'completeLesson',
+      lessonId: lesson && lesson.id,
+      status: status
+    };
+    var summary = ['Статус: ' + (status || 'не выбран')];
+
+    if (['Выполнен', 'Частично выполнен', 'Пропущен'].indexOf(status) === -1) {
+      errors.push('Выберите итоговый статус.');
+    }
+    if (
+      bridge &&
+      typeof bridge.unicodeLength === 'function' &&
+      bridge.unicodeLength(comment) > 1000
+    ) {
+      errors.push('Комментарий длиннее 1000 Unicode code points.');
+    }
+    if (artifact && !safeHttpsUrl(artifact)) {
+      errors.push('Артефакт должен быть абсолютным HTTPS URL длиной не более 2048 символов.');
+    }
+
+    if (status === 'Пропущен') {
+      if (!missedReason) errors.push('Выберите причину пропуска.');
+      command.missedReason = missedReason;
+      if (comment) command.comment = comment;
+      summary.push('Причина пропуска: ' + (missedReason || 'не выбрана'));
+      if (comment) summary.push('Комментарий: ' + comment);
+    } else if (status === 'Выполнен' || status === 'Частично выполнен') {
+      if (!autonomy) errors.push('Выберите автономность.');
+      if (!Number.isInteger(understanding) || understanding < 0 || understanding > 3) {
+        errors.push('Выберите понимание от 0 до 3.');
+      }
+      command.autonomy = autonomy;
+      command.understanding = understanding;
+      if (status === 'Выполнен') {
+        command.result = result || 'Зачёт';
+      }
+      if (comment) command.comment = comment;
+      if (artifact) command.artifactUrl = artifact;
+      summary.push(
+        'Результат: ' + (
+          status === 'Частично выполнен'
+            ? 'Требует повторения'
+            : (command.result || 'Зачёт')
+        )
+      );
+      summary.push('Автономность: ' + (autonomy || 'не выбрана'));
+      summary.push(
+        'Понимание: ' + (
+          Number.isInteger(understanding) ? understanding + '/3' : 'не выбрано'
+        )
+      );
+      if (comment) summary.push('Комментарий: ' + comment);
+      if (artifact) summary.push('Артефакт: ' + artifact);
+    }
+
+    return {
+      command: command,
+      errors: errors,
+      summary: summary.join('\n')
+    };
+  }
+
   function appendSpans(parent, spans, documentRef) {
     (Array.isArray(spans) ? spans : []).forEach(function (span) {
       if (!isRecord(span)) return;
@@ -806,6 +1031,8 @@
     var api = options.api || (root && root.SchoolApi);
     var core = options.core || (root && root.SchoolCore);
     var queueApi = options.mutationQueue || (root && root.SchoolMutationQueue);
+    var teacherBridge = options.teacherBridge || (root && root.SchoolTeacherBridge);
+    var teacherConfig = options.teacherConfig || (root && root.SchoolTeacherConfig) || {};
     var now = typeof options.now === 'function' ? options.now : function () { return new Date(); };
     var onState = typeof options.onState === 'function' ? options.onState : function () {};
     var lessons = [];
@@ -819,6 +1046,11 @@
     var dialogKeyHandler = null;
     var dialogGeneration = 0;
     var currentContentLessonId = null;
+    var currentContentBlocks = [];
+    var currentContentLoaded = false;
+    var currentTeacherParse = null;
+    var teacherPreviousFocus = null;
+    var toastTimer = null;
     var mutationSequence = 0;
     var revalidationGeneration = 0;
     var timelineScale = 1;
@@ -2276,6 +2508,331 @@
       });
     }
 
+    function teacherForLesson(lesson) {
+      if (!teacherBridge || typeof teacherBridge.resolveTeacher !== 'function') {
+        return { configured: false, label: 'Преподаватель', url: null };
+      }
+      return teacherBridge.resolveTeacher(
+        lesson && teacherConfig ? teacherConfig[lesson.subject] : null
+      );
+    }
+
+    function getCurrentTeacherPrompt() {
+      var lesson = currentLesson();
+      if (
+        !lesson ||
+        !currentContentLoaded ||
+        !teacherBridge ||
+        typeof teacherBridge.buildLessonTeacherPrompt !== 'function'
+      ) return '';
+      return teacherBridge.buildLessonTeacherPrompt(
+        lesson,
+        currentContentBlocks
+      );
+    }
+
+    function showToast(message) {
+      var toast = byId('schoolToast');
+      if (!toast) return;
+      toast.textContent = message || '';
+      toast.hidden = !message;
+      if (toastTimer && runtime && typeof runtime.clearTimeout === 'function') {
+        runtime.clearTimeout(toastTimer);
+      }
+      if (message && runtime && typeof runtime.setTimeout === 'function') {
+        toastTimer = runtime.setTimeout(function () {
+          toast.hidden = true;
+          toastTimer = null;
+        }, 4200);
+      }
+    }
+
+    function teacherDialogOpen() {
+      var dialog = byId('schoolTeacherDialog');
+      return Boolean(dialog && !dialog.hidden);
+    }
+
+    function closeTeacherDialog() {
+      var dialog = byId('schoolTeacherDialog');
+      if (!dialog || dialog.hidden) return;
+      dialog.hidden = true;
+      dialog.setAttribute('aria-hidden', 'true');
+      currentTeacherParse = null;
+      var preview = byId('schoolTeacherPreview');
+      if (preview) {
+        clearNode(preview);
+        preview.hidden = true;
+      }
+      if (teacherPreviousFocus && typeof teacherPreviousFocus.focus === 'function') {
+        teacherPreviousFocus.focus();
+      }
+      teacherPreviousFocus = null;
+    }
+
+    function showTeacherDialog() {
+      var dialog = byId('schoolTeacherDialog');
+      if (!dialog || !documentRef) return;
+      teacherPreviousFocus = documentRef.activeElement;
+      dialog.hidden = false;
+      dialog.setAttribute('aria-hidden', 'false');
+      installDialogKeys(byId('schoolLessonDialog'));
+    }
+
+    function configureTeacherDialogButtons(mode) {
+      var paste = byId('schoolTeacherPaste');
+      var parse = byId('schoolTeacherParse');
+      var apply = byId('schoolTeacherApply');
+      var edit = byId('schoolTeacherEditSource');
+      var source = byId('schoolTeacherSource');
+      if (paste) {
+        paste.hidden = false;
+        paste.textContent = mode === 'import'
+          ? 'Вставить из буфера'
+          : 'Копировать вручную';
+      }
+      if (parse) parse.hidden = mode !== 'import';
+      if (apply) apply.hidden = true;
+      if (edit) edit.hidden = true;
+      if (source) source.readOnly = mode !== 'import';
+    }
+
+    function openTeacherTextDialog(title, message, value) {
+      if (!documentRef) return;
+      byId('schoolTeacherDialogTitle').textContent = title;
+      byId('schoolTeacherDialogMessage').textContent = message || '';
+      var source = byId('schoolTeacherSource');
+      source.value = value || '';
+      byId('schoolTeacherSourceWrap').hidden = false;
+      byId('schoolTeacherPreview').hidden = true;
+      byId('schoolTeacherArtifactConfirmWrap').hidden = true;
+      configureTeacherDialogButtons('text');
+      showTeacherDialog();
+      if (typeof source.focus === 'function') source.focus();
+      if (typeof source.select === 'function') source.select();
+    }
+
+    function openTeacherImportDialog() {
+      if (!documentRef) return;
+      byId('schoolTeacherDialogTitle').textContent = 'Импорт результата преподавателя';
+      byId('schoolTeacherDialogMessage').textContent =
+        'Вставьте исходный блок LESSON RESULT. Разбор ничего не сохраняет в notion.';
+      var source = byId('schoolTeacherSource');
+      source.value = '';
+      byId('schoolTeacherSourceWrap').hidden = false;
+      clearNode(byId('schoolTeacherPreview'));
+      byId('schoolTeacherPreview').hidden = true;
+      byId('schoolTeacherArtifactConfirmWrap').hidden = true;
+      if (byId('schoolTeacherArtifactConfirm')) {
+        byId('schoolTeacherArtifactConfirm').checked = false;
+      }
+      configureTeacherDialogButtons('import');
+      currentTeacherParse = null;
+      showTeacherDialog();
+      if (typeof source.focus === 'function') source.focus();
+    }
+
+    function previewValue(value) {
+      if (value === null || value === undefined || value === '') return 'не заполнено';
+      return String(value);
+    }
+
+    function renderTeacherResultPreview(parsed) {
+      var rootNode = byId('schoolTeacherPreview');
+      if (!rootNode || !documentRef) return;
+      clearNode(rootNode);
+      rootNode.hidden = false;
+      rootNode.appendChild(element(
+        documentRef,
+        'h3',
+        '',
+        parsed.canApply ? 'Результат распознан' : 'Результат требует проверки'
+      ));
+      var values = parsed.values || {};
+      var labels = [
+        ['Статус', values.status],
+        ['Результат', values.result],
+        ['Автономность', values.autonomy],
+        ['Понимание', values.understanding],
+        ['Комментарий', values.comment],
+        ['Артефакт', values.artifactUrl],
+        ['Причина пропуска', values.missedReason]
+      ];
+      var list = element(documentRef, 'dl');
+      labels.forEach(function (entry) {
+        list.appendChild(element(documentRef, 'dt', '', entry[0]));
+        list.appendChild(element(documentRef, 'dd', '', previewValue(entry[1])));
+      });
+      rootNode.appendChild(list);
+      (parsed.warnings || []).forEach(function (warning) {
+        rootNode.appendChild(element(
+          documentRef,
+          'p',
+          'is-warning',
+          warning.message
+        ));
+      });
+      (parsed.errors || []).forEach(function (error) {
+        rootNode.appendChild(element(
+          documentRef,
+          'p',
+          'is-error',
+          error.message
+        ));
+      });
+      var apply = byId('schoolTeacherApply');
+      var edit = byId('schoolTeacherEditSource');
+      if (apply) apply.hidden = !parsed.canApplyToForm;
+      if (edit) edit.hidden = false;
+      var confirm = byId('schoolTeacherArtifactConfirmWrap');
+      if (confirm) confirm.hidden = !parsed.requiresArtifactConfirmation;
+    }
+
+    function parseTeacherSource() {
+      var lesson = currentLesson();
+      if (
+        !lesson ||
+        !teacherBridge ||
+        typeof teacherBridge.parseLessonResultBlock !== 'function'
+      ) return null;
+      currentTeacherParse = teacherBridge.parseLessonResultBlock(
+        controlValue('schoolTeacherSource'),
+        lesson.id
+      );
+      renderTeacherResultPreview(currentTeacherParse);
+      return currentTeacherParse;
+    }
+
+    function applyCurrentTeacherParse() {
+      if (!currentTeacherParse || !currentTeacherParse.canApplyToForm) return false;
+      var values = Object.assign({}, currentTeacherParse.values);
+      if (
+        currentTeacherParse.requiresArtifactConfirmation &&
+        !byId('schoolTeacherArtifactConfirm').checked
+      ) {
+        values.artifactUrl = null;
+      }
+      applyTeacherResultToControls(documentRef, values);
+      updateCommentCount();
+      closeTeacherDialog();
+      showToast('Результат применён к форме — проверьте поля перед сохранением.');
+      return true;
+    }
+
+    function revealTeacherFallbackLink(url) {
+      var link = byId('schoolTeacherFallbackLink');
+      var safeUrl = safeHttpsUrl(url);
+      if (!link || !safeUrl) return;
+      link.setAttribute('href', safeUrl);
+      link.hidden = false;
+    }
+
+    function clipboardWrite(value) {
+      var clipboard = runtime && runtime.navigator && runtime.navigator.clipboard;
+      if (!clipboard || typeof clipboard.writeText !== 'function') {
+        return Promise.reject(new Error('clipboard unavailable'));
+      }
+      return clipboard.writeText(value);
+    }
+
+    function copyTeacherText(value, successMessage) {
+      return clipboardWrite(value).then(function () {
+        showToast(successMessage);
+        return true;
+      }).catch(function () {
+        openTeacherTextDialog(
+          'Скопируйте текст вручную',
+          'Clipboard API недоступен. Нажмите Cmd+C или Ctrl+C для выделенного текста.',
+          value
+        );
+        return false;
+      });
+    }
+
+    function runTeacherPrimary() {
+      var lesson = currentLesson();
+      var prompt = getCurrentTeacherPrompt();
+      if (!lesson || !prompt) return Promise.resolve(null);
+      if (lesson.status !== 'В процессе' && FINAL_DIARY_STATUSES.indexOf(lesson.status) === -1) {
+        openTeacherTextDialog(
+          'Предпросмотр промта урока',
+          'Диалог преподавателя можно открыть после успешного начала урока.',
+          prompt
+        );
+        return Promise.resolve({ copied: false, opened: false, popupBlocked: false });
+      }
+      var teacher = teacherForLesson(lesson);
+      return copyPromptAndOpen({
+        runtime: runtime,
+        teacher: teacher,
+        prompt: prompt,
+        copyText: clipboardWrite,
+        onClipboardFallback: function (value) {
+          openTeacherTextDialog(
+            'Скопируйте промт вручную',
+            'Clipboard API недоступен. Нажмите Cmd+C или Ctrl+C для выделенного текста.',
+            value
+          );
+        },
+        onPopupBlocked: function (url) {
+          revealTeacherFallbackLink(url);
+        }
+      }).then(function (result) {
+        if (result.copied) {
+          showToast('Промт урока скопирован — вставьте его в диалог преподавателя.');
+        }
+        if (!teacher.configured) {
+          showToast('Ссылка преподавателя для этого предмета ещё не настроена.');
+        }
+        return result;
+      });
+    }
+
+    function renderTeacherSection(lesson) {
+      var section = byId('schoolTeacherSection');
+      if (!section || !lesson || !teacherBridge) return;
+      section.hidden = false;
+      var teacher = teacherForLesson(lesson);
+      var active = lesson.status === 'В процессе';
+      var finalized = FINAL_DIARY_STATUSES.indexOf(lesson.status) !== -1;
+      var ready = currentContentLoaded && currentContentLessonId === lesson.id;
+      byId('schoolTeacherLabel').textContent =
+        'ChatGPT · ' + (teacher.label || lesson.subject);
+      byId('schoolTeacherStatus').textContent = active
+        ? 'урок активен'
+        : (finalized ? 'урок сохранён в дневнике' : 'предпросмотр');
+      byId('schoolTeacherNote').textContent = teacher.configured
+        ? (
+          active || finalized
+            ? 'Промт строится из текущей карточки и загруженного задания.'
+            : 'Начните урок, чтобы открыть постоянный диалог преподавателя.'
+        )
+        : (
+          'Ссылка преподавателя для этого предмета ещё не настроена. ' +
+          'Заполните ключ «' + lesson.subject + '» в school-teacher-config.js.'
+        );
+      var primary = byId('schoolTeacherPrimary');
+      primary.textContent = active || finalized
+        ? (teacher.configured
+          ? 'Скопировать промт и открыть преподавателя'
+          : 'Скопировать промт')
+        : 'Посмотреть промт';
+      primary.disabled = !ready;
+      byId('schoolTeacherCopy').disabled = !ready;
+      byId('schoolTeacherOpen').disabled = !ready || !teacher.configured || (!active && !finalized);
+      byId('schoolTeacherFinishRequest').disabled = !ready || (!active && !finalized);
+      byId('schoolTeacherImport').disabled = !ready;
+      byId('schoolTeacherFallbackLink').hidden = true;
+    }
+
+    function updateCommentCount() {
+      var comment = controlValue('schoolLessonComment');
+      var length = teacherBridge && typeof teacherBridge.unicodeLength === 'function'
+        ? teacherBridge.unicodeLength(comment)
+        : Array.from(comment).length;
+      var count = byId('schoolLessonCommentCount');
+      if (count) count.textContent = length + ' / 1000';
+    }
+
     function renderCancelledHistory(lesson) {
       var details = byId('schoolCancelledHistory');
       var content = byId('schoolCancelledHistoryContent');
@@ -2379,18 +2936,26 @@
       if (byId('schoolLessonDuration')) {
         byId('schoolLessonDuration').textContent = lesson.durationMinutes + ' минут';
       }
+      if (byId('schoolLessonFinalStatus')) {
+        byId('schoolLessonFinalStatus').value =
+          FINAL_DIARY_STATUSES.indexOf(lesson.status) !== -1
+            ? lesson.status
+            : 'Выполнен';
+      }
       if (byId('schoolLessonResult')) byId('schoolLessonResult').value = lesson.result || 'Зачёт';
-      if (byId('schoolLessonAutonomy')) byId('schoolLessonAutonomy').value = lesson.autonomy || 'A2';
+      if (byId('schoolLessonAutonomy')) byId('schoolLessonAutonomy').value = lesson.autonomy || '';
       if (byId('schoolLessonUnderstanding')) {
         byId('schoolLessonUnderstanding').value = lesson.understanding === null
-          ? '2'
+          ? ''
           : String(lesson.understanding);
       }
       if (byId('schoolLessonMissedReason')) {
-        byId('schoolLessonMissedReason').value = lesson.missedReason || 'Внешние обстоятельства';
+        byId('schoolLessonMissedReason').value = lesson.missedReason || '';
       }
       if (byId('schoolLessonComment')) byId('schoolLessonComment').value = lesson.comment || '';
       if (byId('schoolLessonArtifact')) byId('schoolLessonArtifact').value = lesson.artifactUrl || '';
+      if (byId('schoolAssessmentErrors')) byId('schoolAssessmentErrors').textContent = '';
+      updateCommentCount();
 
       var scheduleControls = byId('schoolScheduleControls');
       if (scheduleControls) {
@@ -2398,6 +2963,8 @@
       }
       var assessmentControls = byId('schoolAssessmentControls');
       if (assessmentControls) assessmentControls.hidden = lesson.status === 'Отменён';
+      var saveAssessment = byId('schoolSaveAssessment');
+      if (saveAssessment) saveAssessment.hidden = lesson.status !== 'В процессе';
 
       var actionRoot = byId('schoolLessonActions');
       clearNode(actionRoot);
@@ -2421,15 +2988,6 @@
           return cancelLessonWithConfirmation(lesson);
         });
       } else if (lesson.status === 'В процессе') {
-        appendAction(actionRoot, 'Выполнен', 'is-primary', function () {
-          return mutateWithDialogs(assessmentCommand(lesson, 'Выполнен'));
-        });
-        appendAction(actionRoot, 'Частично выполнен', '', function () {
-          return mutateWithDialogs(assessmentCommand(lesson, 'Частично выполнен'));
-        });
-        appendAction(actionRoot, 'Пропущен', 'is-danger', function () {
-          return mutateWithDialogs(assessmentCommand(lesson, 'Пропущен'));
-        });
         appendAction(actionRoot, 'Отменить', 'is-danger', function () {
           return cancelLessonWithConfirmation(lesson);
         });
@@ -2501,6 +3059,7 @@
           }
         );
       }
+      renderTeacherSection(lesson);
       renderCancelledHistory(lesson);
     }
 
@@ -2541,7 +3100,10 @@
       var dialog = byId('schoolLessonDialog');
       if (!dialog || dialog.hidden) return;
       dialogGeneration += 1;
+      closeTeacherDialog();
       currentContentLessonId = null;
+      currentContentBlocks = [];
+      currentContentLoaded = false;
       dialog.hidden = true;
       dialog.setAttribute('aria-hidden', 'true');
       if (dialogKeyHandler) documentRef.removeEventListener('keydown', dialogKeyHandler);
@@ -2550,6 +3112,7 @@
       clearNode(byId('schoolLessonMeta'));
       clearNode(byId('schoolLessonContent'));
       clearNode(byId('schoolLessonActions'));
+      if (byId('schoolTeacherSection')) byId('schoolTeacherSection').hidden = true;
       closeActionDialog('cancel');
       if (byId('schoolLessonTitle')) byId('schoolLessonTitle').textContent = 'Урок';
       if (byId('schoolLessonSubject')) byId('schoolLessonSubject').textContent = '';
@@ -2567,11 +3130,17 @@
             closeActionDialog('cancel');
             return;
           }
+          if (teacherDialogOpen()) {
+            closeTeacherDialog();
+            return;
+          }
           closeDialog();
           return;
         }
         if (event.key !== 'Tab') return;
-        var focusRoot = actionDialogOpen() ? byId('schoolActionDialog') : dialog;
+        var focusRoot = actionDialogOpen()
+          ? byId('schoolActionDialog')
+          : (teacherDialogOpen() ? byId('schoolTeacherDialog') : dialog);
         var focusable = Array.from(focusRoot.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])'))
           .filter(function (node) { return !node.disabled && !node.hidden; });
         if (!focusable.length) return;
@@ -2602,6 +3171,8 @@
       dialogGeneration += 1;
       var requestGeneration = dialogGeneration;
       currentContentLessonId = lessonId;
+      currentContentBlocks = [];
+      currentContentLoaded = false;
       if (documentRef) {
         var dialog = byId('schoolLessonDialog');
         if (dialog) {
@@ -2625,6 +3196,13 @@
       try {
         var content = await api.getLessonContent(lessonId);
         if (
+          requestGeneration === dialogGeneration &&
+          currentContentLessonId === lessonId
+        ) {
+          currentContentBlocks = Array.isArray(content.blocks) ? content.blocks : [];
+          currentContentLoaded = true;
+        }
+        if (
           documentRef &&
           requestGeneration === dialogGeneration &&
           currentContentLessonId === lessonId &&
@@ -2632,9 +3210,17 @@
         ) {
           byId('schoolContentState').textContent = content.blocks.length ? '' : 'У урока пока нет дополнительного содержания.';
           renderContentBlocks(byId('schoolLessonContent'), content.blocks, documentRef);
+          if (lesson) renderTeacherSection(lesson);
         }
         return content;
       } catch (error) {
+        if (
+          requestGeneration === dialogGeneration &&
+          currentContentLessonId === lessonId
+        ) {
+          currentContentBlocks = [];
+          currentContentLoaded = false;
+        }
         if (
           documentRef &&
           requestGeneration === dialogGeneration &&
@@ -2684,6 +3270,150 @@
       var actionDialog = byId('schoolActionDialog');
       if (actionDialog) actionDialog.addEventListener('click', function (event) {
         if (event.target === actionDialog) closeActionDialog('cancel');
+      });
+      var teacherDialog = byId('schoolTeacherDialog');
+      if (teacherDialog) teacherDialog.addEventListener('click', function (event) {
+        if (event.target === teacherDialog) closeTeacherDialog();
+      });
+      [
+        'schoolTeacherDialogClose',
+        'schoolTeacherDialogCancel'
+      ].forEach(function (id) {
+        var closeTeacher = byId(id);
+        if (closeTeacher) closeTeacher.addEventListener('click', closeTeacherDialog);
+      });
+      var teacherPrimary = byId('schoolTeacherPrimary');
+      if (teacherPrimary) teacherPrimary.addEventListener('click', function () {
+        runTeacherPrimary();
+      });
+      var teacherCopy = byId('schoolTeacherCopy');
+      if (teacherCopy) teacherCopy.addEventListener('click', function () {
+        var prompt = getCurrentTeacherPrompt();
+        if (!prompt) return;
+        copyTeacherText(
+          prompt,
+          'Промт урока скопирован — вставьте его в диалог преподавателя.'
+        );
+      });
+      var teacherOpen = byId('schoolTeacherOpen');
+      if (teacherOpen) teacherOpen.addEventListener('click', function () {
+        var lesson = currentLesson();
+        var teacher = teacherForLesson(lesson);
+        if (!teacher.configured || !teacher.url) return;
+        var popup = runtime && typeof runtime.open === 'function'
+          ? runtime.open(teacher.url, '_blank', 'noopener,noreferrer')
+          : null;
+        if (!popup) revealTeacherFallbackLink(teacher.url);
+      });
+      var teacherFinish = byId('schoolTeacherFinishRequest');
+      if (teacherFinish) teacherFinish.addEventListener('click', function () {
+        var lesson = currentLesson();
+        if (
+          !lesson ||
+          !teacherBridge ||
+          typeof teacherBridge.buildLessonCompletionRequest !== 'function'
+        ) return;
+        copyTeacherText(
+          teacherBridge.buildLessonCompletionRequest(lesson),
+          'Запрос на итог скопирован — вставьте его в диалог преподавателя.'
+        );
+      });
+      var teacherImport = byId('schoolTeacherImport');
+      if (teacherImport) teacherImport.addEventListener('click', async function () {
+        var lesson = currentLesson();
+        if (!lesson) return;
+        if (lesson.status === 'В процессе') {
+          openTeacherImportDialog();
+          return;
+        }
+        if (FINAL_DIARY_STATUSES.indexOf(lesson.status) !== -1) {
+          await askAction(
+            'Урок уже сохранён в дневнике',
+            'Чтобы импортировать новый результат, сначала используйте «Вернуть к редактированию».',
+            [{ label: 'Понятно', value: 'cancel', primary: true }]
+          );
+          return;
+        }
+        var choice = await askAction(
+          'Урок ещё не начат',
+          'Можно разобрать итог заранее, но сохранить его получится только после успешного начала урока.',
+          [
+            { label: 'Продолжить импорт', value: 'continue', primary: true },
+            { label: 'Отмена', value: 'cancel' }
+          ]
+        );
+        if (choice === 'continue') openTeacherImportDialog();
+      });
+      var teacherPaste = byId('schoolTeacherPaste');
+      if (teacherPaste) teacherPaste.addEventListener('click', function () {
+        var source = byId('schoolTeacherSource');
+        if (!source) return;
+        if (source.readOnly) {
+          if (typeof source.focus === 'function') source.focus();
+          if (typeof source.select === 'function') source.select();
+          if (documentRef && typeof documentRef.execCommand === 'function') {
+            try {
+              if (documentRef.execCommand('copy')) {
+                showToast('Текст скопирован.');
+              }
+            } catch (_error) {}
+          }
+          return;
+        }
+        var clipboard = runtime && runtime.navigator && runtime.navigator.clipboard;
+        if (!clipboard || typeof clipboard.readText !== 'function') {
+          showToast('Нажмите Cmd+V или Ctrl+V в поле исходного текста.');
+          if (typeof source.focus === 'function') source.focus();
+          return;
+        }
+        clipboard.readText().then(function (value) {
+          source.value = value;
+          if (typeof source.focus === 'function') source.focus();
+          parseTeacherSource();
+        }).catch(function () {
+          showToast('Нажмите Cmd+V или Ctrl+V в поле исходного текста.');
+          if (typeof source.focus === 'function') source.focus();
+        });
+      });
+      var teacherParse = byId('schoolTeacherParse');
+      if (teacherParse) teacherParse.addEventListener('click', parseTeacherSource);
+      var teacherApply = byId('schoolTeacherApply');
+      if (teacherApply) teacherApply.addEventListener('click', applyCurrentTeacherParse);
+      var teacherEdit = byId('schoolTeacherEditSource');
+      if (teacherEdit) teacherEdit.addEventListener('click', function () {
+        var preview = byId('schoolTeacherPreview');
+        if (preview) preview.hidden = true;
+        if (teacherApply) teacherApply.hidden = true;
+        teacherEdit.hidden = true;
+        var source = byId('schoolTeacherSource');
+        if (source && typeof source.focus === 'function') source.focus();
+      });
+      var commentControl = byId('schoolLessonComment');
+      if (commentControl) commentControl.addEventListener('input', updateCommentCount);
+      var finalStatus = byId('schoolLessonFinalStatus');
+      if (finalStatus) finalStatus.addEventListener('change', function () {
+        syncAssessmentControlsForStatus(documentRef, finalStatus.value);
+      });
+      var saveAssessment = byId('schoolSaveAssessment');
+      if (saveAssessment) saveAssessment.addEventListener('click', async function () {
+        var lesson = currentLesson();
+        if (!lesson || lesson.status !== 'В процессе') return;
+        var draft = assessmentDraft(documentRef, lesson, teacherBridge);
+        var errors = byId('schoolAssessmentErrors');
+        if (errors) errors.textContent = draft.errors.join('\n');
+        if (draft.errors.length) return;
+        var choice = await askAction(
+          'Сохранить результат в дневник?',
+          'Проверьте итог. После сохранения урок станет финализированным.',
+          [
+            { label: 'Сохранить результат', value: 'save', primary: true },
+            { label: 'Вернуться к форме', value: 'cancel' }
+          ],
+          draft.summary
+        );
+        if (choice !== 'save') return;
+        await mutateWithDialogs(draft.command);
+        showToast('Урок сохранён в дневнике.');
       });
       var zoomOut = byId('schoolZoomOut');
       if (zoomOut) zoomOut.addEventListener('click', function () {
@@ -2756,6 +3486,7 @@
       bind: bind,
       closeDialog: closeDialog,
       finishTimelineZoom: finishTimelineZoom,
+      getCurrentTeacherPrompt: getCurrentTeacherPrompt,
       getLessons: function () { return cloneLessons(lessons); },
       getReadModel: function () { return readModel; },
       getTimelineZoomState: function () {
@@ -2803,6 +3534,9 @@
     allDayDropOrder: allDayDropOrder,
     allDayDropPlacement: allDayDropPlacement,
     applyTimelineGeometry: applyTimelineGeometry,
+    applyTeacherResultToControls: applyTeacherResultToControls,
+    assessmentDraft: assessmentDraft,
+    copyPromptAndOpen: copyPromptAndOpen,
     createController: createController,
     commandAfterOverlapChoice: commandAfterOverlapChoice,
     commandForAllDayDrop: commandForAllDayDrop,
@@ -2821,6 +3555,7 @@
     safeHttpsUrl: safeHttpsUrl,
     selectTodayFocus: selectTodayFocus,
     setTransparentDragImage: setTransparentDragImage,
+    syncAssessmentControlsForStatus: syncAssessmentControlsForStatus,
     timelineDragPreview: timelineDragPreview,
     timelineDestination: timelineDestination,
     timelineDropDestination: timelineDropDestination

@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const SchoolCore = require('../school-core.js');
 const SchoolMutationQueue = require('../school-mutation-queue.js');
+const SchoolTeacherBridge = require('../school-teacher-bridge.js');
 const SchoolUi = require('../school.js');
 
 function read(file) {
@@ -267,6 +268,8 @@ test('school page loads shared dashboard dependencies before read-only school sc
     'supabase-sync.js?v=406-sb',
     'school-core.js',
     'school-api.js',
+    'school-teacher-config.js',
+    'school-teacher-bridge.js',
     'school.js'
   ];
 
@@ -277,11 +280,430 @@ test('school page loads shared dashboard dependencies before read-only school sc
   });
 });
 
+test('school shell exposes the teacher section, import dialog and explicit final status', () => {
+  const html = read('school.html');
+
+  [
+    'schoolTeacherSection',
+    'schoolTeacherPrimary',
+    'schoolTeacherCopy',
+    'schoolTeacherOpen',
+    'schoolTeacherFinishRequest',
+    'schoolTeacherImport',
+    'schoolTeacherDialog',
+    'schoolTeacherSource',
+    'schoolTeacherPreview',
+    'schoolLessonFinalStatus',
+    'schoolAssessmentErrors',
+    'schoolToast'
+  ].forEach((id) => assert.ok(html.includes(`id="${id}"`), id));
+  assert.ok(html.includes('Сохранить результат в дневник'));
+  assert.ok(html.includes('aria-live="polite"'));
+});
+
+test('combined teacher action opens a secure blank synchronously before clipboard resolves', async () => {
+  const clipboard = deferred();
+  const events = [];
+  const metaNodes = [];
+  const popup = {
+    opener: {},
+    document: {
+      head: {
+        appendChild(node) {
+          metaNodes.push(node);
+        }
+      },
+      createElement(tagName) {
+        return {
+          tagName,
+          attributes: {},
+          setAttribute(name, value) {
+            this.attributes[name] = value;
+          }
+        };
+      }
+    },
+    location: {
+      replace(url) {
+        events.push(['navigate', url]);
+      }
+    }
+  };
+  const runtime = {
+    open(url, target) {
+      events.push(['open', url, target]);
+      return popup;
+    }
+  };
+
+  const action = SchoolUi.copyPromptAndOpen({
+    copyText(value) {
+      events.push(['copy', value]);
+      return clipboard.promise;
+    },
+    prompt: 'prompt body',
+    runtime,
+    teacher: {
+      configured: true,
+      label: 'преподаватель',
+      url: 'https://chatgpt.com/g/g-123'
+    }
+  });
+
+  assert.deepEqual(events, [
+    ['open', 'about:blank', '_blank'],
+    ['copy', 'prompt body']
+  ]);
+  assert.equal(popup.opener, null);
+  assert.deepEqual(metaNodes[0].attributes, {
+    name: 'referrer',
+    content: 'no-referrer'
+  });
+  clipboard.resolve();
+  const result = await action;
+
+  assert.deepEqual(events.at(-1), ['navigate', 'https://chatgpt.com/g/g-123']);
+  assert.deepEqual(result, {
+    copied: true,
+    opened: true,
+    popupBlocked: false
+  });
+});
+
+test('blocked popup or clipboard failure never loses the prompt', async () => {
+  const fallback = [];
+  const blocked = [];
+  const result = await SchoolUi.copyPromptAndOpen({
+    copyText() {
+      return Promise.reject(new Error('clipboard denied'));
+    },
+    onClipboardFallback(value) {
+      fallback.push(value);
+    },
+    onPopupBlocked(url) {
+      blocked.push(url);
+    },
+    prompt: 'prompt body',
+    runtime: { open: () => null },
+    teacher: {
+      configured: true,
+      label: 'преподаватель',
+      url: 'https://chatgpt.com/g/g-123'
+    }
+  });
+
+  assert.deepEqual(fallback, ['prompt body']);
+  assert.deepEqual(blocked, ['https://chatgpt.com/g/g-123']);
+  assert.deepEqual(result, {
+    copied: false,
+    opened: false,
+    popupBlocked: true
+  });
+});
+
+test('a throwing popup implementation still copies the prompt', async () => {
+  const copied = [];
+  const blocked = [];
+  const result = await SchoolUi.copyPromptAndOpen({
+    copyText(value) {
+      copied.push(value);
+      return Promise.resolve();
+    },
+    onPopupBlocked(url) {
+      blocked.push(url);
+    },
+    prompt: 'prompt body',
+    runtime: {
+      open() {
+        throw new Error('popup policy');
+      }
+    },
+    teacher: {
+      configured: true,
+      label: 'преподаватель',
+      url: 'https://chatgpt.com/g/g-123'
+    }
+  });
+
+  assert.deepEqual(copied, ['prompt body']);
+  assert.deepEqual(blocked, ['https://chatgpt.com/g/g-123']);
+  assert.equal(result.popupBlocked, true);
+});
+
+test('failed popup navigation keeps a copied prompt and exposes the fallback link', async () => {
+  const blocked = [];
+  const result = await SchoolUi.copyPromptAndOpen({
+    copyText() {
+      return Promise.resolve();
+    },
+    onPopupBlocked(url) {
+      blocked.push(url);
+    },
+    prompt: 'prompt body',
+    runtime: {
+      open() {
+        return {
+          opener: {},
+          location: {
+            replace() {
+              throw new Error('navigation denied');
+            }
+          }
+        };
+      }
+    },
+    teacher: {
+      configured: true,
+      label: 'преподаватель',
+      url: 'https://chatgpt.com/g/g-123'
+    }
+  });
+
+  assert.deepEqual(blocked, ['https://chatgpt.com/g/g-123']);
+  assert.deepEqual(result, {
+    copied: true,
+    opened: false,
+    popupBlocked: true
+  });
+});
+
+test('empty teacher url still copies without opening a blank tab', async () => {
+  const events = [];
+  const result = await SchoolUi.copyPromptAndOpen({
+    copyText(value) {
+      events.push(['copy', value]);
+      return Promise.resolve();
+    },
+    prompt: 'prompt body',
+    runtime: {
+      open() {
+        events.push(['open']);
+      }
+    },
+    teacher: {
+      configured: false,
+      label: 'преподаватель',
+      url: null
+    }
+  });
+
+  assert.deepEqual(events, [['copy', 'prompt body']]);
+  assert.deepEqual(result, {
+    copied: true,
+    opened: false,
+    popupBlocked: false
+  });
+});
+
+test('applying teacher result fills editable controls but performs no mutation', () => {
+  const controls = new Map();
+  const mutations = [];
+
+  function editableControl(id, value = '') {
+    const listeners = new Map();
+    const classes = new Set();
+    const control = {
+      id,
+      value,
+      disabled: false,
+      addEventListener(type, handler) {
+        if (!listeners.has(type)) listeners.set(type, []);
+        listeners.get(type).push(handler);
+      },
+      dispatch(type) {
+        (listeners.get(type) || []).forEach((handler) => handler({ target: control }));
+      },
+      classList: {
+        add(name) { classes.add(name); },
+        remove(name) { classes.delete(name); },
+        contains(name) { return classes.has(name); }
+      }
+    };
+    controls.set(id, control);
+    return control;
+  }
+
+  [
+    'schoolLessonFinalStatus',
+    'schoolLessonResult',
+    'schoolLessonAutonomy',
+    'schoolLessonUnderstanding',
+    'schoolLessonComment',
+    'schoolLessonArtifact',
+    'schoolLessonMissedReason'
+  ].forEach((id) => editableControl(id));
+  const document = {
+    getElementById(id) {
+      return controls.get(id) || null;
+    }
+  };
+
+  SchoolUi.applyTeacherResultToControls(document, {
+    lessonId: 'lesson-42',
+    status: 'Выполнен',
+    result: 'Зачёт',
+    autonomy: 'A2',
+    understanding: 2,
+    comment: 'Готово.',
+    artifactUrl: 'https://example.com/artifact',
+    missedReason: null
+  }, {
+    mutate(command) {
+      mutations.push(command);
+    }
+  });
+
+  assert.deepEqual(
+    Object.fromEntries([...controls].map(([id, control]) => [id, control.value])),
+    {
+      schoolLessonFinalStatus: 'Выполнен',
+      schoolLessonResult: 'Зачёт',
+      schoolLessonAutonomy: 'A2',
+      schoolLessonUnderstanding: '2',
+      schoolLessonComment: 'Готово.',
+      schoolLessonArtifact: 'https://example.com/artifact',
+      schoolLessonMissedReason: ''
+    }
+  );
+  assert.deepEqual(mutations, []);
+  assert.equal(controls.get('schoolLessonComment').classList.contains('is-teacher-filled'), true);
+
+  controls.get('schoolLessonComment').value = 'Исправлено вручную.';
+  controls.get('schoolLessonComment').dispatch('input');
+  assert.equal(controls.get('schoolLessonComment').value, 'Исправлено вручную.');
+  assert.equal(controls.get('schoolLessonComment').classList.contains('is-teacher-filled'), false);
+  assert.equal(controls.get('schoolLessonComment').disabled, false);
+});
+
+test('assessment command uses only current editable controls and existing completeLesson', () => {
+  const values = {
+    schoolLessonFinalStatus: 'Частично выполнен',
+    schoolLessonResult: 'Незачёт',
+    schoolLessonAutonomy: 'A1',
+    schoolLessonUnderstanding: '1',
+    schoolLessonComment: 'Нужно повторить.',
+    schoolLessonArtifact: 'https://example.com/work',
+    schoolLessonMissedReason: ''
+  };
+  const document = {
+    getElementById(id) {
+      return Object.hasOwn(values, id) ? { value: values[id] } : null;
+    }
+  };
+
+  assert.deepEqual(
+    SchoolUi.assessmentDraft(document, { id: 'lesson-42' }, SchoolTeacherBridge),
+    {
+      command: {
+        operation: 'completeLesson',
+        lessonId: 'lesson-42',
+        status: 'Частично выполнен',
+        autonomy: 'A1',
+        understanding: 1,
+        comment: 'Нужно повторить.',
+        artifactUrl: 'https://example.com/work'
+      },
+      errors: [],
+      summary: [
+        'Статус: Частично выполнен',
+        'Результат: Требует повторения',
+        'Автономность: A1',
+        'Понимание: 1/3',
+        'Комментарий: Нужно повторить.',
+        'Артефакт: https://example.com/work'
+      ].join('\n')
+    }
+  );
+});
+
+test('changing final status keeps assessment fields semantically consistent', () => {
+  const values = {
+    schoolLessonResult: { value: 'Незачёт' },
+    schoolLessonAutonomy: { value: 'A2' },
+    schoolLessonUnderstanding: { value: '2' },
+    schoolLessonMissedReason: { value: 'Низкая энергия' }
+  };
+  const document = {
+    getElementById(id) {
+      return values[id] || null;
+    }
+  };
+
+  SchoolUi.syncAssessmentControlsForStatus(document, 'Пропущен');
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(values).map(([id, control]) => [id, control.value])),
+    {
+      schoolLessonResult: '',
+      schoolLessonAutonomy: '',
+      schoolLessonUnderstanding: '',
+      schoolLessonMissedReason: 'Низкая энергия'
+    }
+  );
+
+  SchoolUi.syncAssessmentControlsForStatus(document, 'Частично выполнен');
+  assert.equal(values.schoolLessonResult.value, 'Требует повторения');
+  assert.equal(values.schoolLessonMissedReason.value, '');
+
+  values.schoolLessonResult.value = '';
+  SchoolUi.syncAssessmentControlsForStatus(document, 'Выполнен');
+  assert.equal(values.schoolLessonResult.value, 'Зачёт');
+});
+
+test('controller rebuilds the same teacher prompt from reloaded notion content', async () => {
+  const activeLesson = {
+    id: 'lesson-42',
+    title: 'Cold start «Прометея»',
+    subject: 'Software Engineering',
+    module: 'Environment & Setup',
+    schedule: {
+      kind: 'date-only',
+      date: '2026-08-03',
+      start: null,
+      end: null
+    },
+    status: 'В процессе',
+    priority: 'Must',
+    durationMinutes: 45
+  };
+  const blocks = [{
+    type: 'paragraph',
+    spans: [{ text: 'Проверить чистый запуск.', annotations: {} }],
+    children: []
+  }];
+  const controller = SchoolUi.createController({
+    api: {
+      listLessons: async () => [activeLesson],
+      getLessonContent: async () => ({ lesson: activeLesson, blocks })
+    },
+    core: loadingCore(),
+    document: null,
+    teacherBridge: SchoolTeacherBridge,
+    teacherConfig: {
+      'Software Engineering': {
+        label: 'Преподаватель Software Engineering',
+        url: ''
+      }
+    }
+  });
+
+  await controller.load();
+  await controller.openLesson('lesson-42');
+  const first = controller.getCurrentTeacherPrompt();
+  await controller.openLesson('lesson-42');
+  const second = controller.getCurrentTeacherPrompt();
+
+  assert.equal(first, second);
+  assert.match(first, /LESSON_REF: lesson-42/);
+  assert.match(first, /Проверить чистый запуск\./);
+});
+
 test('school page cache-busts release candidate assets together', () => {
   const html = read('school.html');
   assert.ok(html.includes('school-core.js?v=6'));
-  assert.ok(html.includes('school.css?v=9'));
-  assert.ok(html.includes('school.js?v=9'));
+  assert.ok(html.includes('school.css?v=10'));
+  assert.ok(html.includes('school-teacher-config.js?v=1'));
+  assert.ok(html.includes('school-teacher-bridge.js?v=1'));
+  assert.ok(html.includes('school.js?v=10'));
 });
 
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
