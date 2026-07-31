@@ -9,18 +9,20 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" type="image/svg+xml" href="app-icon.svg">
-  <link rel="stylesheet" href="school.css?v=11">
+  <link rel="stylesheet" href="school.css?v=12">
   <title>Личная школа</title>
   <script src="profile-theme.js?v=401"></script>
   <script src="topbar.js?v=403" defer></script>
-  <script src="supabase-sync.js?v=406-sb" defer></script>
+  <script src="supabase-sync.js?v=407-sb" defer></script>
   <script src="school-core.js?v=6" defer></script>
   <script src="school-api.js" defer></script>
-  <script src="school-teacher-config.js?v=2" defer></script>
+  <script src="school-teacher-config.js?v=3" defer></script>
   <script src="school-learning-route.js?v=1" defer></script>
+  <script src="school-cabinet-settings.js?v=2" defer></script>
+  <script src="school-cabinet-settings-store.js?v=2" defer></script>
   <script src="school-teacher-bridge.js?v=2" defer></script>
   <script src="school-mutation-queue.js?v=1" defer></script>
-  <script src="school.js?v=11" defer></script>
+  <script src="school.js?v=13" defer></script>
 </head>
 <body data-page="school">
   <main class="school-page" id="schoolApp" aria-busy="true">
@@ -29,9 +31,14 @@
         <p class="school-eyebrow">W01 · 3–9 августа 2026</p>
         <h1>Личная школа</h1>
       </div>
-      <div class="school-progress" aria-live="polite">
-        <strong id="schoolProgress">Выполнено 0 из 0</strong>
-        <span id="schoolProgressMeta"></span>
+      <div class="school-head-actions">
+        <button class="school-settings-open" id="schoolSettingsOpen" type="button"
+          aria-label="Настройки школы" aria-haspopup="dialog"
+          aria-controls="schoolSettingsDialog">⚙</button>
+        <div class="school-progress" aria-live="polite">
+          <strong id="schoolProgress">Выполнено 0 из 0</strong>
+          <span id="schoolProgressMeta"></span>
+        </div>
       </div>
     </header>
 
@@ -108,6 +115,117 @@
       </section>
     </div>
   </main>
+
+  <div class="school-settings-backdrop" id="schoolSettingsDialog" role="dialog"
+    aria-modal="true" aria-labelledby="schoolSettingsTitle"
+    aria-hidden="true" hidden>
+    <aside class="school-settings-drawer" tabindex="-1">
+      <header class="school-settings-head">
+        <div>
+          <p class="school-section-kicker">Аккаунтная синхронизация</p>
+          <h2 id="schoolSettingsTitle">Предметные кабинеты</h2>
+        </div>
+        <button id="schoolSettingsClose" type="button"
+          aria-label="Закрыть настройки">×</button>
+      </header>
+
+      <p class="school-settings-intro">
+        Укажите постоянные ChatGPT-кабинеты. Настройки сохраняются в вашем аккаунте.
+      </p>
+
+      <section class="school-settings-remote-notice" id="schoolSettingsRemoteNotice"
+        role="status" hidden>
+        <strong>Настройки изменились на другом устройстве</strong>
+        <p>Выберите, какие значения оставить в открытой форме.</p>
+        <div>
+          <button id="schoolSettingsUseRemote" type="button">Применить новые</button>
+          <button id="schoolSettingsKeepDraft" type="button">Продолжить редактирование</button>
+        </div>
+      </section>
+
+      <form id="schoolSettingsForm" novalidate>
+        <div class="school-settings-row">
+          <label for="schoolCabinetSoftware">Software Engineering</label>
+          <input id="schoolCabinetSoftware" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-software"
+            aria-describedby="schoolCabinetSoftwareState">
+          <span id="schoolCabinetSoftwareState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-software">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetDevOps">DevOps &amp; Infrastructure</label>
+          <input id="schoolCabinetDevOps" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-devops"
+            aria-describedby="schoolCabinetDevOpsState">
+          <span id="schoolCabinetDevOpsState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-devops">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetMathematics">Mathematics</label>
+          <input id="schoolCabinetMathematics" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-mathematics"
+            aria-describedby="schoolCabinetMathematicsState">
+          <span id="schoolCabinetMathematicsState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-mathematics">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetEnglish">English &amp; IELTS</label>
+          <input id="schoolCabinetEnglish" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-english"
+            aria-describedby="schoolCabinetEnglishState">
+          <span id="schoolCabinetEnglishState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-english">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetUniversity">University</label>
+          <input id="schoolCabinetUniversity" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-university"
+            aria-describedby="schoolCabinetUniversityState">
+          <span id="schoolCabinetUniversityState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-university">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetDirector">Director &amp; Assessment</label>
+          <input id="schoolCabinetDirector" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-director"
+            aria-describedby="schoolCabinetDirectorState">
+          <span id="schoolCabinetDirectorState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-director">Сбросить</button>
+        </div>
+
+        <p class="school-settings-status" id="schoolSettingsStatus"
+          aria-live="polite"></p>
+        <div class="school-settings-actions">
+          <button id="schoolSettingsCancel" type="button">Отмена</button>
+          <button class="is-primary" id="schoolSettingsSave"
+            type="submit">Сохранить</button>
+        </div>
+      </form>
+    </aside>
+  </div>
 
   <div class="school-dialog-backdrop" id="schoolLessonDialog" role="dialog" aria-modal="true"
     aria-labelledby="schoolLessonTitle" aria-hidden="true" hidden>

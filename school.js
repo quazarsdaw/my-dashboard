@@ -81,6 +81,25 @@
     }
   }
 
+  function safeChatGptUrl(value) {
+    var parsed = safeHttpsUrl(value);
+    if (!parsed) return null;
+    try {
+      var url = new URL(parsed);
+      var hostname = url.hostname.toLowerCase();
+      var canonical = url.href;
+      if (
+        hostname !== 'chatgpt.com' &&
+        hostname !== 'chat.openai.com'
+      ) {
+        return null;
+      }
+      return Array.from(canonical).length <= 2048 ? canonical : null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
   function routeDrawerRows(route) {
     var item = isRecord(route) ? route : {};
     var reviewer = isRecord(item.reviewer) ? item.reviewer : null;
@@ -140,7 +159,7 @@
       route.platform === 'ChatGPT' &&
       route.cabinetKind === 'permanent' &&
       route.canOpenCabinet;
-    var url = chatGpt ? safeHttpsUrl(route.cabinetUrl) : null;
+    var url = chatGpt ? safeChatGptUrl(route.cabinetUrl) : null;
     return {
       configured: Boolean(url),
       label: route ? text(route.teacherLabel) : 'Преподаватель',
@@ -1115,6 +1134,83 @@
     return JSON.parse(JSON.stringify(Array.isArray(lessons) ? lessons : []));
   }
 
+  function cloneValue(value) {
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  }
+
+  function cabinetSettingsDraft(confirmed, edits, settingsCore) {
+    var core = settingsCore || (root && root.SchoolCabinetSettings);
+    var ids = core && Array.isArray(core.CABINET_IDS)
+      ? core.CABINET_IDS
+      : [];
+    var confirmedCabinets = isRecord(confirmed && confirmed.cabinets)
+      ? confirmed.cabinets
+      : {};
+    var changes = isRecord(edits) ? edits : {};
+    var confirmedDraft = {};
+    var draft = {};
+
+    ids.forEach(function (cabinetId) {
+      confirmedDraft[cabinetId] = text(confirmedCabinets[cabinetId]);
+      draft[cabinetId] = Object.prototype.hasOwnProperty.call(changes, cabinetId)
+        ? text(changes[cabinetId])
+        : confirmedDraft[cabinetId];
+    });
+
+    var validation = core && typeof core.validateDraft === 'function'
+      ? core.validateDraft(draft)
+      : { valid: false, errors: {} };
+    var errors = {};
+    var fieldStates = {};
+    ids.forEach(function (cabinetId) {
+      if (validation.errors && validation.errors[cabinetId]) {
+        errors[cabinetId] = 'Проверьте ссылку';
+        fieldStates[cabinetId] = 'проверьте ссылку';
+      } else if (!draft[cabinetId].trim()) {
+        fieldStates[cabinetId] = 'не настроено';
+      } else {
+        fieldStates[cabinetId] = 'готово';
+      }
+    });
+
+    return {
+      confirmed: confirmedDraft,
+      draft: draft,
+      dirty: ids.some(function (cabinetId) {
+        return draft[cabinetId] !== confirmedDraft[cabinetId];
+      }),
+      valid: Boolean(validation.valid),
+      errors: errors,
+      fieldStates: fieldStates,
+      pendingRemote: null,
+      showRemoteNotice: false
+    };
+  }
+
+  function mergeCabinetSettingsState(currentUiState, incomingState) {
+    var current = isRecord(currentUiState) ? currentUiState : {};
+    var incoming = isRecord(incomingState) ? cloneValue(incomingState) : null;
+    var incomingCabinets = incoming &&
+      incoming.settings &&
+      isRecord(incoming.settings.cabinets)
+      ? incoming.settings.cabinets
+      : {};
+    if (current.dirty) {
+      return Object.assign({}, cloneValue(current), {
+        confirmed: cloneValue(incomingCabinets),
+        pendingRemote: incoming,
+        showRemoteNotice: Boolean(incoming)
+      });
+    }
+    return Object.assign({}, cloneValue(current), {
+      confirmed: cloneValue(incomingCabinets),
+      draft: cloneValue(incomingCabinets),
+      dirty: false,
+      pendingRemote: null,
+      showRemoteNotice: false
+    });
+  }
+
   function createController(options) {
     options = isRecord(options) ? options : {};
     var documentRef = options.document === undefined ? (root && root.document) : options.document;
@@ -1124,7 +1220,13 @@
     var queueApi = options.mutationQueue || (root && root.SchoolMutationQueue);
     var teacherBridge = options.teacherBridge || (root && root.SchoolTeacherBridge);
     var learningRoute = options.learningRoute || (root && root.SchoolLearningRoute);
-    var learningConfig = options.learningConfig || (root && root.SchoolLearningConfig) || {};
+    var cabinetSettingsStore = options.cabinetSettingsStore || null;
+    var cabinetSettingsCore = options.cabinetSettingsCore ||
+      (root && root.SchoolCabinetSettings);
+    var baseLearningConfig = options.learningConfig ||
+      (root && root.SchoolLearningConfig) || {};
+    var cabinetSettingsState = null;
+    var effectiveLearningConfig = baseLearningConfig;
     var now = typeof options.now === 'function' ? options.now : function () { return new Date(); };
     var onState = typeof options.onState === 'function' ? options.onState : function () {};
     var lessons = [];
@@ -1157,10 +1259,30 @@
     var transparentDragImage = null;
     var actionResolver = null;
     var actionPreviousFocus = null;
+    var settingsUiState = cabinetSettingsDraft(
+      { version: 1, cabinets: {} },
+      {},
+      cabinetSettingsCore
+    );
+    var settingsPreviousFocus = null;
+    var settingsSaving = false;
 
     function routeForLesson(lesson) {
       if (!learningRoute || typeof learningRoute.resolveLessonRoute !== 'function') return null;
-      return learningRoute.resolveLessonRoute(lesson, learningConfig);
+      return learningRoute.resolveLessonRoute(lesson, effectiveLearningConfig);
+    }
+
+    function applyCabinetSettings(nextState) {
+      cabinetSettingsState = nextState ? cloneValue(nextState) : null;
+      effectiveLearningConfig = cabinetSettingsCore &&
+        typeof cabinetSettingsCore.applyToConfig === 'function'
+        ? cabinetSettingsCore.applyToConfig(
+          baseLearningConfig,
+          nextState && nextState.settings
+        )
+        : baseLearningConfig;
+      if (readModel) render(readModel);
+      return cabinetSettingsState ? cloneValue(cabinetSettingsState) : null;
     }
 
     function routeLabelsForLesson(lesson) {
@@ -1205,6 +1327,262 @@
 
     function byId(id) {
       return documentRef ? documentRef.getElementById(id) : null;
+    }
+
+    function settingsDialogOpen() {
+      var dialog = byId('schoolSettingsDialog');
+      return Boolean(dialog && !dialog.hidden);
+    }
+
+    function settingsConfirmed() {
+      return cabinetSettingsState &&
+        cabinetSettingsState.settings &&
+        isRecord(cabinetSettingsState.settings.cabinets)
+        ? cabinetSettingsState.settings
+        : { version: 1, cabinets: {} };
+    }
+
+    function renderSettingsForm() {
+      if (!documentRef || !settingsUiState) return;
+      documentRef.querySelectorAll(
+        'input[data-school-cabinet-id]'
+      ).forEach(function (input) {
+        var cabinetId = input.getAttribute('data-school-cabinet-id');
+        input.value = text(settingsUiState.draft[cabinetId]);
+        var hasError = Boolean(settingsUiState.errors[cabinetId]);
+        input.setAttribute('aria-invalid', hasError ? 'true' : 'false');
+        var stateId = input.getAttribute('aria-describedby');
+        var stateNode = stateId ? byId(stateId) : null;
+        if (stateNode) {
+          stateNode.textContent = settingsUiState.fieldStates[cabinetId] || '';
+          if (stateNode.classList) {
+            stateNode.classList.toggle('is-error', hasError);
+          }
+        }
+      });
+
+      var notice = byId('schoolSettingsRemoteNotice');
+      if (notice) notice.hidden = !settingsUiState.showRemoteNotice;
+      var status = byId('schoolSettingsStatus');
+      if (status) status.textContent = settingsUiState.statusMessage || '';
+      var save = byId('schoolSettingsSave');
+      if (save) {
+        save.disabled = settingsSaving ||
+          !settingsUiState.valid ||
+          !settingsUiState.dirty;
+        save.textContent = settingsSaving ? 'Сохраняю…' : 'Сохранить';
+      }
+    }
+
+    function rebuildSettingsDraft(edits) {
+      settingsUiState = cabinetSettingsDraft(
+        settingsConfirmed(),
+        edits,
+        cabinetSettingsCore
+      );
+      renderSettingsForm();
+      return cloneValue(settingsUiState);
+    }
+
+    function updateCabinetSettingsDraft(cabinetId, value) {
+      if (
+        !cabinetSettingsCore ||
+        cabinetSettingsCore.CABINET_IDS.indexOf(cabinetId) === -1
+      ) {
+        return cloneValue(settingsUiState);
+      }
+      var edits = Object.assign({}, settingsUiState.draft);
+      edits[cabinetId] = text(value);
+      return rebuildSettingsDraft(edits);
+    }
+
+    function receiveCabinetSettingsState(nextState) {
+      var previousUserId = cabinetSettingsState &&
+        cabinetSettingsState.userId
+        ? cabinetSettingsState.userId
+        : null;
+      var nextUserId = nextState && nextState.userId
+        ? nextState.userId
+        : null;
+      var authChanged = Boolean(
+        nextState &&
+        nextState.source === 'auth'
+      ) || Boolean(
+        previousUserId &&
+        previousUserId !== nextUserId
+      );
+      applyCabinetSettings(nextState);
+      if (authChanged) {
+        closeSettingsImmediately();
+        settingsUiState = cabinetSettingsDraft(
+          nextState && nextState.settings,
+          {},
+          cabinetSettingsCore
+        );
+      } else if (
+        settingsDialogOpen() &&
+        settingsUiState &&
+        settingsUiState.dirty
+      ) {
+        settingsUiState = mergeCabinetSettingsState(
+          settingsUiState,
+          nextState
+        );
+        var validation = cabinetSettingsDraft(
+          nextState && nextState.settings,
+          settingsUiState.draft,
+          cabinetSettingsCore
+        );
+        settingsUiState = Object.assign({}, validation, {
+          pendingRemote: cloneValue(nextState),
+          showRemoteNotice: true
+        });
+      } else {
+        settingsUiState = cabinetSettingsDraft(
+          nextState && nextState.settings,
+          {},
+          cabinetSettingsCore
+        );
+      }
+      renderSettingsForm();
+      return cloneValue(settingsUiState);
+    }
+
+    function openSettings() {
+      if (!documentRef) return false;
+      var dialog = byId('schoolSettingsDialog');
+      if (!dialog) return false;
+      settingsPreviousFocus = documentRef.activeElement;
+      settingsUiState = cabinetSettingsDraft(
+        settingsConfirmed(),
+        {},
+        cabinetSettingsCore
+      );
+      dialog.hidden = false;
+      dialog.setAttribute('aria-hidden', 'false');
+      setBackgroundInert(true);
+      renderSettingsForm();
+      installDialogKeys(dialog);
+      var first = dialog.querySelector('input');
+      if (first && typeof first.focus === 'function') first.focus();
+      return true;
+    }
+
+    function closeSettingsImmediately() {
+      var dialog = byId('schoolSettingsDialog');
+      if (!dialog || dialog.hidden) return false;
+      dialog.hidden = true;
+      dialog.setAttribute('aria-hidden', 'true');
+      settingsUiState = cabinetSettingsDraft(
+        settingsConfirmed(),
+        {},
+        cabinetSettingsCore
+      );
+      var lessonDialog = byId('schoolLessonDialog');
+      if (!lessonDialog || lessonDialog.hidden) {
+        setBackgroundInert(false);
+      }
+      if (
+        dialogKeyHandler &&
+        (!lessonDialog || lessonDialog.hidden) &&
+        !actionDialogOpen()
+      ) {
+        documentRef.removeEventListener('keydown', dialogKeyHandler);
+        dialogKeyHandler = null;
+      }
+      if (
+        settingsPreviousFocus &&
+        typeof settingsPreviousFocus.focus === 'function'
+      ) {
+        settingsPreviousFocus.focus();
+      }
+      settingsPreviousFocus = null;
+      return true;
+    }
+
+    async function closeSettings(force) {
+      if (!settingsDialogOpen()) return true;
+      if (settingsUiState.dirty && !force) {
+        var choice = await askAction(
+          'Закрыть настройки без сохранения?',
+          'Несохранённые ссылки останутся только в открытой форме.',
+          [
+            {
+              label: 'Продолжить редактирование',
+              value: 'keep',
+              primary: true
+            },
+            {
+              label: 'Закрыть без сохранения',
+              value: 'discard',
+              danger: true
+            }
+          ]
+        );
+        if (choice !== 'discard') return false;
+      }
+      return closeSettingsImmediately();
+    }
+
+    async function saveCabinetSettings() {
+      if (
+        settingsSaving ||
+        !settingsUiState.valid ||
+        !settingsUiState.dirty
+      ) {
+        return null;
+      }
+      if (!cabinetSettingsStore ||
+          typeof cabinetSettingsStore.save !== 'function') {
+        settingsUiState.statusMessage =
+          'Для сохранения войдите в аккаунт синхронизации.';
+        renderSettingsForm();
+        return null;
+      }
+
+      settingsSaving = true;
+      settingsUiState.statusMessage = 'Сохраняю в аккаунт…';
+      renderSettingsForm();
+      var draft = cloneValue(settingsUiState.draft);
+      try {
+        var savedState = await cabinetSettingsStore.save(draft);
+        applyCabinetSettings(savedState);
+        settingsUiState = cabinetSettingsDraft(
+          savedState && savedState.settings,
+          {},
+          cabinetSettingsCore
+        );
+        settingsUiState.statusMessage = 'Сохранено в аккаунте';
+        return savedState;
+      } catch (_error) {
+        settingsUiState.statusMessage =
+          'Не удалось сохранить. Проверьте соединение и повторите.';
+        return null;
+      } finally {
+        settingsSaving = false;
+        renderSettingsForm();
+      }
+    }
+
+    function usePendingCabinetSettings() {
+      if (!settingsUiState.pendingRemote) return false;
+      var pending = settingsUiState.pendingRemote;
+      applyCabinetSettings(pending);
+      settingsUiState = cabinetSettingsDraft(
+        pending.settings,
+        {},
+        cabinetSettingsCore
+      );
+      renderSettingsForm();
+      return true;
+    }
+
+    function keepCabinetSettingsDraft() {
+      if (!settingsUiState.pendingRemote) return false;
+      settingsUiState.pendingRemote = null;
+      settingsUiState.showRemoteNotice = false;
+      renderSettingsForm();
+      return true;
     }
 
     function setLoadingShell(visible, message) {
@@ -2090,16 +2468,24 @@
       actionResolver = null;
       if (resolve) resolve(choice || 'cancel');
       var lessonDialog = byId('schoolLessonDialog');
-      if (!lessonDialog || lessonDialog.hidden) {
+      var settingsDialog = byId('schoolSettingsDialog');
+      var hasParentDialog = Boolean(
+        lessonDialog && !lessonDialog.hidden ||
+        settingsDialog && !settingsDialog.hidden
+      );
+      if (!hasParentDialog) {
         setBackgroundInert(false);
-        if (actionPreviousFocus && typeof actionPreviousFocus.focus === 'function') {
-          actionPreviousFocus.focus();
-        }
-        actionPreviousFocus = null;
       }
       if (
+        actionPreviousFocus &&
+        typeof actionPreviousFocus.focus === 'function'
+      ) {
+        actionPreviousFocus.focus();
+      }
+      actionPreviousFocus = null;
+      if (
         dialogKeyHandler &&
-        (!lessonDialog || lessonDialog.hidden) &&
+        !hasParentDialog &&
         documentRef
       ) {
         documentRef.removeEventListener('keydown', dialogKeyHandler);
@@ -2132,8 +2518,12 @@
         });
         var dialog = byId('schoolActionDialog');
         var lessonDialog = byId('schoolLessonDialog');
-        if (!lessonDialog || lessonDialog.hidden) {
-          actionPreviousFocus = documentRef.activeElement;
+        var settingsDialog = byId('schoolSettingsDialog');
+        actionPreviousFocus = documentRef.activeElement;
+        if (
+          (!lessonDialog || lessonDialog.hidden) &&
+          (!settingsDialog || settingsDialog.hidden)
+        ) {
           setBackgroundInert(true);
         }
         dialog.hidden = false;
@@ -3264,13 +3654,21 @@
             closeTeacherDialog();
             return;
           }
+          if (settingsDialogOpen()) {
+            closeSettings(false);
+            return;
+          }
           closeDialog();
           return;
         }
         if (event.key !== 'Tab') return;
         var focusRoot = actionDialogOpen()
           ? byId('schoolActionDialog')
-          : (teacherDialogOpen() ? byId('schoolTeacherDialog') : dialog);
+          : (teacherDialogOpen()
+            ? byId('schoolTeacherDialog')
+            : (settingsDialogOpen()
+              ? byId('schoolSettingsDialog')
+              : dialog));
         var focusable = Array.from(focusRoot.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])'))
           .filter(function (node) { return !node.disabled && !node.hidden; });
         if (!focusable.length) return;
@@ -3386,6 +3784,68 @@
 
     function bind() {
       if (!documentRef) return;
+      var settingsOpen = byId('schoolSettingsOpen');
+      if (settingsOpen) {
+        settingsOpen.addEventListener('click', openSettings);
+      }
+      var settingsDialog = byId('schoolSettingsDialog');
+      if (settingsDialog) {
+        settingsDialog.addEventListener('click', function (event) {
+          if (event.target === settingsDialog) closeSettings(false);
+        });
+      }
+      [
+        'schoolSettingsClose',
+        'schoolSettingsCancel'
+      ].forEach(function (id) {
+        var closeButton = byId(id);
+        if (closeButton) {
+          closeButton.addEventListener('click', function () {
+            closeSettings(false);
+          });
+        }
+      });
+      documentRef.querySelectorAll(
+        'input[data-school-cabinet-id]'
+      ).forEach(function (input) {
+        input.addEventListener('input', function () {
+          updateCabinetSettingsDraft(
+            input.getAttribute('data-school-cabinet-id'),
+            input.value
+          );
+        });
+      });
+      documentRef.querySelectorAll(
+        '[data-school-cabinet-reset]'
+      ).forEach(function (button) {
+        button.addEventListener('click', function () {
+          updateCabinetSettingsDraft(
+            button.getAttribute('data-school-cabinet-id'),
+            ''
+          );
+        });
+      });
+      var settingsForm = byId('schoolSettingsForm');
+      if (settingsForm) {
+        settingsForm.addEventListener('submit', function (event) {
+          event.preventDefault();
+          saveCabinetSettings();
+        });
+      }
+      var useRemoteSettings = byId('schoolSettingsUseRemote');
+      if (useRemoteSettings) {
+        useRemoteSettings.addEventListener(
+          'click',
+          usePendingCabinetSettings
+        );
+      }
+      var keepSettingsDraft = byId('schoolSettingsKeepDraft');
+      if (keepSettingsDraft) {
+        keepSettingsDraft.addEventListener(
+          'click',
+          keepCabinetSettingsDraft
+        );
+      }
       documentRef.querySelectorAll('[data-school-view]').forEach(function (tab) {
         tab.addEventListener('click', function () {
           selectView(tab.getAttribute('data-school-view'));
@@ -3613,9 +4073,17 @@
     }
 
     return Object.freeze({
+      applyCabinetSettings: applyCabinetSettings,
       bind: bind,
+      closeSettings: closeSettings,
       closeDialog: closeDialog,
       finishTimelineZoom: finishTimelineZoom,
+      getCabinetSettingsState: function () {
+        return cabinetSettingsState ? cloneValue(cabinetSettingsState) : null;
+      },
+      getCabinetSettingsUiState: function () {
+        return cloneValue(settingsUiState);
+      },
       getCurrentLessonRoute: function () { return routeForLesson(currentLesson()); },
       getCurrentTeacherPrompt: getCurrentTeacherPrompt,
       getLessons: function () { return cloneLessons(lessons); },
@@ -3631,28 +4099,58 @@
       handleTimelineWheel: handleTimelineWheel,
       load: load,
       openLesson: openLesson,
+      openSettings: openSettings,
+      receiveCabinetSettingsState: receiveCabinetSettingsState,
       revalidateAfterMutation: revalidateAfterMutation,
       retryRevalidation: retryRevalidation,
       render: render,
       runMutation: runMutation,
+      saveCabinetSettings: saveCabinetSettings,
       selectView: selectView,
+      updateCabinetSettingsDraft: updateCabinetSettingsDraft,
+      usePendingCabinetSettings: usePendingCabinetSettings,
+      keepCabinetSettingsDraft: keepCabinetSettingsDraft,
       whenMutationsIdle: function () { return queue.whenIdle(); }
     });
   }
 
   function boot() {
     if (!root || !root.document || !root.SchoolApi || !root.SchoolCore || !root.SchoolMutationQueue) return;
+    var settingsStore = root.SchoolCabinetSettingsStore &&
+      root.SchoolCabinetSettings
+      ? root.SchoolCabinetSettingsStore.create({
+        settingsCore: root.SchoolCabinetSettings,
+        getSync: function () { return root.SupabaseSync; },
+        storage: root.localStorage,
+        eventTarget: root
+      })
+      : null;
     var controller = createController({
       api: root.SchoolApi,
       core: root.SchoolCore,
       mutationQueue: root.SchoolMutationQueue,
       document: root.document,
+      cabinetSettingsCore: root.SchoolCabinetSettings,
+      cabinetSettingsStore: settingsStore,
       learningConfig: root.SchoolLearningConfig,
       learningRoute: root.SchoolLearningRoute
     });
     root.SchoolController = controller;
     controller.bind();
     controller.load();
+    if (settingsStore) {
+      settingsStore.subscribe(function (state) {
+        controller.receiveCabinetSettingsState(state);
+      });
+      settingsStore.load().catch(function () {
+        controller.receiveCabinetSettingsState(settingsStore.getState());
+      });
+      if (typeof root.addEventListener === 'function') {
+        root.addEventListener('pagehide', function () {
+          settingsStore.destroy();
+        }, { once: true });
+      }
+    }
   }
 
   if (root && root.document) {
@@ -3670,6 +4168,7 @@
     appendLessonRoute: appendLessonRoute,
     applyTeacherResultToControls: applyTeacherResultToControls,
     assessmentDraft: assessmentDraft,
+    cabinetSettingsDraft: cabinetSettingsDraft,
     copyPromptAndOpen: copyPromptAndOpen,
     createController: createController,
     commandAfterOverlapChoice: commandAfterOverlapChoice,
@@ -3684,10 +4183,12 @@
     isLessonDraggable: isLessonDraggable,
     lessonSignalLabels: lessonSignalLabels,
     makeTimelineDragPreviewNodes: makeTimelineDragPreviewNodes,
+    mergeCabinetSettingsState: mergeCabinetSettingsState,
     partitionDecisionItems: partitionDecisionItems,
     renderContentBlocks: renderContentBlocks,
     routeDrawerRows: routeDrawerRows,
     safeHttpsUrl: safeHttpsUrl,
+    safeChatGptUrl: safeChatGptUrl,
     selectTodayFocus: selectTodayFocus,
     setTransparentDragImage: setTransparentDragImage,
     syncAssessmentControlsForStatus: syncAssessmentControlsForStatus,
