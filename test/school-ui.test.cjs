@@ -4,11 +4,54 @@ const path = require('node:path');
 const test = require('node:test');
 
 const SchoolCore = require('../school-core.js');
+const SchoolCabinetSettings = require('../school-cabinet-settings.js');
 const SchoolMutationQueue = require('../school-mutation-queue.js');
+const SchoolTeacherBridge = require('../school-teacher-bridge.js');
 const SchoolUi = require('../school.js');
 
 function read(file) {
   return fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+}
+
+function htmlAttribute(tag, name) {
+  const match = tag.match(new RegExp(`(?:^|\\s)${name}\\s*=\\s*(["'])(.*?)\\1`, 'i'));
+  return match ? match[2] : null;
+}
+
+function assertSchoolAssetContract(html) {
+  const expectedScripts = [
+    'profile-theme.js?v=401',
+    'topbar.js?v=403',
+    'supabase-sync.js?v=407-sb',
+    'school-core.js?v=6',
+    'school-api.js',
+    'school-teacher-config.js?v=3',
+    'school-learning-route.js?v=1',
+    'school-cabinet-settings.js?v=2',
+    'school-cabinet-settings-store.js?v=2',
+    'school-teacher-bridge.js?v=2',
+    'school-mutation-queue.js?v=1',
+    'school.js?v=14'
+  ];
+  const scripts = Array.from(html.matchAll(/<script\b[^>]*>/g), (match) =>
+    htmlAttribute(match[0], 'src')
+  ).filter(Boolean);
+  const stylesheets = Array.from(html.matchAll(/<link\b[^>]*>/g), (match) => match[0])
+    .filter((tag) => htmlAttribute(tag, 'rel') === 'stylesheet')
+    .map((tag) => htmlAttribute(tag, 'href'))
+    .filter(Boolean);
+
+  assert.ok(html.includes('<body data-page="school">'));
+  assert.deepEqual(stylesheets, ['school.css?v=14']);
+  assert.deepEqual(scripts, expectedScripts);
+  assert.ok(html.includes('id="schoolSettingsOpen"'));
+  assert.ok(html.includes('aria-label="Настройки школы"'));
+  assert.ok(html.includes('id="schoolSettingsDialog"'));
+  assert.ok(html.includes('id="schoolSettingsForm"'));
+  assert.equal(
+    Array.from(html.matchAll(/data-school-cabinet-id=/g)).length,
+    12
+  );
 }
 
 function fakeDocument() {
@@ -134,12 +177,194 @@ function loadingCore() {
   };
 }
 
-function interactiveDocument() {
+test('cabinet settings draft reports field errors without mutating confirmed settings', () => {
+  const confirmed = {
+    version: 1,
+    cabinets: {
+      'chatgpt-software': 'https://chatgpt.com/g/old',
+    },
+  };
+  const draft = SchoolUi.cabinetSettingsDraft(
+    confirmed,
+    { 'chatgpt-software': 'https://evil.example/g/new' },
+    SchoolCabinetSettings
+  );
+
+  assert.equal(draft.dirty, true);
+  assert.equal(draft.valid, false);
+  assert.equal(
+    draft.errors['chatgpt-software'],
+    'Проверьте ссылку'
+  );
+  assert.equal(
+    confirmed.cabinets['chatgpt-software'],
+    'https://chatgpt.com/g/old'
+  );
+});
+
+test('incoming remote settings preserve a dirty draft until explicit choice', () => {
+  const result = SchoolUi.mergeCabinetSettingsState({
+    dirty: true,
+    draft: {
+      'chatgpt-software': 'https://chatgpt.com/g/local',
+    },
+  }, {
+    settings: {
+      version: 1,
+      cabinets: {
+        'chatgpt-software': 'https://chatgpt.com/g/remote',
+      },
+    },
+  });
+
+  assert.equal(result.showRemoteNotice, true);
+  assert.equal(
+    result.draft['chatgpt-software'],
+    'https://chatgpt.com/g/local'
+  );
+  assert.equal(
+    result.pendingRemote.settings.cabinets['chatgpt-software'],
+    'https://chatgpt.com/g/remote'
+  );
+});
+
+test('controller resolves the current lesson route through injected dependencies', async () => {
+  const activeLesson = {
+    id: 'lesson-42',
+    title: 'Cold start «Прометея»',
+    subject: 'Software Engineering',
+    status: 'В процессе'
+  };
+  const expectedRoute = {
+    cabinetId: 'chatgpt-software',
+    cabinetLabel: 'ChatGPT · Software Engineering'
+  };
+  const controller = SchoolUi.createController({
+    api: {
+      listLessons: async () => [activeLesson],
+      getLessonContent: async () => ({ lesson: activeLesson, blocks: [] })
+    },
+    core: loadingCore(),
+    document: null,
+    learningConfig: { marker: 'config' },
+    learningRoute: {
+      resolveLessonRoute(lesson, config) {
+        assert.equal(lesson.id, 'lesson-42');
+        assert.equal(config.marker, 'config');
+        return expectedRoute;
+      }
+    }
+  });
+
+  await controller.load();
+  await controller.openLesson('lesson-42');
+  assert.equal(controller.getCurrentLessonRoute(), expectedRoute);
+});
+
+test('controller overlays synced cabinet settings without mutating static config', async () => {
+  const lesson = {
+    id: 'lesson-1',
+    title: 'Cold start «Прометея»',
+    subject: 'Software Engineering',
+    status: 'Запланирован',
+  };
+  const staticConfig = Object.freeze({
+    cabinets: Object.freeze({
+      'chatgpt-software': Object.freeze({
+        label: 'software',
+        platform: 'ChatGPT',
+        kind: 'permanent',
+        url: '',
+      }),
+    }),
+  });
+  const resolvedConfigs = [];
+  const controller = SchoolUi.createController({
+    api: {
+      listLessons: async () => [lesson],
+      getLessonContent: async () => ({ lesson, blocks: [] }),
+    },
+    core: loadingCore(),
+    document: null,
+    learningConfig: staticConfig,
+    cabinetSettingsCore: {
+      applyToConfig(base, settings) {
+        return {
+          ...base,
+          cabinets: {
+            ...base.cabinets,
+            'chatgpt-software': {
+              ...base.cabinets['chatgpt-software'],
+              url: settings.cabinets['chatgpt-software'] || '',
+            },
+          },
+        };
+      },
+    },
+    learningRoute: {
+      resolveLessonRoute(_lesson, config) {
+        if (!_lesson) return null;
+        resolvedConfigs.push(config);
+        return {
+          cabinetId: 'chatgpt-software',
+          cabinetUrl: config.cabinets['chatgpt-software'].url,
+        };
+      },
+      compactRouteLabels() {
+        return { desktop: 'ChatGPT', mobile: 'ChatGPT' };
+      },
+    },
+  });
+
+  await controller.load();
+  controller.applyCabinetSettings({
+    status: 'ready',
+    settings: {
+      version: 1,
+      cabinets: {
+        'chatgpt-software': 'https://chatgpt.com/g/software',
+      },
+    },
+  });
+
+  assert.equal(controller.getCurrentLessonRoute(), null);
+  await controller.openLesson('lesson-1');
+  assert.equal(
+    controller.getCurrentLessonRoute().cabinetUrl,
+    'https://chatgpt.com/g/software'
+  );
+  assert.equal(staticConfig.cabinets['chatgpt-software'].url, '');
+  assert.ok(resolvedConfigs.length > 0);
+});
+
+test('lesson card renders distinct desktop and mobile route labels as text', () => {
+  const document = fakeDocument();
+  const card = document.createElement('button');
+
+  SchoolUi.appendLessonRoute(
+    card,
+    document,
+    {
+      desktop: 'Codex · coding agent',
+      mobile: 'Codex'
+    }
+  );
+
+  assert.equal(card.children.length, 1);
+  assert.equal(card.children[0].className, 'school-card-route');
+  assert.equal(card.children[0].children[0].textContent, 'Codex · coding agent');
+  assert.equal(card.children[0].children[1].textContent, 'Codex');
+  assert.equal(card.children[0].children[0].className, 'school-route-desktop');
+  assert.equal(card.children[0].children[1].className, 'school-route-mobile');
+});
+
+function interactiveDocument(extraNodes = []) {
   const listeners = new Map();
   const nodes = new Map();
   let document;
 
   function node(tagName, id = '') {
+    const nodeListeners = new Map();
     const value = {
       tagName: tagName.toUpperCase(),
       id,
@@ -169,7 +394,28 @@ function interactiveDocument() {
       removeAttribute(name) {
         delete this.attributes[name];
       },
-      addEventListener() {},
+      addEventListener(type, handler) {
+        if (!nodeListeners.has(type)) nodeListeners.set(type, []);
+        nodeListeners.get(type).push(handler);
+      },
+      dispatchEvent(event) {
+        const payload = event || {};
+        if (!payload.type) throw new Error('event type is required');
+        if (!payload.target) payload.target = this;
+        if (!payload.preventDefault) {
+          payload.preventDefault = function preventDefault() {
+            this.defaultPrevented = true;
+          };
+        }
+        (nodeListeners.get(payload.type) || []).forEach((handler) => handler(payload));
+        return !payload.defaultPrevented;
+      },
+      click() {
+        this.dispatchEvent({ type: 'click' });
+      },
+      querySelector(selector) {
+        return this.querySelectorAll(selector)[0] || null;
+      },
       querySelectorAll() {
         return id === 'schoolLessonDialog' ? [nodes.get('schoolLessonClose')] : [];
       },
@@ -253,7 +499,7 @@ function interactiveDocument() {
     ['div', 'schoolLessonMeta'],
     ['div', 'schoolContentState'],
     ['article', 'schoolLessonContent']
-  ].forEach(([tagName, id]) => node(tagName, id));
+  ].concat(extraNodes).forEach(([tagName, id]) => node(tagName, id));
   nodes.get('schoolLessonDialog').hidden = true;
   nodes.get('schoolReady').hidden = true;
   return { document, nodes };
@@ -476,29 +722,986 @@ function timelineLifecycleDocument() {
   };
 }
 
-test('school page loads shared dashboard dependencies before read-only school scripts', () => {
-  const html = read('school.html');
-  const scripts = [
-    'profile-theme.js?v=401',
-    'topbar.js?v=403',
-    'supabase-sync.js?v=406-sb',
-    'school-core.js',
-    'school-api.js',
-    'school.js'
+function settingsControllerHarness(options = {}) {
+  const cabinetRows = [
+    ['Software', 'chatgpt-software'],
+    ['DevOps', 'chatgpt-devops'],
+    ['Mathematics', 'chatgpt-mathematics'],
+    ['English', 'chatgpt-english'],
+    ['University', 'chatgpt-university'],
+    ['Director', 'chatgpt-director'],
   ];
-
-  assert.ok(html.includes('<body data-page="school">'));
-  scripts.forEach((script) => assert.ok(html.includes(script), script));
-  scripts.slice(1).forEach((script, index) => {
-    assert.ok(html.indexOf(scripts[index]) < html.indexOf(script), `${scripts[index]} before ${script}`);
+  const extraNodes = [
+    ['button', 'schoolSettingsOpen'],
+    ['div', 'schoolSettingsDialog'],
+    ['form', 'schoolSettingsForm'],
+    ['button', 'schoolSettingsClose'],
+    ['button', 'schoolSettingsCancel'],
+    ['button', 'schoolSettingsSave'],
+    ['p', 'schoolSettingsStatus'],
+    ['section', 'schoolSettingsRemoteNotice'],
+    ['button', 'schoolSettingsUseRemote'],
+    ['button', 'schoolSettingsKeepDraft'],
+    ['div', 'schoolActionDialog'],
+    ['h2', 'schoolActionTitle'],
+    ['p', 'schoolActionMessage'],
+    ['div', 'schoolActionDetails'],
+    ['div', 'schoolActionButtons'],
+  ];
+  cabinetRows.forEach(([name]) => {
+    extraNodes.push(['input', `schoolCabinet${name}`]);
+    extraNodes.push(['span', `schoolCabinet${name}State`]);
+    extraNodes.push(['button', `schoolCabinet${name}Reset`]);
   });
+  const { document, nodes } = interactiveDocument(extraNodes);
+  const inputs = [];
+  const resetButtons = [];
+
+  cabinetRows.forEach(([name, cabinetId]) => {
+    const input = nodes.get(`schoolCabinet${name}`);
+    const state = nodes.get(`schoolCabinet${name}State`);
+    const reset = nodes.get(`schoolCabinet${name}Reset`);
+    input.value = '';
+    input.setAttribute('data-school-cabinet-id', cabinetId);
+    input.setAttribute('aria-describedby', state.id);
+    reset.setAttribute('data-school-cabinet-reset', '');
+    reset.setAttribute('data-school-cabinet-id', cabinetId);
+    inputs.push(input);
+    resetButtons.push(reset);
+  });
+
+  const settingsDialog = nodes.get('schoolSettingsDialog');
+  const actionDialog = nodes.get('schoolActionDialog');
+  settingsDialog.hidden = true;
+  actionDialog.hidden = true;
+  nodes.get('schoolSettingsRemoteNotice').hidden = true;
+  document.querySelectorAll = function querySelectorAll(selector) {
+    if (selector === 'input[data-school-cabinet-id]') return inputs;
+    if (selector === '[data-school-cabinet-reset]') return resetButtons;
+    return [];
+  };
+  settingsDialog.querySelector = function querySelector(selector) {
+    return selector === 'input' ? inputs[0] : null;
+  };
+  settingsDialog.querySelectorAll = function querySelectorAll(selector) {
+    return selector.includes('button') ? [
+      ...inputs,
+      nodes.get('schoolSettingsClose'),
+      nodes.get('schoolSettingsCancel'),
+      nodes.get('schoolSettingsSave'),
+    ] : [];
+  };
+  actionDialog.querySelectorAll = function querySelectorAll() {
+    return nodes.get('schoolActionButtons').children;
+  };
+
+  const savedDrafts = [];
+  const store = {
+    async save(draft) {
+      savedDrafts.push(structuredClone(draft));
+      if (options.saveError) throw options.saveError;
+      const validation = SchoolCabinetSettings.validateDraft(draft);
+      return {
+        status: 'ready',
+        userId: 'u1',
+        settings: validation.settings,
+        updatedAt: '2026-07-29T03:00:00.000Z',
+        source: 'save',
+        warning: null,
+        error: null,
+      };
+    },
+  };
+  const controller = SchoolUi.createController({
+    api: {
+      async listLessons() {
+        return [];
+      },
+    },
+    core: loadingCore(),
+    document,
+    cabinetSettingsCore: SchoolCabinetSettings,
+    cabinetSettingsStore: store,
+    learningConfig: { cabinets: {} },
+  });
+  controller.bind();
+  controller.receiveCabinetSettingsState({
+    status: 'ready',
+    userId: 'u1',
+    settings: options.settings || {
+      version: 1,
+      cabinets: {
+        'chatgpt-software': 'https://chatgpt.com/g/software',
+      },
+    },
+    updatedAt: '2026-07-29T02:00:00.000Z',
+    source: 'remote',
+    warning: null,
+    error: null,
+  });
+
+  return {
+    controller,
+    document,
+    nodes,
+    inputs,
+    resetButtons,
+    savedDrafts,
+  };
+}
+
+test('settings drawer validates resets and saves one allowlisted draft', async () => {
+  const app = settingsControllerHarness();
+  const open = app.nodes.get('schoolSettingsOpen');
+  app.document.activeElement = open;
+  open.click();
+
+  assert.equal(app.nodes.get('schoolSettingsDialog').hidden, false);
+  assert.equal(
+    app.nodes.get('schoolCabinetSoftware').value,
+    'https://chatgpt.com/g/software'
+  );
+  assert.equal(app.document.activeElement, app.nodes.get('schoolCabinetSoftware'));
+
+  app.nodes.get('schoolCabinetSoftwareReset').click();
+  assert.equal(app.nodes.get('schoolCabinetSoftware').value, '');
+  assert.equal(app.controller.getCabinetSettingsUiState().dirty, true);
+
+  const devops = app.nodes.get('schoolCabinetDevOps');
+  devops.value = 'https://evil.example/g/devops';
+  devops.dispatchEvent({ type: 'input' });
+  assert.equal(app.nodes.get('schoolSettingsSave').disabled, true);
+  assert.equal(devops.getAttribute('aria-invalid'), 'true');
+  assert.equal(
+    app.nodes.get('schoolCabinetDevOpsState').textContent,
+    'проверьте ссылку'
+  );
+
+  devops.value = 'https://chatgpt.com/g/devops';
+  devops.dispatchEvent({ type: 'input' });
+  await app.controller.saveCabinetSettings();
+
+  assert.deepEqual(app.savedDrafts, [{
+    'chatgpt-software': '',
+    'chatgpt-devops': 'https://chatgpt.com/g/devops',
+    'chatgpt-mathematics': '',
+    'chatgpt-english': '',
+    'chatgpt-university': '',
+    'chatgpt-director': '',
+  }]);
+  assert.equal(
+    app.nodes.get('schoolSettingsStatus').textContent,
+    'Сохранено в аккаунте'
+  );
+});
+
+test('failed settings save keeps the drawer and dirty draft open', async () => {
+  const app = settingsControllerHarness({
+    saveError: Object.assign(new Error('network'), { code: 'SAVE_FAILED' }),
+  });
+  app.controller.openSettings();
+  app.controller.updateCabinetSettingsDraft(
+    'chatgpt-software',
+    'https://chatgpt.com/g/changed'
+  );
+
+  await app.controller.saveCabinetSettings();
+
+  assert.equal(app.nodes.get('schoolSettingsDialog').hidden, false);
+  assert.equal(
+    app.nodes.get('schoolCabinetSoftware').value,
+    'https://chatgpt.com/g/changed'
+  );
+  assert.equal(app.controller.getCabinetSettingsUiState().dirty, true);
+  assert.equal(
+    app.nodes.get('schoolSettingsStatus').textContent,
+    'Не удалось сохранить. Проверьте соединение и повторите.'
+  );
+});
+
+test('remote settings never overwrite a dirty drawer without a choice', () => {
+  const app = settingsControllerHarness();
+  app.controller.openSettings();
+  app.controller.updateCabinetSettingsDraft(
+    'chatgpt-software',
+    'https://chatgpt.com/g/local'
+  );
+
+  app.controller.receiveCabinetSettingsState({
+    status: 'ready',
+    userId: 'u1',
+    settings: {
+      version: 1,
+      cabinets: {
+        'chatgpt-software': 'https://chatgpt.com/g/remote',
+      },
+    },
+    updatedAt: '2026-07-29T04:00:00.000Z',
+    source: 'realtime',
+    warning: null,
+    error: null,
+  });
+
+  assert.equal(
+    app.nodes.get('schoolCabinetSoftware').value,
+    'https://chatgpt.com/g/local'
+  );
+  assert.equal(app.nodes.get('schoolSettingsRemoteNotice').hidden, false);
+
+  app.nodes.get('schoolSettingsUseRemote').click();
+  assert.equal(
+    app.nodes.get('schoolCabinetSoftware').value,
+    'https://chatgpt.com/g/remote'
+  );
+  assert.equal(app.nodes.get('schoolSettingsRemoteNotice').hidden, true);
+});
+
+test('account change closes a dirty drawer and removes the previous account urls', () => {
+  const app = settingsControllerHarness();
+  app.controller.openSettings();
+  app.controller.updateCabinetSettingsDraft(
+    'chatgpt-software',
+    'https://chatgpt.com/g/account-a-draft'
+  );
+
+  app.controller.receiveCabinetSettingsState({
+    status: 'idle',
+    userId: null,
+    settings: { version: 1, cabinets: {} },
+    updatedAt: null,
+    source: 'auth',
+    warning: null,
+    error: null,
+  });
+
+  assert.equal(app.nodes.get('schoolSettingsDialog').hidden, true);
+  assert.equal(app.nodes.get('schoolCabinetSoftware').value, '');
+  assert.equal(app.controller.getCabinetSettingsUiState().dirty, false);
+});
+
+test('teacher target revalidates the final ChatGPT hostname', () => {
+  const target = SchoolUi.teacherTargetForRoute({
+    platform: 'ChatGPT',
+    cabinetKind: 'permanent',
+    canOpenCabinet: true,
+    cabinetUrl: 'https://evil.example/g/copied-route',
+    teacherLabel: 'Преподаватель',
+  });
+
+  assert.equal(target.configured, false);
+  assert.equal(target.url, null);
+});
+
+test('closing settings restores focus to the gear button', async () => {
+  const app = settingsControllerHarness();
+  const open = app.nodes.get('schoolSettingsOpen');
+  app.document.activeElement = open;
+  app.controller.openSettings();
+
+  await app.controller.closeSettings(true);
+
+  assert.equal(app.nodes.get('schoolSettingsDialog').hidden, true);
+  assert.equal(app.document.activeElement, open);
+});
+
+test('escape asks before discarding a dirty settings draft', async () => {
+  const app = settingsControllerHarness();
+  app.controller.openSettings();
+  app.controller.updateCabinetSettingsDraft(
+    'chatgpt-software',
+    'https://chatgpt.com/g/changed'
+  );
+
+  const firstEscape = app.document.dispatchKey('Escape');
+  assert.equal(firstEscape.prevented, true);
+  assert.equal(app.nodes.get('schoolActionDialog').hidden, false);
+  assert.equal(app.nodes.get('schoolSettingsDialog').hidden, false);
+
+  app.nodes.get('schoolActionButtons').children[0].click();
+  await Promise.resolve();
+  assert.equal(app.nodes.get('schoolSettingsDialog').hidden, false);
+
+  app.document.dispatchKey('Escape');
+  app.nodes.get('schoolActionButtons').children[1].click();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(app.nodes.get('schoolSettingsDialog').hidden, true);
+});
+
+test('school page loads the coherent read-only school release set in dependency order', () => {
+  const html = read('school.html');
+  assertSchoolAssetContract(html);
+});
+
+test('school page cache contract rejects a legacy duplicate asset', () => {
+  const legacyDuplicate = read('school.html').replace(
+    '  <script src="school.js?v=14" defer></script>',
+    '  <script src="school.js?v=13" defer></script>\n  <script src="school.js?v=14" defer></script>'
+  );
+
+  assert.throws(() => assertSchoolAssetContract(legacyDuplicate));
+});
+
+test('school page cache contract rejects a single-quoted legacy duplicate asset', () => {
+  const legacyDuplicate = read('school.html').replace(
+    '  <script src="school.js?v=14" defer></script>',
+    "  <script src='school.js?v=13' defer></script>\n  <script src=\"school.js?v=14\" defer></script>"
+  );
+
+  assert.throws(() => assertSchoolAssetContract(legacyDuplicate));
+});
+
+test('school shell exposes the teacher section, import dialog and explicit final status', () => {
+  const html = read('school.html');
+
+  [
+    'schoolTeacherSection',
+    'schoolTeacherPrimary',
+    'schoolTeacherCopy',
+    'schoolTeacherOpen',
+    'schoolTeacherFinishRequest',
+    'schoolTeacherImport',
+    'schoolTeacherDialog',
+    'schoolTeacherSource',
+    'schoolTeacherPreview',
+    'schoolLessonFinalStatus',
+    'schoolAssessmentErrors',
+    'schoolToast'
+  ].forEach((id) => assert.ok(html.includes(`id="${id}"`), id));
+  assert.ok(html.includes('Сохранить результат в дневник'));
+  assert.ok(html.includes('aria-live="polite"'));
+});
+
+test('combined teacher action opens a secure blank synchronously before clipboard resolves', async () => {
+  const clipboard = deferred();
+  const events = [];
+  const metaNodes = [];
+  const popup = {
+    opener: {},
+    document: {
+      head: {
+        appendChild(node) {
+          metaNodes.push(node);
+        }
+      },
+      createElement(tagName) {
+        return {
+          tagName,
+          attributes: {},
+          setAttribute(name, value) {
+            this.attributes[name] = value;
+          }
+        };
+      }
+    },
+    location: {
+      replace(url) {
+        events.push(['navigate', url]);
+      }
+    }
+  };
+  const runtime = {
+    open(url, target) {
+      events.push(['open', url, target]);
+      return popup;
+    }
+  };
+
+  const action = SchoolUi.copyPromptAndOpen({
+    copyText(value) {
+      events.push(['copy', value]);
+      return clipboard.promise;
+    },
+    prompt: 'prompt body',
+    runtime,
+    teacher: {
+      configured: true,
+      label: 'преподаватель',
+      url: 'https://chatgpt.com/g/g-123'
+    }
+  });
+
+  assert.deepEqual(events, [
+    ['open', 'about:blank', '_blank'],
+    ['copy', 'prompt body']
+  ]);
+  assert.equal(popup.opener, null);
+  assert.deepEqual(metaNodes[0].attributes, {
+    name: 'referrer',
+    content: 'no-referrer'
+  });
+  clipboard.resolve();
+  const result = await action;
+
+  assert.deepEqual(events.at(-1), ['navigate', 'https://chatgpt.com/g/g-123']);
+  assert.deepEqual(result, {
+    copied: true,
+    opened: true,
+    popupBlocked: false
+  });
+});
+
+test('blocked popup or clipboard failure never loses the prompt', async () => {
+  const fallback = [];
+  const blocked = [];
+  const result = await SchoolUi.copyPromptAndOpen({
+    copyText() {
+      return Promise.reject(new Error('clipboard denied'));
+    },
+    onClipboardFallback(value) {
+      fallback.push(value);
+    },
+    onPopupBlocked(url) {
+      blocked.push(url);
+    },
+    prompt: 'prompt body',
+    runtime: { open: () => null },
+    teacher: {
+      configured: true,
+      label: 'преподаватель',
+      url: 'https://chatgpt.com/g/g-123'
+    }
+  });
+
+  assert.deepEqual(fallback, ['prompt body']);
+  assert.deepEqual(blocked, ['https://chatgpt.com/g/g-123']);
+  assert.deepEqual(result, {
+    copied: false,
+    opened: false,
+    popupBlocked: true
+  });
+});
+
+test('a throwing popup implementation still copies the prompt', async () => {
+  const copied = [];
+  const blocked = [];
+  const result = await SchoolUi.copyPromptAndOpen({
+    copyText(value) {
+      copied.push(value);
+      return Promise.resolve();
+    },
+    onPopupBlocked(url) {
+      blocked.push(url);
+    },
+    prompt: 'prompt body',
+    runtime: {
+      open() {
+        throw new Error('popup policy');
+      }
+    },
+    teacher: {
+      configured: true,
+      label: 'преподаватель',
+      url: 'https://chatgpt.com/g/g-123'
+    }
+  });
+
+  assert.deepEqual(copied, ['prompt body']);
+  assert.deepEqual(blocked, ['https://chatgpt.com/g/g-123']);
+  assert.equal(result.popupBlocked, true);
+});
+
+test('failed popup navigation keeps a copied prompt and exposes the fallback link', async () => {
+  const blocked = [];
+  const result = await SchoolUi.copyPromptAndOpen({
+    copyText() {
+      return Promise.resolve();
+    },
+    onPopupBlocked(url) {
+      blocked.push(url);
+    },
+    prompt: 'prompt body',
+    runtime: {
+      open() {
+        return {
+          opener: {},
+          location: {
+            replace() {
+              throw new Error('navigation denied');
+            }
+          }
+        };
+      }
+    },
+    teacher: {
+      configured: true,
+      label: 'преподаватель',
+      url: 'https://chatgpt.com/g/g-123'
+    }
+  });
+
+  assert.deepEqual(blocked, ['https://chatgpt.com/g/g-123']);
+  assert.deepEqual(result, {
+    copied: true,
+    opened: false,
+    popupBlocked: true
+  });
+});
+
+test('empty teacher url still copies without opening a blank tab', async () => {
+  const events = [];
+  const result = await SchoolUi.copyPromptAndOpen({
+    copyText(value) {
+      events.push(['copy', value]);
+      return Promise.resolve();
+    },
+    prompt: 'prompt body',
+    runtime: {
+      open() {
+        events.push(['open']);
+      }
+    },
+    teacher: {
+      configured: false,
+      label: 'преподаватель',
+      url: null
+    }
+  });
+
+  assert.deepEqual(events, [['copy', 'prompt body']]);
+  assert.deepEqual(result, {
+    copied: true,
+    opened: false,
+    popupBlocked: false
+  });
+});
+
+test('applying teacher result fills editable controls but performs no mutation', () => {
+  const controls = new Map();
+  const mutations = [];
+
+  function editableControl(id, value = '') {
+    const listeners = new Map();
+    const classes = new Set();
+    const control = {
+      id,
+      value,
+      disabled: false,
+      addEventListener(type, handler) {
+        if (!listeners.has(type)) listeners.set(type, []);
+        listeners.get(type).push(handler);
+      },
+      dispatch(type) {
+        (listeners.get(type) || []).forEach((handler) => handler({ target: control }));
+      },
+      classList: {
+        add(name) { classes.add(name); },
+        remove(name) { classes.delete(name); },
+        contains(name) { return classes.has(name); }
+      }
+    };
+    controls.set(id, control);
+    return control;
+  }
+
+  [
+    'schoolLessonFinalStatus',
+    'schoolLessonResult',
+    'schoolLessonAutonomy',
+    'schoolLessonUnderstanding',
+    'schoolLessonComment',
+    'schoolLessonArtifact',
+    'schoolLessonMissedReason'
+  ].forEach((id) => editableControl(id));
+  const document = {
+    getElementById(id) {
+      return controls.get(id) || null;
+    }
+  };
+
+  SchoolUi.applyTeacherResultToControls(document, {
+    lessonId: 'lesson-42',
+    status: 'Выполнен',
+    result: 'Зачёт',
+    autonomy: 'A2',
+    understanding: 2,
+    comment: 'Готово.',
+    artifactUrl: 'https://example.com/artifact',
+    missedReason: null
+  }, {
+    mutate(command) {
+      mutations.push(command);
+    }
+  });
+
+  assert.deepEqual(
+    Object.fromEntries([...controls].map(([id, control]) => [id, control.value])),
+    {
+      schoolLessonFinalStatus: 'Выполнен',
+      schoolLessonResult: 'Зачёт',
+      schoolLessonAutonomy: 'A2',
+      schoolLessonUnderstanding: '2',
+      schoolLessonComment: 'Готово.',
+      schoolLessonArtifact: 'https://example.com/artifact',
+      schoolLessonMissedReason: ''
+    }
+  );
+  assert.deepEqual(mutations, []);
+  assert.equal(controls.get('schoolLessonComment').classList.contains('is-teacher-filled'), true);
+
+  controls.get('schoolLessonComment').value = 'Исправлено вручную.';
+  controls.get('schoolLessonComment').dispatch('input');
+  assert.equal(controls.get('schoolLessonComment').value, 'Исправлено вручную.');
+  assert.equal(controls.get('schoolLessonComment').classList.contains('is-teacher-filled'), false);
+  assert.equal(controls.get('schoolLessonComment').disabled, false);
+});
+
+test('assessment command uses only current editable controls and existing completeLesson', () => {
+  const values = {
+    schoolLessonFinalStatus: 'Частично выполнен',
+    schoolLessonResult: 'Незачёт',
+    schoolLessonAutonomy: 'A1',
+    schoolLessonUnderstanding: '1',
+    schoolLessonComment: 'Нужно повторить.',
+    schoolLessonArtifact: 'https://example.com/work',
+    schoolLessonMissedReason: ''
+  };
+  const document = {
+    getElementById(id) {
+      return Object.hasOwn(values, id) ? { value: values[id] } : null;
+    }
+  };
+
+  assert.deepEqual(
+    SchoolUi.assessmentDraft(document, { id: 'lesson-42' }, SchoolTeacherBridge),
+    {
+      command: {
+        operation: 'completeLesson',
+        lessonId: 'lesson-42',
+        status: 'Частично выполнен',
+        autonomy: 'A1',
+        understanding: 1,
+        comment: 'Нужно повторить.',
+        artifactUrl: 'https://example.com/work'
+      },
+      errors: [],
+      summary: [
+        'Статус: Частично выполнен',
+        'Результат: Требует повторения',
+        'Автономность: A1',
+        'Понимание: 1/3',
+        'Комментарий: Нужно повторить.',
+        'Артефакт: https://example.com/work'
+      ].join('\n')
+    }
+  );
+});
+
+test('changing final status keeps assessment fields semantically consistent', () => {
+  const values = {
+    schoolLessonResult: { value: 'Незачёт' },
+    schoolLessonAutonomy: { value: 'A2' },
+    schoolLessonUnderstanding: { value: '2' },
+    schoolLessonMissedReason: { value: 'Низкая энергия' }
+  };
+  const document = {
+    getElementById(id) {
+      return values[id] || null;
+    }
+  };
+
+  SchoolUi.syncAssessmentControlsForStatus(document, 'Пропущен');
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(values).map(([id, control]) => [id, control.value])),
+    {
+      schoolLessonResult: '',
+      schoolLessonAutonomy: '',
+      schoolLessonUnderstanding: '',
+      schoolLessonMissedReason: 'Низкая энергия'
+    }
+  );
+
+  SchoolUi.syncAssessmentControlsForStatus(document, 'Частично выполнен');
+  assert.equal(values.schoolLessonResult.value, 'Требует повторения');
+  assert.equal(values.schoolLessonMissedReason.value, '');
+
+  values.schoolLessonResult.value = '';
+  SchoolUi.syncAssessmentControlsForStatus(document, 'Выполнен');
+  assert.equal(values.schoolLessonResult.value, 'Зачёт');
+});
+
+test('controller rebuilds the same teacher prompt from reloaded notion content', async () => {
+  const activeLesson = {
+    id: 'lesson-42',
+    title: 'Cold start «Прометея»',
+    subject: 'Software Engineering',
+    module: 'Environment & Setup',
+    schedule: {
+      kind: 'date-only',
+      date: '2026-08-03',
+      start: null,
+      end: null
+    },
+    status: 'В процессе',
+    priority: 'Must',
+    durationMinutes: 45
+  };
+  const blocks = [{
+    type: 'paragraph',
+    spans: [{ text: 'Проверить чистый запуск.', annotations: {} }],
+    children: []
+  }];
+  const route = {
+    cabinetId: 'chatgpt-software',
+    cabinetLabel: 'ChatGPT · Software Engineering',
+    platform: 'ChatGPT',
+    cabinetKind: 'permanent',
+    cabinetUrl: 'https://chatgpt.com/g/software',
+    teacherId: 'chatgpt-main',
+    teacherLabel: 'ChatGPT · основной преподаватель',
+    modelHint: 'выберите основную модель вручную',
+    format: 'Сократовский урок',
+    resourceUrl: null,
+    usesDefaultCabinet: true,
+    usesDefaultTeacher: true,
+    canOpenCabinet: true,
+    warnings: [],
+    reviewer: null
+  };
+  const controller = SchoolUi.createController({
+    api: {
+      listLessons: async () => [activeLesson],
+      getLessonContent: async () => ({ lesson: activeLesson, blocks })
+    },
+    core: loadingCore(),
+    document: null,
+    teacherBridge: SchoolTeacherBridge,
+    learningConfig: {},
+    learningRoute: { resolveLessonRoute: () => route }
+  });
+
+  await controller.load();
+  await controller.openLesson('lesson-42');
+  const first = controller.getCurrentTeacherPrompt();
+  await controller.openLesson('lesson-42');
+  const second = controller.getCurrentTeacherPrompt();
+
+  assert.equal(first, second);
+  assert.match(first, /LESSON_REF: lesson-42/);
+  assert.match(first, /Проверить чистый запуск\./);
+  assert.match(first, /CABINET: ChatGPT · Software Engineering/);
+  assert.match(first, /TEACHER: ChatGPT · основной преподаватель/);
+  assert.match(first, /MODEL_HINT: выберите основную модель вручную/);
+  assert.match(first, /LESSON_FORMAT: Сократовский урок/);
+});
+
+test('route drawer rows expose cabinet teacher model format resource and reviewer', () => {
+  assert.deepEqual(SchoolUi.routeDrawerRows({
+    cabinetLabel: 'YouTube',
+    cabinetKind: 'temporary',
+    platform: 'YouTube',
+    teacherLabel: 'Автор материала',
+    modelHint: null,
+    format: 'Видео + retrieval',
+    resourceUrl: 'https://youtu.be/abc',
+    warnings: [{ code: 'resource', message: 'warning text' }],
+    reviewer: {
+      cabinetLabel: 'ChatGPT · English & IELTS',
+      teacherLabel: 'ChatGPT · основной преподаватель'
+    }
+  }), {
+    cabinet: 'YouTube',
+    kind: 'временный',
+    teacher: 'Автор материала',
+    modelHint: '',
+    format: 'Видео + retrieval',
+    resource: 'https://youtu.be/abc',
+    reviewer: 'ChatGPT · English & IELTS · ChatGPT · основной преподаватель',
+    warnings: ['warning text'],
+    instruction: 'Скопируйте промт. Автоматический запуск этого кабинета появится в PR 3.'
+  });
+});
+
+test('route drawer rows distinguish permanent and unknown routes', () => {
+  assert.deepEqual(SchoolUi.routeDrawerRows({
+    cabinetLabel: 'ChatGPT · Mathematics',
+    cabinetKind: 'permanent',
+    platform: 'ChatGPT',
+    canOpenCabinet: false,
+    teacherLabel: 'ChatGPT · глубокое рассуждение',
+    modelHint: 'выберите сильную reasoning-модель вручную',
+    format: 'Сократовский урок',
+    resourceUrl: null,
+    warnings: [],
+    reviewer: null
+  }), {
+    cabinet: 'ChatGPT · Mathematics',
+    kind: 'постоянный',
+    teacher: 'ChatGPT · глубокое рассуждение',
+    modelHint: 'выберите сильную reasoning-модель вручную',
+    format: 'Сократовский урок',
+    resource: '',
+    reviewer: '',
+    warnings: [],
+    instruction: 'Ссылка кабинета ещё не настроена. Промт можно скопировать вручную.'
+  });
+
+  assert.equal(SchoolUi.routeDrawerRows({
+    cabinetLabel: 'missing-cabinet',
+    cabinetKind: 'unknown',
+    teacherLabel: 'missing-teacher',
+    modelHint: null,
+    format: 'Неизвестный формат',
+    resourceUrl: null,
+    warnings: [{ message: 'Проверьте маршрут урока' }],
+    reviewer: null
+  }).kind, 'неизвестный');
+
+  ['unknown-teacher', 'unknown-format'].forEach((code) => {
+    assert.equal(SchoolUi.routeDrawerRows({
+      cabinetLabel: 'ChatGPT · Software Engineering',
+      cabinetKind: 'permanent',
+      platform: 'ChatGPT',
+      cabinetUrl: 'https://chatgpt.com/g/software',
+      canOpenCabinet: false,
+      teacherLabel: 'Неизвестный преподаватель',
+      format: 'Неизвестный формат',
+      warnings: [{ code, message: 'Проверьте маршрут урока' }]
+    }).instruction, 'Проверьте маршрут урока: неизвестные значения блокируют открытие. Промт можно скопировать вручную.');
+  });
+
+  assert.equal(SchoolUi.routeDrawerRows({
+    cabinetLabel: 'ChatGPT · Software Engineering',
+    cabinetKind: 'permanent',
+    platform: 'ChatGPT',
+    canOpenCabinet: false,
+    warnings: [{ code: 'invalid-cabinet-url', message: 'Некорректный URL постоянного кабинета' }]
+  }).instruction, 'URL постоянного кабинета некорректен. Промт можно скопировать вручную.');
+});
+
+test('teacher launch target accepts only a configured safe ChatGPT route', () => {
+  assert.deepEqual(SchoolUi.teacherTargetForRoute({
+    platform: 'ChatGPT', cabinetKind: 'permanent', canOpenCabinet: true,
+    cabinetUrl: 'https://chatgpt.com/g/software',
+    teacherLabel: 'ChatGPT · основной преподаватель'
+  }), {
+    configured: true, label: 'ChatGPT · основной преподаватель',
+    url: 'https://chatgpt.com/g/software'
+  });
+  assert.deepEqual(SchoolUi.teacherTargetForRoute({
+    platform: 'Codex', cabinetKind: 'permanent', canOpenCabinet: false,
+    cabinetUrl: null, teacherLabel: 'Codex · coding agent'
+  }), { configured: false, label: 'Codex · coding agent', url: null });
+  assert.deepEqual(SchoolUi.teacherTargetForRoute({
+    platform: 'ChatGPT', cabinetKind: 'permanent', canOpenCabinet: false,
+    cabinetUrl: 'https://chatgpt.com/g/unconfigured', teacherLabel: 'Неизвестный'
+  }), { configured: false, label: 'Неизвестный', url: null });
+  assert.deepEqual(SchoolUi.teacherTargetForRoute({
+    platform: 'Unknown', cabinetKind: 'permanent', canOpenCabinet: true,
+    cabinetUrl: 'https://example.test/route', teacherLabel: 'Неизвестный'
+  }), { configured: false, label: 'Неизвестный', url: null });
+});
+
+test('read-only route keeps external launch disabled before strategy PR', async () => {
+  const ui = interactiveDocument([
+    ['section', 'schoolTeacherSection'], ['span', 'schoolTeacherStatus'],
+    ['p', 'schoolTeacherLabel'], ['p', 'schoolTeacherNote'],
+    ['button', 'schoolTeacherPrimary'], ['button', 'schoolTeacherCopy'],
+    ['button', 'schoolTeacherOpen'], ['button', 'schoolTeacherFinishRequest'],
+    ['button', 'schoolTeacherImport'], ['a', 'schoolTeacherFallbackLink'],
+    ['dl', 'schoolRouteSummary'], ['dd', 'schoolRouteCabinet'],
+    ['dd', 'schoolRouteKind'], ['dd', 'schoolRouteTeacher'],
+    ['div', 'schoolRouteModelRow'], ['dd', 'schoolRouteModel'],
+    ['dd', 'schoolRouteFormat'], ['div', 'schoolRouteResourceRow'],
+    ['dd', 'schoolRouteResource'], ['div', 'schoolRouteReviewerRow'],
+    ['dd', 'schoolRouteReviewer'], ['div', 'schoolRouteWarnings'],
+    ['div', 'schoolLessonActions'], ['details', 'schoolCancelledHistory'],
+    ['div', 'schoolCancelledHistoryContent']
+  ]);
+  const lesson = {
+    id: 'lesson-codex', title: 'Coding laboratory', subject: 'Software Engineering',
+    module: 'Debugging', status: 'В процессе', priority: 'Must', durationMinutes: 45,
+    schedule: { kind: 'date-only', date: '2026-08-03', start: null, end: null }
+  };
+  const route = {
+    cabinetId: 'codex-main', platform: 'Codex', cabinetKind: 'permanent', cabinetUrl: null,
+    canOpenCabinet: false, cabinetLabel: 'Codex', teacherId: 'codex-main',
+    teacherLabel: 'Codex · coding agent', modelHint: 'выберите coding-модель вручную',
+    format: 'Практическая лаборатория', resourceUrl: null, warnings: [], reviewer: null
+  };
+  const controller = SchoolUi.createController({
+    api: {
+      listLessons: async () => [lesson],
+      getLessonContent: async () => ({ lesson, blocks: [] })
+    },
+    core: loadingCore(), document: ui.document, teacherBridge: SchoolTeacherBridge,
+    learningConfig: {},
+    learningRoute: {
+      resolveLessonRoute: () => route,
+      compactRouteLabels: () => ({ desktop: 'Codex · coding agent', mobile: 'Codex' })
+    }
+  });
+  await controller.load();
+  await controller.openLesson('lesson-codex');
+  assert.equal(ui.nodes.get('schoolTeacherCopy').disabled, false);
+  assert.equal(ui.nodes.get('schoolTeacherOpen').disabled, true);
+  assert.equal(ui.nodes.get('schoolTeacherLabel').textContent, 'Codex · coding agent');
+  assert.equal(ui.nodes.get('schoolRouteCabinet').textContent, 'Codex');
+  assert.equal(ui.nodes.get('schoolRouteModel').textContent, 'выберите coding-модель вручную');
+  assert.equal(ui.nodes.get('schoolTeacherNote').textContent, 'Скопируйте промт и откройте Codex desktop вручную.');
+});
+
+test('teacher heading follows resolved ChatGPT external and unknown route labels', async () => {
+  const routes = [
+    {
+      id: 'chatgpt', platform: 'ChatGPT', cabinetKind: 'permanent',
+      cabinetUrl: 'https://chatgpt.com/g/software', canOpenCabinet: true,
+      cabinetLabel: 'ChatGPT · Software Engineering',
+      teacherLabel: 'ChatGPT · основной преподаватель', format: 'Сократовский урок', warnings: []
+    },
+    {
+      id: 'youtube', platform: 'YouTube', cabinetKind: 'temporary', cabinetUrl: null,
+      canOpenCabinet: false, cabinetLabel: 'YouTube', teacherLabel: 'Автор материала',
+      format: 'Видео + retrieval', warnings: []
+    },
+    {
+      id: 'unknown', platform: 'Unknown', cabinetKind: 'unknown', cabinetUrl: null,
+      canOpenCabinet: false, cabinetLabel: 'missing-cabinet', teacherLabel: 'missing-teacher',
+      format: 'Неизвестный формат', warnings: [{ code: 'unknown-teacher', message: 'Проверьте маршрут урока' }]
+    }
+  ];
+  for (const route of routes) {
+    const ui = interactiveDocument([
+      ['section', 'schoolTeacherSection'], ['span', 'schoolTeacherStatus'],
+      ['p', 'schoolTeacherLabel'], ['p', 'schoolTeacherNote'],
+      ['button', 'schoolTeacherPrimary'], ['button', 'schoolTeacherCopy'],
+      ['button', 'schoolTeacherOpen'], ['button', 'schoolTeacherFinishRequest'],
+      ['button', 'schoolTeacherImport'], ['a', 'schoolTeacherFallbackLink'],
+      ['dd', 'schoolRouteCabinet'], ['dd', 'schoolRouteKind'], ['dd', 'schoolRouteTeacher'],
+      ['div', 'schoolRouteModelRow'], ['dd', 'schoolRouteModel'], ['dd', 'schoolRouteFormat'],
+      ['div', 'schoolRouteResourceRow'], ['dd', 'schoolRouteResource'],
+      ['div', 'schoolRouteReviewerRow'], ['dd', 'schoolRouteReviewer'],
+      ['div', 'schoolRouteWarnings'], ['div', 'schoolLessonActions'],
+      ['details', 'schoolCancelledHistory'], ['div', 'schoolCancelledHistoryContent']
+    ]);
+    const lesson = {
+      id: `lesson-${route.id}`, title: route.id, subject: 'Software Engineering',
+      status: 'В процессе', priority: 'Must', durationMinutes: 45,
+      schedule: { kind: 'date-only', date: '2026-08-03', start: null, end: null }
+    };
+    const controller = SchoolUi.createController({
+      api: {
+        listLessons: async () => [lesson],
+        getLessonContent: async () => ({ lesson, blocks: [] })
+      },
+      core: loadingCore(), document: ui.document, teacherBridge: SchoolTeacherBridge,
+      learningConfig: {},
+      learningRoute: {
+        resolveLessonRoute: () => route,
+        compactRouteLabels: () => ({ desktop: route.teacherLabel, mobile: route.platform })
+      }
+    });
+    await controller.load();
+    await controller.openLesson(lesson.id);
+    assert.equal(ui.nodes.get('schoolTeacherLabel').textContent, route.teacherLabel);
+  }
 });
 
 test('school page cache-busts release candidate assets together', () => {
   const html = read('school.html');
   assert.ok(html.includes('school-core.js?v=6'));
-  assert.ok(html.includes('school.css?v=12'));
-  assert.ok(html.includes('school.js?v=12'));
+  assert.ok(html.includes('school.css?v=14'));
+  assert.ok(html.includes('school.js?v=14'));
 });
 
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
@@ -972,6 +2175,26 @@ test('school layout keeps mobile targets accessible and document overflow contai
   assert.ok(css.includes('.school-mobile-days'));
   assert.ok(css.includes('.school-drawer'));
   assert.match(css, /\.school-time-card\s*\{[^}]*min-height:\s*44px/s);
+});
+
+test('school settings drawer is responsive accessible and overflow safe', () => {
+  const css = read('school.css');
+
+  assert.match(
+    css,
+    /\.school-settings-open\s*\{[\s\S]*?min-width:\s*44px/
+  );
+  assert.match(css, /\.school-settings-drawer\s*\{/);
+  assert.match(css, /\.school-settings-row\s*\{/);
+  assert.match(css, /\.school-settings-field-state\.is-error\s*\{/);
+  assert.match(
+    css,
+    /@media\s*\(max-width:\s*640px\)[\s\S]*?\.school-settings-drawer/
+  );
+  assert.doesNotMatch(
+    css,
+    /\.school-settings-row[^}]*overflow-x:\s*visible/
+  );
 });
 
 test('school centers the desktop page and scrolls only the timed week grid', () => {

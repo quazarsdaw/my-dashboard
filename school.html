@@ -9,15 +9,20 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" type="image/svg+xml" href="app-icon.svg">
-  <link rel="stylesheet" href="school.css?v=12">
+  <link rel="stylesheet" href="school.css?v=14">
   <title>Личная школа</title>
   <script src="profile-theme.js?v=401"></script>
   <script src="topbar.js?v=403" defer></script>
-  <script src="supabase-sync.js?v=406-sb" defer></script>
+  <script src="supabase-sync.js?v=407-sb" defer></script>
   <script src="school-core.js?v=6" defer></script>
   <script src="school-api.js" defer></script>
+  <script src="school-teacher-config.js?v=3" defer></script>
+  <script src="school-learning-route.js?v=1" defer></script>
+  <script src="school-cabinet-settings.js?v=2" defer></script>
+  <script src="school-cabinet-settings-store.js?v=2" defer></script>
+  <script src="school-teacher-bridge.js?v=2" defer></script>
   <script src="school-mutation-queue.js?v=1" defer></script>
-  <script src="school.js?v=12" defer></script>
+  <script src="school.js?v=14" defer></script>
 </head>
 <body data-page="school">
   <main class="school-page" id="schoolApp" aria-busy="true">
@@ -26,9 +31,14 @@
         <p class="school-eyebrow">W01 · 3–9 августа 2026</p>
         <h1>Личная школа</h1>
       </div>
-      <div class="school-progress" aria-live="polite">
-        <strong id="schoolProgress">Выполнено 0 из 0</strong>
-        <span id="schoolProgressMeta"></span>
+      <div class="school-head-actions">
+        <button class="school-settings-open" id="schoolSettingsOpen" type="button"
+          aria-label="Настройки школы" aria-haspopup="dialog"
+          aria-controls="schoolSettingsDialog">⚙</button>
+        <div class="school-progress" aria-live="polite">
+          <strong id="schoolProgress">Выполнено 0 из 0</strong>
+          <span id="schoolProgressMeta"></span>
+        </div>
       </div>
     </header>
 
@@ -106,6 +116,117 @@
     </div>
   </main>
 
+  <div class="school-settings-backdrop" id="schoolSettingsDialog" role="dialog"
+    aria-modal="true" aria-labelledby="schoolSettingsTitle"
+    aria-hidden="true" hidden>
+    <aside class="school-settings-drawer" tabindex="-1">
+      <header class="school-settings-head">
+        <div>
+          <p class="school-section-kicker">Аккаунтная синхронизация</p>
+          <h2 id="schoolSettingsTitle">Предметные кабинеты</h2>
+        </div>
+        <button id="schoolSettingsClose" type="button"
+          aria-label="Закрыть настройки">×</button>
+      </header>
+
+      <p class="school-settings-intro">
+        Укажите постоянные ChatGPT-кабинеты. Настройки сохраняются в вашем аккаунте.
+      </p>
+
+      <section class="school-settings-remote-notice" id="schoolSettingsRemoteNotice"
+        role="status" hidden>
+        <strong>Настройки изменились на другом устройстве</strong>
+        <p>Выберите, какие значения оставить в открытой форме.</p>
+        <div>
+          <button id="schoolSettingsUseRemote" type="button">Применить новые</button>
+          <button id="schoolSettingsKeepDraft" type="button">Продолжить редактирование</button>
+        </div>
+      </section>
+
+      <form id="schoolSettingsForm" novalidate>
+        <div class="school-settings-row">
+          <label for="schoolCabinetSoftware">Software Engineering</label>
+          <input id="schoolCabinetSoftware" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-software"
+            aria-describedby="schoolCabinetSoftwareState">
+          <span id="schoolCabinetSoftwareState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-software">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetDevOps">DevOps &amp; Infrastructure</label>
+          <input id="schoolCabinetDevOps" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-devops"
+            aria-describedby="schoolCabinetDevOpsState">
+          <span id="schoolCabinetDevOpsState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-devops">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetMathematics">Mathematics</label>
+          <input id="schoolCabinetMathematics" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-mathematics"
+            aria-describedby="schoolCabinetMathematicsState">
+          <span id="schoolCabinetMathematicsState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-mathematics">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetEnglish">English &amp; IELTS</label>
+          <input id="schoolCabinetEnglish" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-english"
+            aria-describedby="schoolCabinetEnglishState">
+          <span id="schoolCabinetEnglishState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-english">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetUniversity">University</label>
+          <input id="schoolCabinetUniversity" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-university"
+            aria-describedby="schoolCabinetUniversityState">
+          <span id="schoolCabinetUniversityState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-university">Сбросить</button>
+        </div>
+
+        <div class="school-settings-row">
+          <label for="schoolCabinetDirector">Director &amp; Assessment</label>
+          <input id="schoolCabinetDirector" type="url" inputmode="url"
+            autocomplete="url"
+            data-school-cabinet-id="chatgpt-director"
+            aria-describedby="schoolCabinetDirectorState">
+          <span id="schoolCabinetDirectorState"
+            class="school-settings-field-state"></span>
+          <button type="button" data-school-cabinet-reset
+            data-school-cabinet-id="chatgpt-director">Сбросить</button>
+        </div>
+
+        <p class="school-settings-status" id="schoolSettingsStatus"
+          aria-live="polite"></p>
+        <div class="school-settings-actions">
+          <button id="schoolSettingsCancel" type="button">Отмена</button>
+          <button class="is-primary" id="schoolSettingsSave"
+            type="submit">Сохранить</button>
+        </div>
+      </form>
+    </aside>
+  </div>
+
   <div class="school-dialog-backdrop" id="schoolLessonDialog" role="dialog" aria-modal="true"
     aria-labelledby="schoolLessonTitle" aria-hidden="true" hidden>
     <aside class="school-drawer" tabindex="-1">
@@ -145,8 +266,17 @@
       <section class="school-assessment" id="schoolAssessmentControls" aria-label="Результат урока">
         <div class="school-assessment-grid">
           <label>
+            <span>Итоговый статус</span>
+            <select id="schoolLessonFinalStatus">
+              <option value="Выполнен">Выполнен</option>
+              <option value="Частично выполнен">Частично выполнен</option>
+              <option value="Пропущен">Пропущен</option>
+            </select>
+          </label>
+          <label>
             <span>Результат</span>
             <select id="schoolLessonResult">
+              <option value="">Не выбран</option>
               <option value="Зачёт">Зачёт</option>
               <option value="Незачёт">Незачёт</option>
               <option value="Требует повторения">Требует повторения</option>
@@ -155,24 +285,27 @@
           <label>
             <span>Автономность</span>
             <select id="schoolLessonAutonomy">
+              <option value="">Не выбрана</option>
               <option value="A0">A0</option>
               <option value="A1">A1</option>
-              <option value="A2" selected>A2</option>
+              <option value="A2">A2</option>
               <option value="A3">A3</option>
             </select>
           </label>
           <label>
             <span>Понимание</span>
             <select id="schoolLessonUnderstanding">
+              <option value="">Не выбрано</option>
               <option value="0">0/3</option>
               <option value="1">1/3</option>
-              <option value="2" selected>2/3</option>
+              <option value="2">2/3</option>
               <option value="3">3/3</option>
             </select>
           </label>
           <label>
             <span>Причина пропуска</span>
             <select id="schoolLessonMissedReason">
+              <option value="">Не выбрана</option>
               <option value="Внешние обстоятельства">Внешние обстоятельства</option>
               <option value="Ошибка планирования">Ошибка планирования</option>
               <option value="Низкая энергия">Низкая энергия</option>
@@ -184,13 +317,48 @@
         </div>
         <label class="school-wide-field">
           <span>Краткий комментарий</span>
-          <textarea id="schoolLessonComment" rows="3" maxlength="1000"></textarea>
+          <textarea id="schoolLessonComment" rows="3"></textarea>
+          <small id="schoolLessonCommentCount">0 / 1000</small>
         </label>
         <label class="school-wide-field">
           <span>Артефакт · HTTPS</span>
           <input id="schoolLessonArtifact" type="url" inputmode="url" maxlength="2048"
             placeholder="https://…">
         </label>
+        <div class="school-assessment-errors" id="schoolAssessmentErrors" role="alert"></div>
+        <button class="school-save-assessment" id="schoolSaveAssessment" type="button" hidden>
+          Сохранить результат в дневник
+        </button>
+      </section>
+      <section class="school-teacher" id="schoolTeacherSection" aria-labelledby="schoolTeacherTitle" hidden>
+        <div class="school-teacher-head">
+          <div>
+            <p class="school-section-kicker">Внешний диалог</p>
+            <h3 id="schoolTeacherTitle">Где проходит урок</h3>
+          </div>
+          <span id="schoolTeacherStatus"></span>
+        </div>
+        <p id="schoolTeacherLabel"></p>
+        <dl class="school-route-summary" id="schoolRouteSummary">
+          <div><dt>Кабинет</dt><dd id="schoolRouteCabinet"></dd></div>
+          <div><dt>Тип</dt><dd id="schoolRouteKind"></dd></div>
+          <div><dt>Преподаватель</dt><dd id="schoolRouteTeacher"></dd></div>
+          <div id="schoolRouteModelRow"><dt>Модель</dt><dd id="schoolRouteModel"></dd></div>
+          <div><dt>Формат</dt><dd id="schoolRouteFormat"></dd></div>
+          <div id="schoolRouteResourceRow"><dt>Ресурс</dt><dd id="schoolRouteResource"></dd></div>
+          <div id="schoolRouteReviewerRow"><dt>Проверяющий</dt><dd id="schoolRouteReviewer"></dd></div>
+        </dl>
+        <div class="school-route-warnings" id="schoolRouteWarnings" role="status"></div>
+        <p class="school-teacher-note" id="schoolTeacherNote"></p>
+        <div class="school-teacher-actions">
+          <button class="is-primary" id="schoolTeacherPrimary" type="button">Посмотреть промт</button>
+          <button id="schoolTeacherCopy" type="button">Только скопировать промт</button>
+          <button id="schoolTeacherOpen" type="button">Только открыть преподавателя</button>
+          <button id="schoolTeacherFinishRequest" type="button">Скопировать запрос на итог</button>
+          <button id="schoolTeacherImport" type="button">Импортировать результат преподавателя</button>
+        </div>
+        <a class="school-teacher-fallback-link" id="schoolTeacherFallbackLink"
+          target="_blank" rel="noopener noreferrer" hidden>Открыть преподавателя вручную</a>
       </section>
       <div class="school-lesson-actions" id="schoolLessonActions"></div>
       <details class="school-cancelled-history" id="schoolCancelledHistory" hidden>
@@ -212,5 +380,38 @@
       <div class="school-action-buttons" id="schoolActionButtons"></div>
     </section>
   </div>
+
+  <div class="school-action-backdrop" id="schoolTeacherDialog" role="dialog" aria-modal="true"
+    aria-labelledby="schoolTeacherDialogTitle" aria-hidden="true" hidden>
+    <section class="school-action-dialog school-teacher-dialog" tabindex="-1">
+      <div class="school-teacher-dialog-head">
+        <div>
+          <p class="school-section-kicker">Преподаватель</p>
+          <h2 id="schoolTeacherDialogTitle">Импорт результата</h2>
+        </div>
+        <button id="schoolTeacherDialogClose" type="button" aria-label="Закрыть">×</button>
+      </div>
+      <p id="schoolTeacherDialogMessage"></p>
+      <label class="school-teacher-source-wrap" id="schoolTeacherSourceWrap">
+        <span>Исходный текст</span>
+        <textarea id="schoolTeacherSource" rows="12"
+          placeholder="Вставьте блок === LESSON RESULT ==="></textarea>
+      </label>
+      <div class="school-teacher-preview" id="schoolTeacherPreview" hidden></div>
+      <label class="school-teacher-artifact-confirm" id="schoolTeacherArtifactConfirmWrap" hidden>
+        <input id="schoolTeacherArtifactConfirm" type="checkbox">
+        <span>Применить артефакт к пропущенному уроку</span>
+      </label>
+      <div class="school-action-buttons" id="schoolTeacherDialogButtons">
+        <button id="schoolTeacherPaste" type="button">Вставить из буфера</button>
+        <button class="is-primary" id="schoolTeacherParse" type="button">Разобрать</button>
+        <button class="is-primary" id="schoolTeacherApply" type="button" hidden>Применить к форме</button>
+        <button id="schoolTeacherEditSource" type="button" hidden>Исправить исходный текст</button>
+        <button id="schoolTeacherDialogCancel" type="button">Отмена</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="school-toast" id="schoolToast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>
