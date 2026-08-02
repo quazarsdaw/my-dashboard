@@ -809,6 +809,17 @@
     };
   }
 
+  function visibleTimelineClientY(timeRect, viewportRect) {
+    if (!timeRect) return null;
+    if (!viewportRect) {
+      return timeRect.top + Math.max(0, Number(timeRect.height) || 0) / 2;
+    }
+    var visibleTop = Math.max(timeRect.top, viewportRect.top);
+    var visibleBottom = Math.min(timeRect.bottom, viewportRect.bottom);
+    if (visibleBottom > visibleTop) return (visibleTop + visibleBottom) / 2;
+    return timeRect.top + Math.max(0, Number(timeRect.height) || 0) / 2;
+  }
+
   function layoutTimedLessons(entries, pixelsPerHour) {
     var scale = Number.isFinite(Number(pixelsPerHour)) && Number(pixelsPerHour) > 0
       ? Number(pixelsPerHour)
@@ -1253,6 +1264,7 @@
     var timelineZoomFrame = null;
     var timelineZoomAnimation = null;
     var timelineGeometryRegistry = null;
+    var weekTimelineScrollTop = null;
     var draggedLessonId = null;
     var activeTimelineDragPreview = null;
     var activeAllDayDropPreview = null;
@@ -1816,10 +1828,36 @@
       });
     }
 
+    function rememberWeekTimelineScroll(timeScroll) {
+      if (!timeScroll) return;
+      var scrollHeight = Number(timeScroll.scrollHeight);
+      var clientHeight = Number(timeScroll.clientHeight);
+      var maximumScrollTop = scrollHeight - clientHeight;
+      var scrollTop = Number(timeScroll.scrollTop);
+      if (
+        !Number.isFinite(scrollTop) ||
+        !Number.isFinite(maximumScrollTop) ||
+        clientHeight <= 0 ||
+        maximumScrollTop <= 0
+      ) return;
+      weekTimelineScrollTop = Math.max(0, Math.min(scrollTop, maximumScrollTop));
+    }
+
+    function restoreWeekTimelineScroll(timeScroll) {
+      if (!timeScroll || weekTimelineScrollTop === null) return;
+      var scrollHeight = Number(timeScroll.scrollHeight);
+      var clientHeight = Number(timeScroll.clientHeight);
+      var maximumScrollTop = scrollHeight - clientHeight;
+      if (!Number.isFinite(maximumScrollTop) || clientHeight <= 0 || maximumScrollTop <= 0) return;
+      timeScroll.scrollTop = Math.min(weekTimelineScrollTop, maximumScrollTop);
+    }
+
     function renderWeek(model) {
       var rootNode = byId('schoolWeek');
       var mobileRoot = byId('schoolMobileDays');
       if (!rootNode || !mobileRoot) return;
+      var previousTimeScroll = byId('schoolTimeScroll');
+      rememberWeekTimelineScroll(previousTimeScroll);
       timelineGeometryRegistry = null;
       clearNode(rootNode);
       clearNode(mobileRoot);
@@ -1912,6 +1950,8 @@
       });
       shell.appendChild(allDayGrid);
 
+      var timeScroll = element(documentRef, 'div', 'school-time-scroll');
+      timeScroll.id = 'schoolTimeScroll';
       var timeShell = element(documentRef, 'div', 'school-time-shell');
       timeShell.id = 'schoolTimeShell';
       var geometryRegistry = {
@@ -2001,10 +2041,15 @@
       timeShell.addEventListener('wheel', function (event) {
         handleTimelineWheel(event, timeShell, bounds);
       }, { passive: false });
+      timeScroll.addEventListener('scroll', function () {
+        rememberWeekTimelineScroll(timeScroll);
+      });
       timelineGeometryRegistry = geometryRegistry;
       applyTimelineGeometry(core, geometryRegistry, zoomLevel.pixelsPerHour / 60);
-      shell.appendChild(timeShell);
+      timeScroll.appendChild(timeShell);
+      shell.appendChild(timeScroll);
       rootNode.appendChild(shell);
+      restoreWeekTimelineScroll(timeScroll);
 
       var unscheduled = lessons.filter(function (lesson) {
         return lesson.schedule && lesson.schedule.kind === 'unscheduled';
@@ -2132,9 +2177,14 @@
     }
 
     function restoreTimelineAnchor(anchor) {
-      if (!anchor || !runtime || typeof runtime.scrollBy !== 'function') return;
+      if (!anchor) return;
       var shell = byId('schoolTimeShell');
-      if (!shell || typeof shell.getBoundingClientRect !== 'function') return;
+      var viewport = byId('schoolTimeScroll');
+      if (
+        !shell ||
+        !viewport ||
+        typeof shell.getBoundingClientRect !== 'function'
+      ) return;
       var rect = shell.getBoundingClientRect();
       var nextY = core.timelineYForMinute(
         anchor.minute,
@@ -2142,7 +2192,9 @@
         core.timelinePixelsPerHour(timelineScale)
       );
       var delta = rect.top + nextY - anchor.clientY;
-      if (Math.abs(delta) > 0.001) runtime.scrollBy(0, delta);
+      if (Math.abs(delta) > 0.001) {
+        viewport.scrollTop = (Number(viewport.scrollTop) || 0) + delta;
+      }
     }
 
     function applyCurrentTimelineScale(scale, anchor) {
@@ -2260,13 +2312,14 @@
 
     function handleTimelineWheel(event, timeShell, bounds) {
       if (!event || !event.deltaY) return;
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
       var zoomDelta = -Number(event.deltaY);
       var canZoom = zoomDelta > 0 ? targetTimelineScale < 3 : targetTimelineScale > 1;
       if (!canZoom) {
         timelineWheelDelta = 0;
         return;
       }
-      event.preventDefault();
       var anchor = createTimelineAnchor(timeShell, bounds, event.clientY);
       timelineWheelDelta = core.accumulateTimelineWheel(timelineWheelDelta, zoomDelta);
       var consumed = core.consumeTimelineWheel(timelineWheelDelta);
@@ -2291,17 +2344,20 @@
         return lesson.schedule && lesson.schedule.kind === 'timed';
       }));
       var rect = timeShell.getBoundingClientRect();
-      var viewportHeight = runtime && Number.isFinite(runtime.innerHeight)
-        ? runtime.innerHeight
-        : rect.bottom;
-      var visibleTop = Math.max(0, rect.top);
-      var visibleBottom = Math.min(viewportHeight, rect.bottom);
-      var clientY = visibleBottom > visibleTop
-        ? (visibleTop + visibleBottom) / 2
-        : rect.top + Math.max(0, rect.height || 0) / 2;
+      var viewport = byId('schoolTimeScroll');
+      var viewportRect = viewport && typeof viewport.getBoundingClientRect === 'function'
+        ? viewport.getBoundingClientRect()
+        : null;
+      if (!viewportRect) {
+        var viewportHeight = runtime && Number.isFinite(runtime.innerHeight)
+          ? runtime.innerHeight
+          : rect.bottom;
+        viewportRect = { top: 0, bottom: viewportHeight, height: viewportHeight };
+      }
+      var clientY = visibleTimelineClientY(rect, viewportRect);
       setTimelineZoomTarget(
         nextScale,
-        createTimelineAnchor(timeShell, bounds, clientY)
+        clientY === null ? null : createTimelineAnchor(timeShell, bounds, clientY)
       );
     }
 
@@ -3585,8 +3641,14 @@
 
     function selectView(view) {
       if (['today', 'week', 'diary'].indexOf(view) === -1) return false;
+      if (!documentRef) {
+        currentView = view;
+        return true;
+      }
+      if (currentView === 'week' && view !== 'week') {
+        rememberWeekTimelineScroll(byId('schoolTimeScroll'));
+      }
       currentView = view;
-      if (!documentRef) return true;
       documentRef.querySelectorAll('[data-school-view]').forEach(function (tab) {
         var active = tab.getAttribute('data-school-view') === view;
         tab.classList.toggle('is-active', active);
@@ -3596,6 +3658,7 @@
       documentRef.querySelectorAll('[data-school-panel]').forEach(function (panel) {
         panel.hidden = panel.getAttribute('data-school-panel') !== view;
       });
+      if (view === 'week') restoreWeekTimelineScroll(byId('schoolTimeScroll'));
       return true;
     }
 
@@ -4195,6 +4258,7 @@
     timelineDragPreview: timelineDragPreview,
     timelineDestination: timelineDestination,
     teacherTargetForRoute: teacherTargetForRoute,
-    timelineDropDestination: timelineDropDestination
+    timelineDropDestination: timelineDropDestination,
+    visibleTimelineClientY: visibleTimelineClientY
   });
 });

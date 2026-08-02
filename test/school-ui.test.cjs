@@ -31,7 +31,7 @@ function assertSchoolAssetContract(html) {
     'school-cabinet-settings-store.js?v=2',
     'school-teacher-bridge.js?v=2',
     'school-mutation-queue.js?v=1',
-    'school.js?v=13'
+    'school.js?v=14'
   ];
   const scripts = Array.from(html.matchAll(/<script\b[^>]*>/g), (match) =>
     htmlAttribute(match[0], 'src')
@@ -42,7 +42,7 @@ function assertSchoolAssetContract(html) {
     .filter(Boolean);
 
   assert.ok(html.includes('<body data-page="school">'));
-  assert.deepEqual(stylesheets, ['school.css?v=12']);
+  assert.deepEqual(stylesheets, ['school.css?v=14']);
   assert.deepEqual(scripts, expectedScripts);
   assert.ok(html.includes('id="schoolSettingsOpen"'));
   assert.ok(html.includes('aria-label="Настройки школы"'));
@@ -505,6 +505,223 @@ function interactiveDocument(extraNodes = []) {
   return { document, nodes };
 }
 
+function timelineDocument(scrollMetricsForCreation = () => ({ scrollHeight: 1000, clientHeight: 500 })) {
+  const nodes = new Map();
+  const timelineScrolls = [];
+  let timeScrollCount = 0;
+
+  function node(tagName, initialId = '') {
+    const style = {
+      setProperty(name, value) {
+        this[name] = String(value);
+      }
+    };
+    const value = {
+      tagName: tagName.toUpperCase(),
+      attributes: {},
+      children: [],
+      className: '',
+      hidden: false,
+      style,
+      textContent: '',
+      scrollTop: 0,
+      appendChild(child) {
+        this.children.push(child);
+        return child;
+      },
+      removeChild(child) {
+        const index = this.children.indexOf(child);
+        if (index !== -1) this.children.splice(index, 1);
+      },
+      get firstChild() {
+        return this.children[0] || null;
+      },
+      setAttribute(name, valueToSet) {
+        this.attributes[name] = String(valueToSet);
+      },
+      getAttribute(name) {
+        return this.attributes[name];
+      },
+      addEventListener() {}
+    };
+    value.classList = {
+      add(name) {
+        const names = new Set(value.className.split(/\s+/).filter(Boolean));
+        names.add(name);
+        value.className = [...names].join(' ');
+      },
+      remove(name) {
+        value.className = value.className.split(/\s+/).filter((entry) => entry && entry !== name).join(' ');
+      },
+      contains(name) {
+        return value.className.split(/\s+/).includes(name);
+      },
+      toggle(name, force) {
+        if (force === undefined ? !this.contains(name) : force) this.add(name);
+        else this.remove(name);
+      }
+    };
+    Object.defineProperty(value, 'id', {
+      get() {
+        return this._id || '';
+      },
+      set(id) {
+        this._id = id;
+        if (id) {
+          nodes.set(id, value);
+          if (id === 'schoolTimeScroll') {
+            const metrics = scrollMetricsForCreation(timeScrollCount++) || {};
+            value.scrollHeight = metrics.scrollHeight;
+            value.clientHeight = metrics.clientHeight;
+            timelineScrolls.push(value);
+          }
+        }
+      }
+    });
+    if (initialId) value.id = initialId;
+    return value;
+  }
+
+  ['schoolWeek', 'schoolMobileDays'].forEach((id) => node('div', id));
+  return {
+    document: {
+      createElement(tagName) {
+        return node(tagName);
+      },
+      getElementById(id) {
+        return nodes.get(id) || null;
+      },
+      querySelectorAll() {
+        return [];
+      }
+    },
+    nodes,
+    timelineScrolls
+  };
+}
+
+function timelineLifecycleDocument() {
+  const nodes = new Map();
+  let weekPanel;
+
+  function node(tagName, initialId = '') {
+    const listeners = new Map();
+    const value = {
+      tagName: tagName.toUpperCase(),
+      attributes: {},
+      children: [],
+      className: '',
+      hidden: false,
+      style: {
+        setProperty(name, propertyValue) {
+          this[name] = String(propertyValue);
+        }
+      },
+      textContent: '',
+      appendChild(child) {
+        this.children.push(child);
+        return child;
+      },
+      removeChild(child) {
+        const index = this.children.indexOf(child);
+        if (index !== -1) this.children.splice(index, 1);
+      },
+      get firstChild() {
+        return this.children[0] || null;
+      },
+      setAttribute(name, attributeValue) {
+        this.attributes[name] = String(attributeValue);
+      },
+      getAttribute(name) {
+        return this.attributes[name];
+      },
+      addEventListener(type, listener) {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(listener);
+      },
+      dispatch(type) {
+        [...(listeners.get(type) || [])].forEach((listener) => listener({ target: value }));
+      }
+    };
+    value.classList = {
+      add(name) {
+        const names = new Set(value.className.split(/\s+/).filter(Boolean));
+        names.add(name);
+        value.className = [...names].join(' ');
+      },
+      remove(name) {
+        value.className = value.className.split(/\s+/).filter((entry) => entry && entry !== name).join(' ');
+      },
+      contains(name) {
+        return value.className.split(/\s+/).includes(name);
+      },
+      toggle(name, force) {
+        if (force === undefined ? !this.contains(name) : force) this.add(name);
+        else this.remove(name);
+      }
+    };
+    Object.defineProperty(value, 'id', {
+      get() {
+        return this._id || '';
+      },
+      set(id) {
+        this._id = id;
+        if (id) nodes.set(id, value);
+        if (id === 'schoolTimeScroll') {
+          let storedScrollTop = 0;
+          Object.defineProperties(value, {
+            clientHeight: {
+              get() {
+                return weekPanel && weekPanel.hidden ? 0 : 500;
+              }
+            },
+            scrollHeight: {
+              get() {
+                return weekPanel && weekPanel.hidden ? 0 : 1000;
+              }
+            },
+            scrollTop: {
+              get() {
+                return weekPanel && weekPanel.hidden ? 0 : storedScrollTop;
+              },
+              set(next) {
+                if (!(weekPanel && weekPanel.hidden)) storedScrollTop = Number(next) || 0;
+              }
+            }
+          });
+        }
+      }
+    });
+    if (initialId) value.id = initialId;
+    return value;
+  }
+
+  const todayPanel = node('section', 'schoolTodayPanel');
+  todayPanel.setAttribute('data-school-panel', 'today');
+  weekPanel = node('section', 'schoolWeekPanel');
+  weekPanel.hidden = true;
+  weekPanel.setAttribute('data-school-panel', 'week');
+  const diaryPanel = node('section', 'schoolDiaryPanel');
+  diaryPanel.hidden = true;
+  diaryPanel.setAttribute('data-school-panel', 'diary');
+  ['schoolWeek', 'schoolMobileDays'].forEach((id) => node('div', id));
+
+  return {
+    document: {
+      createElement(tagName) {
+        return node(tagName);
+      },
+      getElementById(id) {
+        return nodes.get(id) || null;
+      },
+      querySelectorAll(selector) {
+        return selector === '[data-school-panel]' ? [todayPanel, weekPanel, diaryPanel] : [];
+      }
+    },
+    nodes
+  };
+}
+
 function settingsControllerHarness(options = {}) {
   const cabinetRows = [
     ['Software', 'chatgpt-software'],
@@ -818,8 +1035,8 @@ test('school page loads the coherent read-only school release set in dependency 
 
 test('school page cache contract rejects a legacy duplicate asset', () => {
   const legacyDuplicate = read('school.html').replace(
-    '  <script src="school.js?v=13" defer></script>',
-    '  <script src="school.js?v=12" defer></script>\n  <script src="school.js?v=13" defer></script>'
+    '  <script src="school.js?v=14" defer></script>',
+    '  <script src="school.js?v=13" defer></script>\n  <script src="school.js?v=14" defer></script>'
   );
 
   assert.throws(() => assertSchoolAssetContract(legacyDuplicate));
@@ -827,8 +1044,8 @@ test('school page cache contract rejects a legacy duplicate asset', () => {
 
 test('school page cache contract rejects a single-quoted legacy duplicate asset', () => {
   const legacyDuplicate = read('school.html').replace(
-    '  <script src="school.js?v=13" defer></script>',
-    "  <script src='school.js?v=12' defer></script>\n  <script src=\"school.js?v=13\" defer></script>"
+    '  <script src="school.js?v=14" defer></script>',
+    "  <script src='school.js?v=13' defer></script>\n  <script src=\"school.js?v=14\" defer></script>"
   );
 
   assert.throws(() => assertSchoolAssetContract(legacyDuplicate));
@@ -1480,6 +1697,13 @@ test('teacher heading follows resolved ChatGPT external and unknown route labels
   }
 });
 
+test('school page cache-busts release candidate assets together', () => {
+  const html = read('school.html');
+  assert.ok(html.includes('school-core.js?v=6'));
+  assert.ok(html.includes('school.css?v=14'));
+  assert.ok(html.includes('school.js?v=14'));
+});
+
 test('school shell exposes the three approved views and accessible lesson dialog', () => {
   const html = read('school.html');
   const source = read('school.js');
@@ -1678,8 +1902,20 @@ test('applies continuous timeline geometry in place without rebuilding the week'
 test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
   let nextFrame = 0;
   const frames = new Map();
-  const scrolls = [];
-  let shellTop = 10;
+  let windowScrollCalls = 0;
+  const viewport = {
+    scrollTop: 100,
+    getBoundingClientRect() {
+      return { top: 10, bottom: 610, height: 600 };
+    }
+  };
+  const shell = {
+    classList: { add() {}, remove() {} },
+    getBoundingClientRect() {
+      const top = 10 - viewport.scrollTop;
+      return { top, bottom: top + 660, height: 660 };
+    }
+  };
   const runtime = {
     requestAnimationFrame(callback) {
       const id = ++nextFrame;
@@ -1689,20 +1925,15 @@ test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
     cancelAnimationFrame(id) {
       frames.delete(id);
     },
-    scrollBy(x, y) {
-      scrolls.push([x, y]);
-      shellTop -= y;
-    }
-  };
-  const shell = {
-    classList: { add() {}, remove() {} },
-    getBoundingClientRect() {
-      return { top: shellTop, bottom: shellTop + 600, height: 600 };
+    scrollBy() {
+      windowScrollCalls += 1;
     }
   };
   const document = {
     getElementById(id) {
-      return id === 'schoolTimeShell' ? shell : null;
+      if (id === 'schoolTimeShell') return shell;
+      if (id === 'schoolTimeScroll') return viewport;
+      return null;
     }
   };
   const controller = SchoolUi.createController({
@@ -1719,6 +1950,7 @@ test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
   function wheel(deltaY) {
     return {
       clientY: 70,
+      ctrlKey: true,
       deltaY,
       prevented: false,
       preventDefault() {
@@ -1756,12 +1988,99 @@ test('small wheel deltas accumulate into a smooth cursor-anchored zoom', () => {
     wheelDelta: 0,
     animating: false
   });
-  assert.ok(Math.abs(scrolls.reduce((sum, entry) => sum + entry[1], 0) - 6) < 0.001);
+  assert.ok(Math.abs(viewport.scrollTop - 116) < 0.001);
+  assert.equal(windowScrollCalls, 0);
+});
+
+test('timeline button zoom centers the visible part of the internal viewport', () => {
+  assert.equal(
+    SchoolUi.visibleTimelineClientY(
+      { top: -100, bottom: 680, height: 780 },
+      { top: 100, bottom: 500, height: 400 }
+    ),
+    300
+  );
+  assert.equal(
+    SchoolUi.visibleTimelineClientY(
+      { top: 700, bottom: 1480, height: 780 },
+      { top: 100, bottom: 500, height: 400 }
+    ),
+    1090
+  );
+});
+
+test('timeline wheel zoom requires ctrl or meta and keeps modifier input claimed at limits', () => {
+  const shell = {
+    classList: { add() {}, remove() {} },
+    getBoundingClientRect() {
+      return { top: 0, bottom: 600, height: 600 };
+    }
+  };
+  const controller = SchoolUi.createController({
+    api: {},
+    core: SchoolCore,
+    document: { getElementById() { return shell; } },
+    runtime: {
+      matchMedia() {
+        return { matches: true };
+      },
+      requestAnimationFrame() {
+        throw new Error('reduced motion must not schedule a frame');
+      },
+      scrollBy() {}
+    }
+  });
+  function wheel(deltaY, modifiers) {
+    return {
+      clientY: 70,
+      deltaY,
+      ...modifiers,
+      prevented: false,
+      preventDefault() {
+        this.prevented = true;
+      }
+    };
+  }
+
+  const atMinimum = wheel(60, { ctrlKey: true });
+  controller.handleTimelineWheel(atMinimum, shell, { startHour: 9, endHour: 20 });
+  assert.equal(atMinimum.prevented, true);
+  assert.equal(controller.getTimelineZoomState().currentScale, 1);
+
+  const ordinaryScroll = wheel(-60, {});
+  controller.handleTimelineWheel(ordinaryScroll, shell, { startHour: 9, endHour: 20 });
+  assert.equal(ordinaryScroll.prevented, false);
+  assert.equal(controller.getTimelineZoomState().currentScale, 1);
+
+  const ctrlZoom = wheel(-60, { ctrlKey: true });
+  controller.handleTimelineWheel(ctrlZoom, shell, { startHour: 9, endHour: 20 });
+  assert.equal(ctrlZoom.prevented, true);
+  assert.equal(controller.getTimelineZoomState().currentScale, 1.1);
+
+  for (let index = 0; index < 19; index += 1) {
+    controller.handleTimelineWheel(
+      wheel(-60, { metaKey: true }),
+      shell,
+      { startHour: 9, endHour: 20 }
+    );
+  }
+  assert.equal(controller.getTimelineZoomState().currentScale, 3);
+
+  const atLimit = wheel(-60, { metaKey: true });
+  controller.handleTimelineWheel(atLimit, shell, { startHour: 9, endHour: 20 });
+  assert.equal(atLimit.prevented, true);
+  assert.equal(controller.getTimelineZoomState().currentScale, 3);
 });
 
 test('reduced motion applies zoom immediately and drag finalization cancels animation', () => {
   let nextFrame = 0;
   const frames = new Map();
+  const viewport = {
+    scrollTop: 100,
+    getBoundingClientRect() {
+      return { top: 10, bottom: 610, height: 600 };
+    }
+  };
   const shell = {
     classList: { add() {}, remove() {} },
     getBoundingClientRect() {
@@ -1770,7 +2089,9 @@ test('reduced motion applies zoom immediately and drag finalization cancels anim
   };
   const document = {
     getElementById(id) {
-      return id === 'schoolTimeShell' ? shell : null;
+      if (id === 'schoolTimeShell') return shell;
+      if (id === 'schoolTimeScroll') return viewport;
+      return null;
     }
   };
   const animated = SchoolUi.createController({
@@ -1786,11 +2107,14 @@ test('reduced motion applies zoom immediately and drag finalization cancels anim
       cancelAnimationFrame(id) {
         frames.delete(id);
       },
-      scrollBy() {}
+      scrollBy() {
+        throw new Error('timeline zoom must not scroll the window');
+      }
     }
   });
   const animatedWheel = {
     clientY: 70,
+    ctrlKey: true,
     deltaY: -60,
     preventDefault() {}
   };
@@ -1811,15 +2135,20 @@ test('reduced motion applies zoom immediately and drag finalization cancels anim
       requestAnimationFrame() {
         throw new Error('reduced motion must not schedule a frame');
       },
-      scrollBy() {}
+      scrollBy() {
+        throw new Error('timeline zoom must not scroll the window');
+      }
     }
   });
+  viewport.scrollTop = 100;
   reduced.handleTimelineWheel({
     clientY: 70,
+    ctrlKey: true,
     deltaY: -60,
     preventDefault() {}
   }, shell, { startHour: 9, endHour: 20 });
   assert.equal(reduced.getTimelineZoomState().currentScale, 1.1);
+  assert.ok(viewport.scrollTop > 100);
 });
 
 test('school styles distinguish quarter ten and five minute lines', () => {
@@ -1865,6 +2194,42 @@ test('school settings drawer is responsive accessible and overflow safe', () => 
   assert.doesNotMatch(
     css,
     /\.school-settings-row[^}]*overflow-x:\s*visible/
+  );
+});
+
+test('school centers the desktop page and scrolls only the timed week grid', () => {
+  const css = read('school.css');
+  const source = read('school.js');
+  const headAppend = source.indexOf('shell.appendChild(head)');
+  const allDayAppend = source.indexOf('shell.appendChild(allDayGrid)');
+  const scrollCreate = source.indexOf(
+    "var timeScroll = element(documentRef, 'div', 'school-time-scroll')"
+  );
+  const scrollAppend = source.indexOf('timeScroll.appendChild(timeShell)');
+  const shellAppend = source.indexOf('shell.appendChild(timeScroll)');
+
+  assert.match(
+    css,
+    /\.school-page\s*\{[^}]*width:\s*min\(1100px,\s*100%\)/s
+  );
+  assert.match(
+    css,
+    /\.school-time-scroll\s*\{[^}]*height:\s*clamp\(520px,\s*68dvh,\s*760px\)[^}]*overflow-y:\s*auto/s
+  );
+  assert.ok(scrollCreate !== -1);
+  assert.ok(headAppend < scrollCreate, 'day headings stay outside the scroll viewport');
+  assert.ok(allDayAppend < scrollCreate, 'all-day lessons stay outside the scroll viewport');
+  assert.ok(scrollCreate < scrollAppend);
+  assert.ok(scrollAppend < shellAppend);
+});
+
+test('school timeline returns to document scrolling on mobile', () => {
+  const css = read('school.css');
+  const mobile = css.slice(css.indexOf('@media (max-width: 620px)'));
+
+  assert.match(
+    mobile,
+    /\.school-time-scroll\s*\{[^}]*height:\s*auto[^}]*overflow:\s*visible/s
   );
 });
 
@@ -1970,6 +2335,150 @@ test('controller rolls back optimistic lessons when mutation fails', async () =>
   assert.ok(rendered.some((statuses) => statuses[0] === 'В процессе'));
   assert.deepEqual(rendered.at(-1), ['Запланирован']);
   assert.deepEqual(controller.getLessons(), initial);
+});
+
+test('week rerenders retain the internal timeline scroll through optimistic success, rollback and revalidation', async () => {
+  const ui = timelineDocument((creation) => (
+    creation < 6
+      ? { scrollHeight: 1000, clientHeight: 500 }
+      : { scrollHeight: 680, clientHeight: 500 }
+  ));
+  let mutationCount = 0;
+  const lesson = queueLesson('lesson-1', '14:00');
+  const core = Object.assign({}, SchoolCore, {
+    buildReadModel(lessons) {
+      return {
+        lessons,
+        today: [],
+        weekDays: { '2026-08-03': lessons },
+        diary: [],
+        progress: { completed: 0, total: lessons.length, partial: 0, missed: 0 },
+        activeLessons: [],
+        nextLesson: null,
+        persistedDecisions: [],
+        runtimeIssues: []
+      };
+    }
+  });
+  const controller = SchoolUi.createController({
+    api: {
+      async listLessons() {
+        return [structuredClone(lesson)];
+      },
+      async mutate() {
+        mutationCount += 1;
+        if (mutationCount === 2) throw new Error('rollback');
+        return { id: lesson.id };
+      }
+    },
+    core,
+    mutationQueue: SchoolMutationQueue,
+    document: ui.document,
+    now: () => new Date('2026-08-03T14:00:00+05:00')
+  });
+
+  await controller.load();
+  ui.nodes.get('schoolTimeScroll').scrollTop = 420;
+  await controller.runMutation(
+    { operation: 'moveLesson', lessonId: lesson.id },
+    (lessons) => lessons
+  );
+  await controller.whenMutationsIdle();
+  assert.ok(
+    ui.timelineScrolls.slice(1).every((viewport) => viewport.scrollTop === 420),
+    'optimistic, queue and revalidation rerenders keep the late-hour viewport'
+  );
+
+  const rollbackStart = ui.timelineScrolls.length;
+  ui.nodes.get('schoolTimeScroll').scrollTop = 420;
+  await assert.rejects(
+    controller.runMutation(
+      { operation: 'moveLesson', lessonId: lesson.id },
+      (lessons) => lessons
+    ),
+    /rollback/
+  );
+  await controller.whenMutationsIdle();
+  assert.ok(
+    ui.timelineScrolls.slice(rollbackStart).every((viewport) => viewport.scrollTop === 180),
+    'rollback and revalidation clamp the preserved position to the new viewport range'
+  );
+});
+
+test('hidden week rerenders restore the remembered timeline position after the tab becomes visible', async () => {
+  const ui = timelineLifecycleDocument();
+  let mutationCount = 0;
+  const lesson = queueLesson('lesson-1', '14:00');
+  const core = Object.assign({}, SchoolCore, {
+    buildReadModel(lessons) {
+      return {
+        lessons,
+        today: [],
+        weekDays: { '2026-08-03': lessons },
+        diary: [],
+        progress: { completed: 0, total: lessons.length, partial: 0, missed: 0 },
+        activeLessons: [],
+        nextLesson: null,
+        persistedDecisions: [],
+        runtimeIssues: []
+      };
+    }
+  });
+  const controller = SchoolUi.createController({
+    api: {
+      async listLessons() {
+        return [structuredClone(lesson)];
+      },
+      async mutate() {
+        mutationCount += 1;
+        if (mutationCount === 2) throw new Error('rollback');
+        return { id: lesson.id };
+      }
+    },
+    core,
+    mutationQueue: SchoolMutationQueue,
+    document: ui.document,
+    now: () => new Date('2026-08-03T14:00:00+05:00')
+  });
+
+  await controller.load();
+  controller.selectView('week');
+  const visibleViewport = ui.nodes.get('schoolTimeScroll');
+  visibleViewport.scrollTop = 420;
+  visibleViewport.dispatch('scroll');
+  controller.selectView('today');
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 0, 'hidden viewport exposes browser scrolltop zero');
+
+  await controller.runMutation(
+    { operation: 'moveLesson', lessonId: lesson.id },
+    (lessons) => lessons
+  );
+  await assert.rejects(
+    controller.runMutation(
+      { operation: 'moveLesson', lessonId: lesson.id },
+      (lessons) => lessons
+    ),
+    /rollback/
+  );
+  await controller.whenMutationsIdle();
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 0, 'hidden setters do not retain scrolltop');
+
+  controller.selectView('week');
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 420);
+
+  const diaryViewport = ui.nodes.get('schoolTimeScroll');
+  diaryViewport.scrollTop = 360;
+  diaryViewport.dispatch('scroll');
+  controller.selectView('diary');
+  await controller.runMutation(
+    { operation: 'moveLesson', lessonId: lesson.id },
+    (lessons) => lessons
+  );
+  await controller.whenMutationsIdle();
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 0, 'diary keeps the week viewport hidden');
+
+  controller.selectView('week');
+  assert.equal(ui.nodes.get('schoolTimeScroll').scrollTop, 360);
 });
 
 test('successful mutation revalidates from notion and rechecks active lessons', async () => {
