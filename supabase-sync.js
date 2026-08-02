@@ -55,6 +55,8 @@
   var DELETE_META_KEY = '_sync_deleted_v1';
   var SYNC_INIT_KEY = '_sync_init_v1';
   var SYNC_USER_KEY = '_sync_user_v1';
+  var SCHOOL_CABINET_REMOTE_KEY = 'school_cabinet_urls_v1';
+  var SCHOOL_CABINET_CACHE_PREFIX = 'school_cabinet_urls_cache_v1:';
   var SKIP_KEYS = [
     SYNC_META_KEY,
     DELETE_META_KEY,
@@ -71,6 +73,8 @@
   function shouldSkipStorageKey(key) {
     if (!key) return true;
     if (SKIP_KEYS.indexOf(key) !== -1) return true;
+    if (key === SCHOOL_CABINET_REMOTE_KEY) return true;
+    if (key.indexOf(SCHOOL_CABINET_CACHE_PREFIX) === 0) return true;
     if (key.indexOf('sb-') === 0) return true; // Supabase internal keys
     if (key.indexOf('firebase:') === 0) return true;
     if (key.indexOf('openrouter_') === 0) return true;

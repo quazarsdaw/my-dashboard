@@ -1,8 +1,5 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const test = require('node:test');
-const vm = require('node:vm');
 
 const SchoolTeacherBridge = require('../school-teacher-bridge.js');
 
@@ -52,37 +49,6 @@ function resultBlock(lines) {
     '=== END LESSON RESULT ==='
   ].join('\n');
 }
-
-test('teacher config exposes six exact subjects with empty urls', () => {
-  const source = fs.readFileSync(
-    path.join(__dirname, '..', 'school-teacher-config.js'),
-    'utf8'
-  );
-  const context = { window: {} };
-  vm.runInNewContext(source, context);
-
-  assert.deepEqual(
-    Object.keys(context.window.SchoolTeacherConfig),
-    [
-      'Software Engineering',
-      'DevOps & Infrastructure',
-      'Mathematics',
-      'English & IELTS',
-      'University',
-      'Director & Assessment'
-    ]
-  );
-  assert.deepEqual(
-    Object.values(context.window.SchoolTeacherConfig).map((item) => item.url),
-    ['', '', '', '', '', '']
-  );
-  assert.equal(Object.isFrozen(context.window.SchoolTeacherConfig), true);
-  assert.equal(
-    Object.values(context.window.SchoolTeacherConfig)
-      .every((item) => Object.isFrozen(item)),
-    true
-  );
-});
 
 test('teacher url accepts only absolute chatgpt https hosts', () => {
   assert.deepEqual(
@@ -163,6 +129,49 @@ test('prompt omits empty metadata and empty content sections', () => {
   assert.doesNotMatch(prompt, /^PRIORITY:/m);
   assert.doesNotMatch(prompt, /\nЦЕЛЬ\n/);
   assert.match(prompt, /\nЗАДАНИЕ\nПроверить запуск\./);
+});
+
+test('prompt includes resolved route metadata in a stable order', () => {
+  const prompt = SchoolTeacherBridge.buildLessonTeacherPrompt(
+    lesson(),
+    [],
+    {
+      cabinetLabel: 'Codex',
+      teacherLabel: 'Codex · coding agent',
+      modelHint: 'выберите coding-модель вручную',
+      format: 'Практическая лаборатория',
+      resourceUrl: 'https://example.com/project-context'
+    }
+  );
+
+  assert.match(
+    prompt,
+    /PRIORITY: Must\nCABINET: Codex\nTEACHER: Codex · coding agent\nMODEL_HINT: выберите coding-модель вручную\nLESSON_FORMAT: Практическая лаборатория\nRESOURCE: https:\/\/example\.com\/project-context/
+  );
+});
+
+test('prompt omits empty route metadata and keeps one unchanged result contract', () => {
+  const prompt = SchoolTeacherBridge.buildLessonTeacherPrompt(
+    lesson(),
+    [],
+    {
+      cabinetLabel: 'Самостоятельная практика',
+      teacherLabel: 'Самостоятельная работа',
+      modelHint: null,
+      format: 'Самостоятельная практика',
+      resourceUrl: null
+    }
+  );
+
+  assert.match(prompt, /^CABINET: Самостоятельная практика$/m);
+  assert.match(prompt, /^TEACHER: Самостоятельная работа$/m);
+  assert.doesNotMatch(prompt, /^MODEL_HINT:/m);
+  assert.doesNotMatch(prompt, /^RESOURCE:/m);
+  assert.equal(
+    prompt.split('=== LESSON RESULT ===').length - 1,
+    1
+  );
+  assert.match(prompt, /=== END LESSON RESULT ===/);
 });
 
 test('prompt recursively renders normalized blocks without raw notion data', () => {

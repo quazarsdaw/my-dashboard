@@ -208,6 +208,31 @@ test('initial push does not sync sensitive OpenRouter settings', async () => {
   assert.ok(!pushedKeys.includes('openrouter_settings_v1'));
 });
 
+test('generic sync never uploads cabinet settings or account caches', async () => {
+  const app = await loadSupabaseSync({
+    initialStorage: {
+      school_cabinet_urls_v1: JSON.stringify({ version: 1, cabinets: {} }),
+      'school_cabinet_urls_cache_v1:u1': JSON.stringify({
+        version: 1,
+        cabinets: {
+          'chatgpt-software': 'https://chatgpt.com/g/u1',
+        },
+      }),
+      store_v2: JSON.stringify({ rewards: [] }),
+    },
+  });
+
+  await app.runTimers();
+
+  const keys = app.writes.upserts.flat().map((row) => row.key);
+  assert.equal(keys.includes('school_cabinet_urls_v1'), false);
+  assert.equal(
+    keys.some((key) => key.startsWith('school_cabinet_urls_cache_v1:')),
+    false
+  );
+  assert.equal(keys.includes('store_v2'), true);
+});
+
 test('removing a local key deletes the cloud row instead of upserting null', async () => {
   const app = await loadSupabaseSync({
     initialStorage: {
