@@ -168,9 +168,13 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 <!-- Edit Progress Modal -->
 <div class="modal-overlay" id="editModal">
   <div class="modal-box">
-    <h3 id="modalGoalTitle" style="margin-bottom:16px; font-size:16px;"></h3>
+    <h3 style="margin-bottom:16px; font-size:16px;">Редактировать цель</h3>
     <div style="margin-bottom:12px;">
-        <label style="font-size:11px; color:var(--text-tertiary); text-transform:uppercase; font-weight:700;">Прогресс</label>
+        <label for="editTitle" style="font-size:11px; color:var(--text-tertiary); text-transform:uppercase; font-weight:700;">Название</label>
+        <input class="add-input" id="editTitle" type="text" maxlength="200" autocomplete="off" style="margin-top:6px;">
+    </div>
+    <div style="margin-bottom:12px;">
+        <label for="editCurrent" style="font-size:11px; color:var(--text-tertiary); text-transform:uppercase; font-weight:700;">Прогресс</label>
         <input class="add-input" id="editCurrent" type="number" style="margin-top:6px;">
     </div>
     <div style="display:flex; gap:8px;">
@@ -323,9 +327,22 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   };
 
   var editingId = null;
+  var MAX_TITLE_LENGTH = 200;
+
+  function normalizeGoalTitle(value) {
+    var title = String(value || '').trim();
+    if (!title) return { ok: false, error: 'Введите название цели' };
+    if (Array.from(title).length > MAX_TITLE_LENGTH) {
+      return { ok: false, error: 'Название должно быть не длиннее 200 символов' };
+    }
+    return { ok: true, value: title };
+  }
+
   function openEdit(g){
     editingId = g.id;
-    document.getElementById('modalGoalTitle').textContent = g.title;
+    var titleInput = document.getElementById('editTitle');
+    titleInput.value = g.title;
+    titleInput.setCustomValidity('');
     
     var editRow = document.getElementById('editCurrent').parentElement;
     if (g.type === 'check') {
@@ -336,16 +353,32 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     }
     
     document.getElementById('editModal').classList.add('show');
+    titleInput.focus();
   }
 
-  document.getElementById('closeBtn').onclick = () => document.getElementById('editModal').classList.remove('show');
+  document.getElementById('closeBtn').onclick = function(){
+    document.getElementById('editTitle').setCustomValidity('');
+    document.getElementById('editModal').classList.remove('show');
+  };
   document.getElementById('saveBtn').onclick = function(){
+    var titleInput = document.getElementById('editTitle');
+    var titleResult = normalizeGoalTitle(titleInput.value);
+    if (!titleResult.ok) {
+      titleInput.setCustomValidity(titleResult.error);
+      titleInput.reportValidity();
+      titleInput.focus();
+      return;
+    }
+    titleInput.setCustomValidity('');
+
     var data = getData();
     var g = data.goals.find(it => it.id === editingId);
     if(g){
-        g.current = parseInt(document.getElementById('editCurrent').value, 10) || 0;
-        if(g.type === 'number') g.done = g.current >= g.target;
-        else g.done = g.current >= 1;
+        g.title = titleResult.value;
+        if(g.type === 'number') {
+          g.current = parseInt(document.getElementById('editCurrent').value, 10) || 0;
+          g.done = g.current >= g.target;
+        }
         setData(data);
         render();
     }
