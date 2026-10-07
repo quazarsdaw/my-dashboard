@@ -24,7 +24,7 @@ html { scrollbar-gutter: stable; }\
 .topbar-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }\
 .bottombar {\
   position: fixed; bottom: 12px; left: 12px; right: 12px; z-index: 10000;\
-  display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); align-items: stretch;\
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch;\
   height: 64px; padding: 0 8px; box-sizing: border-box;\
   background: linear-gradient(135deg, rgba(20,22,26,0.6) 0%, rgba(10,11,13,0.4) 100%);\
   backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);\
@@ -157,10 +157,7 @@ body {\
   <a href="index.html" class="bottombar-tab" data-page="main"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🏠</span><span class="bottombar-tab-label">Главная</span></span></a>\
   <a href="inbox.html" class="bottombar-tab" data-page="inbox"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">📥</span><span class="bottombar-tab-label">Входящие</span></span></a>\
   <a href="tracker.html" class="bottombar-tab" data-page="tracker"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">✅</span><span class="bottombar-tab-label">Трекер</span></span></a>\
-  <a href="school.html" class="bottombar-tab" data-page="school"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🎓</span><span class="bottombar-tab-label">Школа</span></span></a>\
-  <a href="menu.html" class="bottombar-tab" data-page="menu"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🍽️</span><span class="bottombar-tab-label">Меню</span></span></a>\
   <a href="goals.html" class="bottombar-tab" data-page="goals"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🎯</span><span class="bottombar-tab-label">Цели</span></span></a>\
-  <a href="store.html" class="bottombar-tab" data-page="store"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">🏪</span><span class="bottombar-tab-label">Магазин</span></span></a>\
   <a href="profile.html" class="bottombar-tab" data-page="profile"><span class="bottombar-tab-shell"><span class="bottombar-tab-icon">👤</span><span class="bottombar-tab-label">Профиль</span></span></a>\
 </nav>';
 
@@ -169,13 +166,13 @@ body {\
     var p = window.location.pathname.toLowerCase();
     if (p.indexOf('inbox') !== -1) return 'inbox';
     if (p.indexOf('tracker') !== -1) return 'tracker';
-    if (p.indexOf('school') !== -1) return 'school';
-    if (p.indexOf('menu') !== -1) return 'menu';
+    if (p.indexOf('school') !== -1) return 'profile';
+    if (p.indexOf('menu') !== -1) return 'profile';
     if (p.indexOf('health') !== -1) return 'health';
     if (p.indexOf('gym') !== -1) return 'fitness';
     if (p.indexOf('finance') !== -1) return 'finance';
     if (p.indexOf('goals') !== -1) return 'goals';
-    if (p.indexOf('store') !== -1) return 'store';
+    if (p.indexOf('store') !== -1) return 'profile';
     if (p.indexOf('profile') !== -1) return 'profile';
     return 'main';
   }

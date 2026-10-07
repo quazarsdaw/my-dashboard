@@ -23,7 +23,7 @@ test('topbar uses a lighter grouped layout for balance, water and add controls',
 test('main page uses the shared polished topbar implementation', () => {
   const html = read('index.html');
 
-  assert.ok(html.includes('<script src="topbar.js?v=403" defer></script>'));
+  assert.ok(html.includes('<script src="topbar.js?v=404" defer></script>'));
   assert.ok(!html.includes('topbar_v405.js'));
 });
 
@@ -62,7 +62,7 @@ test('topbar and bottom navigation use balanced hit areas for short labels', () 
 
   assert.ok(topbar.includes('min-width: 104px'));
   assert.ok(topbar.includes('height: 38px; min-width: 122px'));
-  assert.ok(topbar.includes('display: grid; grid-template-columns: repeat(8, minmax(0, 1fr));'));
+  assert.ok(topbar.includes('display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));'));
   assert.ok(topbar.includes('class="bottombar-tab-shell"'));
   assert.ok(topbar.includes('.bottombar-tab-shell'));
   assert.ok(topbar.includes('width: min(112px, calc(100% - 8px))'));
@@ -71,21 +71,12 @@ test('topbar and bottom navigation use balanced hit areas for short labels', () 
   assert.ok(topbar.includes('min-width: 78px'));
 });
 
-test('shared navigation exposes the menu tab and a home logo on every page', () => {
+test('shared navigation exposes a home logo on every page', () => {
   const topbar = read('topbar.js');
-  const trackerPosition = topbar.indexOf('data-page="tracker"');
-  const schoolPosition = topbar.indexOf('data-page="school"');
-  const menuPosition = topbar.indexOf('data-page="menu"');
-  const goalsPosition = topbar.indexOf('data-page="goals"');
 
   assert.ok(topbar.includes('class="topbar-brand"'));
   assert.ok(topbar.includes('src="app-icon.svg"'));
   assert.ok(topbar.includes('class="topbar-actions"'));
-  assert.ok(topbar.includes("if (p.indexOf('menu') !== -1) return 'menu';"));
-  assert.ok(topbar.includes("if (p.indexOf('school') !== -1) return 'school';"));
-  assert.ok(trackerPosition < schoolPosition);
-  assert.ok(schoolPosition < menuPosition);
-  assert.ok(menuPosition < goalsPosition);
 });
 
 test('nutrition page provides clickable desktop and mobile section navigation', () => {
@@ -275,7 +266,7 @@ test('all primary pages load the soft profile theme before topbar', () => {
     const html = read(file);
     const themedSource = file === 'school.html' ? `${html}\n${read('school.css')}` : html;
     const themeScript = '<script src="profile-theme.js?v=401"></script>';
-    const topbarScript = '<script src="topbar.js?v=403" defer></script>';
+    const topbarScript = '<script src="topbar.js?v=404" defer></script>';
     const themeIndex = html.indexOf(themeScript);
     const topbarIndex = html.indexOf(topbarScript);
 
