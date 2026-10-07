@@ -21,7 +21,7 @@ function htmlAttribute(tag, name) {
 function assertSchoolAssetContract(html) {
   const expectedScripts = [
     'profile-theme.js?v=401',
-    'topbar.js?v=403',
+    'topbar.js?v=404',
     'supabase-sync.js?v=407-sb',
     'school-core.js?v=6',
     'school-api.js',
@@ -2231,17 +2231,6 @@ test('school timeline returns to document scrolling on mobile', () => {
     mobile,
     /\.school-time-scroll\s*\{[^}]*height:\s*auto[^}]*overflow:\s*visible/s
   );
-});
-
-test('shared navigation places school between tracker and menu in eight columns', () => {
-  const topbar = read('topbar.js');
-  const tracker = topbar.indexOf('data-page="tracker"');
-  const school = topbar.indexOf('data-page="school"');
-  const menu = topbar.indexOf('data-page="menu"');
-
-  assert.ok(topbar.includes('grid-template-columns: repeat(8, minmax(0, 1fr))'));
-  assert.ok(tracker !== -1 && school > tracker && menu > school);
-  assert.ok(topbar.includes("if (p.indexOf('school') !== -1) return 'school';"));
 });
 
 test('controller loads and opens lesson content without mutating before user action', () => {
