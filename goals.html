@@ -12,6 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Цели и Горизонты</title>
 <script src="gamification.js?v=401"></script>
+<script src="goals-core.js?v=1"></script>
 <script src="supabase-sync.js?v=406-sb" defer></script>
 <script src="profile-theme.js?v=401"></script>
 <script src="topbar.js?v=404" defer></script><style>
@@ -189,6 +190,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 (function(){
   'use strict';
   var G = window.Gamification;
+  var Core = window.GoalsCore;
 
   var HORIZONS = [
     { id: 'week',    name: 'Неделя',      icon: '🌱' },
@@ -204,11 +206,31 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     if(!d) {
         // Initial migration from old yearly goals
         var old = G.storeGet('yearly_goals_v1') || { goals: [] };
-        d = { goals: old.goals.map(function(g){ g.horizon = 'year'; return g; }) || [] };
+        d = { goals: (old.goals || []).map(function(g){
+          return Object.assign({}, g, { horizon: 'year' });
+        }) };
     }
-    return d;
+    var normalized = Core.normalizeData(d, new Date());
+    if (JSON.stringify(normalized) !== JSON.stringify(d)) setData(normalized);
+    return normalized;
   }
   function setData(d){ G.storeSet('horizons_goals_v2', d); }
+
+  function getPeriodSelection(){
+    var stored = G.storeGet('goals_period_selection_v1');
+    return stored && typeof stored === 'object' ? Object.assign({}, stored) : {};
+  }
+
+  function setPeriodSelection(selection){
+    G.storeSet('goals_period_selection_v1', Object.assign({}, selection));
+  }
+
+  function selectedPeriodFor(horizon){
+    var selection = getPeriodSelection();
+    var selected = selection[horizon];
+    if (selected && Core.formatPeriodLabel(horizon, selected)) return selected;
+    return Core.currentPeriodKey(horizon, new Date());
+  }
 
   function getCollapsed(){ return G.storeGet('goals_collapsed_v1') || {}; }
   function setCollapsed(c){ G.storeSet('goals_collapsed_v1', c); }
