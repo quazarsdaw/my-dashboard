@@ -34,9 +34,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
 @keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
 
-.page-title{font-size:28px;font-weight:700;letter-spacing:-0.025em;
-  background:linear-gradient(180deg,#FFF 0%,#C7C4BC 120%);
-  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin:16px 0 4px}
+.page-title{font-size:28px;font-weight:700;letter-spacing:-0.025em;color:var(--text-primary);margin:16px 0 4px}
 
 /* Horizon Accordions */
 .horizon-section { margin-bottom: 12px; }
@@ -57,6 +55,20 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   padding: 10px 4px 20px;
 }
 .horizon-section.collapsed .horizon-content { max-height: 0; opacity: 0; padding: 0; pointer-events: none; }
+.period-nav{display:grid;grid-template-columns:44px minmax(170px,1fr) 44px auto;gap:8px;align-items:center;
+  padding:6px 4px 12px}
+.period-nav-static{grid-template-columns:1fr}
+.period-nav-btn,.period-today,.period-select{min-height:44px;border:1px solid rgba(255,255,255,0.08);
+  border-radius:10px;background:rgba(255,255,255,0.045);color:var(--text-secondary);font:inherit}
+.period-nav-btn,.period-today{cursor:pointer;font-weight:700}
+.period-nav-btn:hover,.period-today:hover,.period-select:hover{background:rgba(255,255,255,0.085);color:var(--text-primary)}
+.period-nav-btn:focus-visible,.period-today:focus-visible,.period-select:focus-visible,.month-tag:focus-visible{
+  outline:2px solid #7DD3FC;outline-offset:2px}
+.period-select{width:100%;padding:0 12px;cursor:pointer;font-weight:700;text-align:center}
+.period-today{padding:0 14px;font-size:12px}
+.period-static-label{min-height:44px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);
+  font-size:12px;font-weight:700;border-radius:10px;background:rgba(255,255,255,0.035)}
+.period-empty{padding:24px 16px;text-align:center;color:var(--text-tertiary);font-size:12px}
 
 /* Colors for horizons */
 .h-week .horizon-icon { color: #6BE3A4; }
@@ -132,9 +144,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 </div>
 
 <style>
-.month-tag { font-size: 8px; font-weight: 800; text-align: center; padding: 3px 0; border-radius: 4px; background: rgba(255,255,255,0.03); color: var(--text-tertiary); text-transform: uppercase; }
+.month-tag { font: inherit; font-size: 8px; font-weight: 800; text-align: center; min-height: 28px; padding: 3px 0; border: 1px solid transparent; border-radius: 4px; background: rgba(255,255,255,0.03); color: var(--text-tertiary); text-transform: uppercase; cursor: pointer; }
 .month-tag.past { text-decoration: line-through; opacity: 0.3; }
 .month-tag.current { color: var(--warning); border: 1px solid rgba(242,192,99,0.2); background: rgba(242,192,99,0.05); }
+.month-tag.selected { color: var(--text-primary); border-color: rgba(125,211,252,0.45); background: rgba(125,211,252,0.10); opacity: 1; text-decoration: none; }
 </style>
 
 <div id="horizonsList">
@@ -232,14 +245,48 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     return Core.currentPeriodKey(horizon, new Date());
   }
 
+  function periodOptionsHtml(horizon, selected){
+    if (horizon === 'life') return '';
+    var radius = horizon === 'week' || horizon === 'month' ? 6 : horizon === '5year' ? 3 : 4;
+    var options = [];
+    for (var offset = -radius; offset <= radius; offset += 1) {
+      var key = Core.shiftPeriodKey(horizon, selected, offset);
+      var label = Core.formatPeriodLabel(horizon, key);
+      options.push('<option value="' + G.esc(key) + '"' + (key === selected ? ' selected' : '') + '>' + G.esc(label) + '</option>');
+    }
+    return options.join('');
+  }
+
+  function periodNavigatorHtml(horizon, selected){
+    if (horizon === 'life') {
+      return '<div class="period-nav period-nav-static" data-horizon="life"><div class="period-static-label">Вся жизнь</div></div>';
+    }
+    return `
+      <div class="period-nav" data-horizon="${horizon}">
+        <button type="button" class="period-nav-btn" data-period-action="previous" aria-label="Предыдущий период" onclick="window.shiftGoalPeriod('${horizon}', -1)">←</button>
+        <select class="period-select" aria-label="Выбрать период ${horizon}" onchange="window.selectGoalPeriod('${horizon}', this.value)">
+          ${periodOptionsHtml(horizon, selected)}
+        </select>
+        <button type="button" class="period-nav-btn" data-period-action="next" aria-label="Следующий период" onclick="window.shiftGoalPeriod('${horizon}', 1)">→</button>
+        <button type="button" class="period-today" data-period-action="today" onclick="window.resetGoalPeriod('${horizon}')">Сегодня</button>
+      </div>
+    `;
+  }
+
   function getCollapsed(){ return G.storeGet('goals_collapsed_v1') || {}; }
   function setCollapsed(c){ G.storeSet('goals_collapsed_v1', c); }
 
   function updateYearProgress(data) {
     var now = new Date();
-    var start = new Date(now.getFullYear(), 0, 1);
-    var end = new Date(now.getFullYear() + 1, 0, 1);
-    var pct = Math.min(100, Math.max(0, (now - start) / (end - start) * 100));
+    var selectedYear = Number(selectedPeriodFor('year'));
+    var currentYear = Number(Core.currentPeriodKey('year', now));
+    var start = new Date(currentYear, 0, 1);
+    var end = new Date(currentYear + 1, 0, 1);
+    var pct = selectedYear < currentYear
+      ? 100
+      : selectedYear > currentYear
+        ? 0
+        : Math.min(100, Math.max(0, (now - start) / (end - start) * 100));
     
     document.getElementById('yearPctText').textContent = Math.round(pct) + '%';
     
@@ -248,20 +295,25 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     ring.style.strokeDasharray = c;
     ring.style.strokeDashoffset = c - (pct / 100) * c;
     
-    document.getElementById('yearStatusText').textContent = now.getFullYear() + ' год';
+    document.getElementById('yearStatusText').textContent = selectedYear + ' год';
     
-    var goals = data.goals.filter(function(g) { return g.horizon === 'year'; });
+    var goals = data.goals.filter(function(g) {
+      return g.horizon === 'year' && g.periodKey === String(selectedYear);
+    });
     var doneCount = goals.filter(function(g) { return g.done; }).length;
     document.getElementById('goalsProgressLabel').textContent = doneCount + ' из ' + goals.length + ' целей выполнено';
     
     var grid = document.getElementById('monthsGrid');
     var monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-    var currentMonth = now.getMonth();
+    var currentMonthKey = Core.currentPeriodKey('month', now);
+    var selectedMonthKey = selectedPeriodFor('month');
     grid.innerHTML = monthNames.map(function(m, i) {
+      var monthKey = selectedYear + '-' + String(i + 1).padStart(2, '0');
       var cls = 'month-tag';
-      if (i < currentMonth) cls += ' past';
-      else if (i === currentMonth) cls += ' current';
-      return '<div class="' + cls + '">' + m + '</div>';
+      if (monthKey < currentMonthKey) cls += ' past';
+      else if (monthKey === currentMonthKey) cls += ' current';
+      if (monthKey === selectedMonthKey) cls += ' selected';
+      return '<button type="button" class="' + cls + '" aria-label="Открыть ' + G.esc(Core.formatPeriodLabel('month', monthKey)) + '" onclick="window.selectGoalMonth(' + i + ')">' + m + '</button>';
     }).join('');
   }
 
@@ -273,7 +325,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     container.innerHTML = '';
 
     HORIZONS.forEach(function(h){
-      var goals = data.goals.filter(function(g){ return g.horizon === h.id; });
+      var selectedPeriod = selectedPeriodFor(h.id);
+      var goals = Core.sortGoals(data.goals.filter(function(g){
+        return g.horizon === h.id && g.periodKey === selectedPeriod;
+      }));
       var isCollapsed = !!collapsed[h.id];
 
       var sec = document.createElement('div');
@@ -290,8 +345,12 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       `;
 
       var content = sec.querySelector('.horizon-content');
+      content.innerHTML = periodNavigatorHtml(h.id, selectedPeriod);
       if(goals.length === 0) {
-        content.innerHTML = '<div style="text-align:center; padding:20px; font-size:12px; color:var(--text-tertiary);">Нет целей на этот горизонт.</div>';
+        var empty = document.createElement('div');
+        empty.className = 'period-empty';
+        empty.textContent = 'Нет целей в выбранном периоде. Новая цель будет создана здесь.';
+        content.appendChild(empty);
       } else {
         goals.forEach(function(g){
             var isCheck = g.type === 'check';
@@ -328,6 +387,39 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       container.appendChild(sec);
     });
   }
+
+  window.selectGoalPeriod = function(horizon, periodKey){
+    if (!Core.formatPeriodLabel(horizon, periodKey)) return false;
+    var selection = getPeriodSelection();
+    if (selection[horizon] === periodKey) return true;
+    selection[horizon] = periodKey;
+    setPeriodSelection(selection);
+    render();
+    return true;
+  };
+
+  window.shiftGoalPeriod = function(horizon, delta){
+    var shifted = Core.shiftPeriodKey(horizon, selectedPeriodFor(horizon), delta);
+    return shifted ? window.selectGoalPeriod(horizon, shifted) : false;
+  };
+
+  window.resetGoalPeriod = function(horizon){
+    var current = Core.currentPeriodKey(horizon, new Date());
+    return current ? window.selectGoalPeriod(horizon, current) : false;
+  };
+
+  window.selectGoalMonth = function(monthIndex){
+    var index = Number(monthIndex);
+    if (!Number.isInteger(index) || index < 0 || index > 11) return false;
+    var selectedYear = selectedPeriodFor('year');
+    var key = selectedYear + '-' + String(index + 1).padStart(2, '0');
+    var collapsed = getCollapsed();
+    if (collapsed.month) {
+      collapsed.month = false;
+      setCollapsed(collapsed);
+    }
+    return window.selectGoalPeriod('month', key);
+  };
 
   window.toggleGoalStatus = function(id) {
     var data = getData();
