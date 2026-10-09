@@ -45,6 +45,14 @@ class FakeElement {
     this.value = '';
     this.onclick = null;
     this.onchange = null;
+    this.ondragstart = null;
+    this.ondragover = null;
+    this.ondragleave = null;
+    this.ondrop = null;
+    this.ondragend = null;
+    this.draggable = false;
+    this.open = false;
+    this.focusCount = 0;
     this._innerHTML = '';
   }
 
@@ -76,7 +84,9 @@ class FakeElement {
     return null;
   }
 
-  focus() {}
+  focus() { this.focusCount += 1; }
+  showModal() { this.open = true; }
+  close() { this.open = false; }
   setCustomValidity() {}
   reportValidity() { return true; }
 }
@@ -130,6 +140,7 @@ function loadGoalsPage(initialData, initialSelection = {}) {
   let storedSelection = clone(initialSelection);
   let collapsed = {};
   const selectionWrites = [];
+  const dataWrites = [];
   const window = {
     GoalsCore,
     Gamification: {
@@ -140,7 +151,10 @@ function loadGoalsPage(initialData, initialSelection = {}) {
         return null;
       },
       storeSet(key, value) {
-        if (key === 'horizons_goals_v2') storedData = clone(value);
+        if (key === 'horizons_goals_v2') {
+          storedData = clone(value);
+          dataWrites.push(clone(value));
+        }
         if (key === 'goals_period_selection_v1') {
           storedSelection = clone(value);
           selectionWrites.push(clone(value));
@@ -179,7 +193,9 @@ function loadGoalsPage(initialData, initialSelection = {}) {
   return {
     nodes,
     selectionWrites,
+    dataWrites,
     window,
+    getData() { return clone(storedData); },
     getSelection() { return clone(storedSelection); },
     latestGoalCard() {
       return created.filter((element) => element.classList.contains('goal-card')).at(-1) || null;
@@ -275,4 +291,113 @@ test('стили приоритета используют флаг и зату�
   assert.match(html, /\.goal-card\.priority-p4/);
   assert.match(html, /\.completed-group-label/);
   assert.doesNotMatch(html, /goal-card[^}]*border-left\s*:/);
+});
+
+test('активные карточки доступны для drag и переноса, а выполненные заблокированы', () => {
+  const page = loadGoalsPage({
+    schemaVersion: 3,
+    goals: [
+      normalizedGoal({ id: 'active', title: 'Активная', priority: 'p1' }),
+      normalizedGoal({ id: 'done', title: 'Готовая', priority: 'p1', order: 200, done: true })
+    ]
+  }, { month: '2026-10' });
+  const cards = page.goalCards();
+
+  assert.equal(cards[0].draggable, true);
+  assert.equal(typeof cards[0].ondragstart, 'function');
+  assert.match(cards[0].innerHTML, /Перенести/);
+  assert.equal(cards[1].draggable, false);
+  assert.doesNotMatch(cards[1].innerHTML, /Перенести/);
+  assert.equal(page.window.openGoalMoveDialog('done', cards[1]), false);
+  assert.equal(page.dataWrites.length, 0);
+});
+
+test('доступный диалог переносит активную цель в далёкий прошлый период одной записью', () => {
+  const page = loadGoalsPage({
+    schemaVersion: 3,
+    goals: [normalizedGoal({ id: 'moving', title: 'Переезд' })]
+  }, { month: '2026-10' });
+  const trigger = page.goalCards()[0];
+
+  assert.equal(page.window.openGoalMoveDialog('moving', trigger), true);
+  assert.equal(page.nodes.get('moveDialog').open, true);
+  page.nodes.get('movePeriod').value = '2025-03';
+  page.nodes.get('movePriority').value = 'p2';
+  page.nodes.get('confirmMoveBtn').onclick();
+
+  const moved = page.getData().goals[0];
+  assert.deepEqual([moved.periodKey, moved.priority, moved.order], ['2025-03', 'p2', 100]);
+  assert.equal(page.dataWrites.length, 1);
+  assert.match(page.nodes.get('goalsLive').textContent, /Переезд/);
+  assert.match(page.nodes.get('goalsLive').textContent, /Март 2025/);
+  assert.equal(page.nodes.get('moveDialog').open, false);
+  assert.equal(trigger.focusCount, 1);
+});
+
+test('отмена диалога не записывает данные и возвращает фокус', () => {
+  const page = loadGoalsPage({
+    schemaVersion: 3,
+    goals: [normalizedGoal({ id: 'moving', title: 'Не двигать' })]
+  }, { month: '2026-10' });
+  const trigger = page.goalCards()[0];
+
+  page.window.openGoalMoveDialog('moving', trigger);
+  page.nodes.get('cancelMoveBtn').onclick();
+
+  assert.equal(page.dataWrites.length, 0);
+  assert.equal(page.nodes.get('moveDialog').open, false);
+  assert.equal(trigger.focusCount, 1);
+});
+
+test('drag-and-drop меняет ручной порядок только внутри одной priority-группы', () => {
+  const page = loadGoalsPage({
+    schemaVersion: 3,
+    goals: [
+      normalizedGoal({ id: 'first', title: 'Первая', priority: 'p1', order: 100 }),
+      normalizedGoal({ id: 'second', title: 'Вторая', priority: 'p1', order: 200 }),
+      normalizedGoal({ id: 'other', title: 'Другая', priority: 'p2', order: 777 })
+    ]
+  }, { month: '2026-10' });
+  const event = {
+    preventDefault() {},
+    dataTransfer: { effectAllowed: '', dropEffect: '', setData() {} }
+  };
+
+  assert.equal(page.window.startGoalDrag(event, 'second'), true);
+  assert.equal(page.window.dropGoalBefore(event, 'first'), true);
+
+  assert.deepEqual(page.getData().goals.map((goal) => [goal.id, goal.order]), [
+    ['first', 200],
+    ['second', 100],
+    ['other', 777]
+  ]);
+  assert.equal(page.dataWrites.length, 1);
+});
+
+test('drop в соседний период использует тот же command path', () => {
+  const page = loadGoalsPage({
+    schemaVersion: 3,
+    goals: [normalizedGoal({ id: 'moving', title: 'На ноябрь', priority: 'p4' })]
+  }, { month: '2026-10' });
+  const event = {
+    preventDefault() {},
+    dataTransfer: { effectAllowed: '', dropEffect: '', setData() {} }
+  };
+
+  page.window.startGoalDrag(event, 'moving');
+  assert.equal(page.window.dropGoalInAdjacentPeriod(event, 'month', 1), true);
+
+  assert.equal(page.getData().goals[0].periodKey, '2026-11');
+  assert.equal(page.getData().goals[0].priority, 'p4');
+  assert.equal(page.dataWrites.length, 1);
+});
+
+test('разметка переноса использует native dialog, aria-live и preview drop-зон', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'goals.html'), 'utf8');
+
+  assert.match(html, /<dialog[^>]+id="moveDialog"/);
+  assert.match(html, /id="goalsLive"[^>]+aria-live="polite"/);
+  assert.match(html, /period-drop-zone/);
+  assert.match(html, /goal-card\.dragging/);
+  assert.match(html, /goal-card\.drop-before/);
 });

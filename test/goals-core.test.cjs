@@ -236,3 +236,25 @@ test('выполненная цель остаётся в историческо
     targetPeriodKey: '2026-12'
   }).error, 'GOAL_COMPLETED');
 });
+
+test('активная цель переносится в далёкий прошлый период своего горизонта', () => {
+  const data = {
+    schemaVersion: 3,
+    goals: [
+      { id: 'moving', horizon: 'quarter', periodKey: '2026-Q4', priority: 'p3', order: 100, done: false }
+    ]
+  };
+
+  const result = GoalsCore.moveGoal(data, {
+    goalId: 'moving',
+    targetPeriodKey: '2023-Q1',
+    targetPriority: 'p1'
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.data.goals[0], {
+    ...data.goals[0],
+    periodKey: '2023-Q1',
+    priority: 'p1'
+  });
+});
