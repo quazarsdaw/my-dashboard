@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Цели и Горизонты</title>
 <script src="gamification.js?v=401"></script>
-<script src="goals-core.js?v=1"></script>
+<script src="goals-core.js?v=2"></script>
 <script src="supabase-sync.js?v=406-sb" defer></script>
 <script src="profile-theme.js?v=401"></script>
 <script src="topbar.js?v=404" defer></script><style>
@@ -26,7 +26,7 @@
 }
 html{background:#1C1E24; scrollbar-gutter: stable;}
 body{font-family:var(--font-sans);color:var(--text-primary);background:#1C1E24;
-  min-height:100vh;max-width:800px;margin:0 auto;-webkit-font-smoothing:antialiased}
+  min-height:100vh;max-width:800px;margin:0 auto;overflow-x:clip;-webkit-font-smoothing:antialiased}
 
 body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   background:radial-gradient(ellipse 50% 50% at 82% 14%,var(--app-theme-glow-primary, rgba(192,132,252,0.12)),transparent),
@@ -39,9 +39,9 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 /* Horizon Accordions */
 .horizon-section { margin-bottom: 12px; }
 .horizon-header {
-  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+  display: flex; align-items: center; gap: 12px; width:100%; padding: 14px 18px;
   background: var(--card-bg); border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 14px; cursor: pointer; user-select: none;
+  border-radius: 14px; color:var(--text-primary); font:inherit; text-align:left; cursor: pointer; user-select: none;
   transition: background 0.2s, border-color 0.2s;
 }
 .horizon-header:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.15); }
@@ -62,7 +62,9 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   border-radius:10px;background:rgba(255,255,255,0.045);color:var(--text-secondary);font:inherit}
 .period-nav-btn,.period-today{cursor:pointer;font-weight:700}
 .period-nav-btn:hover,.period-today:hover,.period-select:hover{background:rgba(255,255,255,0.085);color:var(--text-primary)}
-.period-nav-btn:focus-visible,.period-today:focus-visible,.period-select:focus-visible,.month-tag:focus-visible{
+.period-nav-btn:focus-visible,.period-today:focus-visible,.period-select:focus-visible,.month-tag:focus-visible,
+.horizon-header:focus-visible,.goal-move-btn:focus-visible,.goal-check-btn:focus-visible,.add-input:focus-visible,
+.add-select:focus-visible,.add-btn-main:focus-visible{
   outline:2px solid #7DD3FC;outline-offset:2px}
 .period-select{width:100%;padding:0 12px;cursor:pointer;font-weight:700;text-align:center}
 .period-today{padding:0 14px;font-size:12px}
@@ -100,12 +102,12 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 .goal-card.priority-p4{background:linear-gradient(90deg,rgba(107,227,164,0.11),rgba(107,227,164,0) 48%),rgba(255,255,255,0.04)}
 .goal-card.completed{ opacity: 0.62; background:rgba(255,255,255,0.025); }
 .goal-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.goal-title{flex:1;font-size:14px;font-weight:600;}
+.goal-title{flex:1;min-width:0;font-size:14px;font-weight:600;overflow-wrap:anywhere;}
 .goal-pct{font-size:13px;font-weight:900;font-family:var(--font-mono);color:var(--success);text-shadow:0 0 10px rgba(107,227,164,0.3)}
 .goal-bar-bg{width:100%;height:4px;border-radius:2px;background:rgba(255,255,255,0.06);overflow:hidden;margin-bottom:6px}
 .goal-bar-fill{height:100%;border-radius:2px;transition:width 0.22s cubic-bezier(0.25,1,0.5,1);background:rgba(250,250,250,0.78)}
 .goal-meta{display:flex;align-items:center;justify-content:space-between; font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)}
-.goal-move-btn{flex:0 0 auto;min-height:28px;padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.08);
+.goal-move-btn{flex:0 0 auto;min-height:44px;padding:4px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.08);
   background:rgba(255,255,255,.045);color:var(--text-tertiary);font:inherit;font-size:9px;font-weight:800;cursor:pointer}
 .goal-move-btn:hover,.goal-move-btn:focus-visible{background:rgba(125,211,252,.10);border-color:rgba(125,211,252,.32);color:#FAFAFA}
 .priority-mark{display:inline-flex;align-items:center;gap:5px;min-width:34px;color:var(--text-tertiary);
@@ -120,11 +122,11 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 
 /* Goal Checkbox UI */
 .goal-check-btn {
-  width: 22px; height: 22px; border-radius: 7px;
+  min-width: 44px; min-height: 44px; padding:0; border-radius: 10px;
   border: 2px solid rgba(255,255,255,0.12);
   display: flex; align-items: center; justify-content: center;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  background: rgba(255,255,255,0.03);
+  background: rgba(255,255,255,0.03); color:inherit; cursor:pointer;
 }
 .goal-card.completed .goal-check-btn {
   background: var(--success); border-color: var(--success);
@@ -145,8 +147,9 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 .modal-overlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);align-items:center;justify-content:center;padding:20px}
 .modal-overlay.show{display:flex}
 .modal-box{background:#1C1E24;border-radius:24px;padding:24px;max-width:360px;width:100%;border:1px solid rgba(255,255,255,0.1);box-shadow:0 20px 50px rgba(0,0,0,0.5)}
-.move-dialog{width:min(420px,calc(100vw - 32px));padding:0;border:1px solid rgba(255,255,255,.11);
-  border-radius:22px;background:#1C1E24;color:var(--text-primary);box-shadow:0 24px 70px rgba(0,0,0,.65)}
+.move-dialog{position:fixed;inset:0;margin:auto;width:min(420px,calc(100vw - 32px));max-height:calc(100dvh - 32px);
+  overflow:auto;padding:0;border:1px solid rgba(255,255,255,.11);border-radius:22px;background:#1C1E24;
+  color:var(--text-primary);box-shadow:0 24px 70px rgba(0,0,0,.65)}
 .move-dialog::backdrop{background:rgba(0,0,0,.72);backdrop-filter:blur(8px)}
 .move-dialog-inner{padding:24px}
 .move-dialog-copy{margin:6px 0 18px;color:var(--text-tertiary);font-size:12px;line-height:1.5}
@@ -155,6 +158,26 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 .move-dialog-actions{display:flex;gap:8px;margin-top:18px}
 .move-dialog-actions .add-btn-main:last-child{background:rgba(255,255,255,.05);color:var(--text-primary)}
 .goals-live{position:fixed;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:560px){
+  .page-title{font-size:24px;margin-top:10px}
+  .year-summary-card{padding:18px!important;gap:16px!important;align-items:flex-start!important}
+  .months-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .period-nav{grid-template-columns:44px minmax(0,1fr) 44px;padding-bottom:10px}
+  .period-nav-static{grid-template-columns:1fr}
+  .period-today{grid-column:1/-1;min-height:44px}
+  .period-select{min-width:0;padding-inline:8px;font-size:12px}
+  .goal-card{padding:12px}
+  .goal-top{gap:8px}
+  .goal-move-btn{padding-inline:9px}
+  .add-card{padding:16px}
+  .add-row-flex{flex-direction:column}
+  .add-select{width:100%;min-width:0;min-height:44px}
+  .move-dialog-actions{flex-direction:column}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
 </style>
 </head>
 <body>
@@ -366,6 +389,28 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     document.getElementById('goalsLive').textContent = goal.title + ' — ' + Core.formatPeriodLabel(goal.horizon, periodKey);
   }
 
+  function focusGoalMoveResult(goalId, horizon, fallback){
+    var cards = document.querySelectorAll ? document.querySelectorAll('.goal-card') : [];
+    for (var i = 0; i < cards.length; i += 1) {
+      if (cards[i].goalId !== goalId) continue;
+      var moveButton = cards[i].querySelector && cards[i].querySelector('.goal-move-btn');
+      if (moveButton && moveButton.focus) {
+        moveButton.focus();
+        return;
+      }
+    }
+    var navigators = document.querySelectorAll ? document.querySelectorAll('.period-nav') : [];
+    for (var j = 0; j < navigators.length; j += 1) {
+      if (!navigators[j].dataset || navigators[j].dataset.horizon !== horizon) continue;
+      var periodSelect = navigators[j].querySelector && navigators[j].querySelector('.period-select');
+      if (periodSelect && periodSelect.focus) {
+        periodSelect.focus();
+        return;
+      }
+    }
+    if (fallback && fallback.focus) fallback.focus();
+  }
+
   function applyGoalMove(command){
     var data = getData();
     var sourceGoal = goalById(data, command.goalId);
@@ -445,12 +490,12 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       sec.className = 'horizon-section h-' + h.id + (isCollapsed ? ' collapsed' : '');
       
       sec.innerHTML = `
-        <div class="horizon-header" onclick="window.toggleHorizon('${h.id}')">
+        <button type="button" class="horizon-header" aria-expanded="${isCollapsed ? 'false' : 'true'}" onclick="window.toggleHorizon('${h.id}')">
           <span class="horizon-icon">${h.icon}</span>
           <span class="horizon-title">${h.name}</span>
           <span class="horizon-count">${goals.length}</span>
           <span class="horizon-arrow">▼</span>
-        </div>
+        </button>
         <div class="horizon-content" id="content-${h.id}"></div>
       `;
 
@@ -475,6 +520,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
             var pct = isCheck ? (g.done?100:0) : Math.min(100, Math.round((g.current||0)/(g.target||1)*100));
             var card = document.createElement('div');
             card.className = 'goal-card priority-' + g.priority + (g.done?' completed':'');
+            card.goalId = g.id;
             var priorityHtml = '<span class="priority-mark"><span class="priority-flag" aria-hidden="true"></span><span>' + G.esc(g.priority.toUpperCase()) + '</span></span>';
             var moveHtml = g.done ? '' : '<button type="button" class="goal-move-btn" data-goal-move="true">Перенести</button>';
             
@@ -484,14 +530,18 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
                         ${priorityHtml}
                         <span class="goal-title">${G.esc(g.title)}</span>
                         ${moveHtml}
-                        <div class="goal-check-btn" onclick="event.stopPropagation(); window.toggleGoalStatus('${g.id}')">
+                        <button type="button" class="goal-check-btn" aria-label="Изменить статус цели">
                             <span class="goal-check-icon">✓</span>
-                        </div>
+                        </button>
                     </div>
                 `;
                 card.onclick = function(event){
                   if (event && event.target && event.target.closest && event.target.closest('.goal-move-btn')) {
                     window.openGoalMoveDialog(g.id, event.target.closest('.goal-move-btn'));
+                    return;
+                  }
+                  if (event && event.target && event.target.closest && event.target.closest('.goal-check-btn')) {
+                    window.toggleGoalStatus(g.id);
                     return;
                   }
                   openEdit(g);
@@ -697,7 +747,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     if (!moved) return;
     var dialog = document.getElementById('moveDialog');
     if (dialog.open) dialog.close();
-    if (trigger && trigger.focus) trigger.focus();
+    focusGoalMoveResult(goal.id, goal.horizon, trigger);
     moveGoalId = null;
     moveDialogTrigger = null;
   };
