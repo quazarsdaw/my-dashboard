@@ -183,6 +183,9 @@ function loadGoalsPage(initialData, initialSelection = {}) {
     getSelection() { return clone(storedSelection); },
     latestGoalCard() {
       return created.filter((element) => element.classList.contains('goal-card')).at(-1) || null;
+    },
+    goalCards() {
+      return created.filter((element) => element.classList.contains('goal-card'));
     }
   };
 }
@@ -241,4 +244,35 @@ test('годовой блок считает цели только выбран�
 
   assert.equal(page.nodes.get('yearStatusText').textContent, '2027 год');
   assert.equal(page.nodes.get('goalsProgressLabel').textContent, '1 из 1 целей выполнено');
+});
+
+test('карточки показывают приоритет сортируют активные и отделяют выполненные', () => {
+  const page = loadGoalsPage({
+    schemaVersion: 3,
+    goals: [
+      normalizedGoal({ id: 'done', title: 'Готово', priority: 'p1', order: 50, done: true }),
+      normalizedGoal({ id: 'p4', title: 'Зелёная', priority: 'p4', order: 100 }),
+      normalizedGoal({ id: 'p1-second', title: 'Красная вторая', priority: 'p1', order: 200 }),
+      normalizedGoal({ id: 'p1-first', title: 'Красная первая', priority: 'p1', order: 100 })
+    ]
+  }, { month: '2026-10' });
+  const cards = page.goalCards();
+
+  assert.match(cards[0].innerHTML, /Красная первая/);
+  assert.match(cards[1].innerHTML, /Красная вторая/);
+  assert.match(cards[2].innerHTML, /Зелёная/);
+  assert.match(cards[3].innerHTML, /Готово/);
+  assert.match(cards[0].innerHTML, /priority-flag/);
+  assert.match(cards[0].innerHTML, />P1</);
+  assert.equal(cards[3].classList.contains('completed'), true);
+});
+
+test('стили приоритета используют флаг и затухающий фон отдельно от прогресса', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'goals.html'), 'utf8');
+
+  assert.match(html, /\.priority-flag/);
+  assert.match(html, /\.goal-card\.priority-p1/);
+  assert.match(html, /\.goal-card\.priority-p4/);
+  assert.match(html, /\.completed-group-label/);
+  assert.doesNotMatch(html, /goal-card[^}]*border-left\s*:/);
 });

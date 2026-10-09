@@ -83,13 +83,26 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   border: 1px solid rgba(255,255,255,0.05); padding:14px 16px; margin-bottom:8px;
   transition: transform 0.15s, border-color 0.15s; cursor:pointer}
 .goal-card:hover{ border-color:rgba(255,255,255,0.15); transform: translateY(-1px); }
-.goal-card.completed{ opacity: 0.6; background: rgba(107,227,164,0.02); }
+.goal-card.priority-p1{background:linear-gradient(90deg,rgba(255,107,107,0.13),rgba(255,107,107,0) 48%),rgba(255,255,255,0.04)}
+.goal-card.priority-p2{background:linear-gradient(90deg,rgba(242,192,99,0.13),rgba(242,192,99,0) 48%),rgba(255,255,255,0.04)}
+.goal-card.priority-p3{background:linear-gradient(90deg,rgba(125,211,252,0.12),rgba(125,211,252,0) 48%),rgba(255,255,255,0.04)}
+.goal-card.priority-p4{background:linear-gradient(90deg,rgba(107,227,164,0.11),rgba(107,227,164,0) 48%),rgba(255,255,255,0.04)}
+.goal-card.completed{ opacity: 0.62; background:rgba(255,255,255,0.025); }
 .goal-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .goal-title{flex:1;font-size:14px;font-weight:600;}
 .goal-pct{font-size:13px;font-weight:900;font-family:var(--font-mono);color:var(--success);text-shadow:0 0 10px rgba(107,227,164,0.3)}
 .goal-bar-bg{width:100%;height:4px;border-radius:2px;background:rgba(255,255,255,0.06);overflow:hidden;margin-bottom:6px}
-.goal-bar-fill{height:100%;border-radius:2px;transition:width 0.4s;background:var(--success)}
+.goal-bar-fill{height:100%;border-radius:2px;transition:width 0.22s cubic-bezier(0.25,1,0.5,1);background:rgba(250,250,250,0.78)}
 .goal-meta{display:flex;align-items:center;justify-content:space-between; font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)}
+.priority-mark{display:inline-flex;align-items:center;gap:5px;min-width:34px;color:var(--text-tertiary);
+  font-family:var(--font-mono);font-size:9px;font-weight:800}
+.priority-flag{width:13px;height:16px;display:inline-block;background:var(--priority-color);
+  clip-path:polygon(0 0,100% 0,100% 100%,50% 76%,0 100%)}
+.priority-p1{--priority-color:#FF6B6B}.priority-p2{--priority-color:#F2C063}
+.priority-p3{--priority-color:#7DD3FC}.priority-p4{--priority-color:#6BE3A4}
+.completed-group-label{display:flex;align-items:center;gap:10px;margin:18px 4px 10px;color:var(--text-tertiary);
+  font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase}
+.completed-group-label::after{content:'';height:1px;flex:1;background:rgba(255,255,255,0.07)}
 
 /* Goal Checkbox UI */
 .goal-check-btn {
@@ -167,6 +180,15 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       <option value="5year">5 лет</option>
       <option value="life">Жизнь</option>
     </select>
+    <select class="add-select" id="addPeriod" aria-label="Период новой цели"></select>
+  </div>
+  <div class="add-row-flex">
+    <select class="add-select" id="addPriority" aria-label="Приоритет новой цели">
+      <option value="p1">P1</option>
+      <option value="p2">P2</option>
+      <option value="p3" selected>P3</option>
+      <option value="p4">P4</option>
+    </select>
     <select class="add-select" id="addType">
       <option value="check">Чекбокс</option>
       <option value="number">Числовая</option>
@@ -190,6 +212,15 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     <div style="margin-bottom:12px;">
         <label for="editCurrent" style="font-size:11px; color:var(--text-tertiary); text-transform:uppercase; font-weight:700;">Прогресс</label>
         <input class="add-input" id="editCurrent" type="number" style="margin-top:6px;">
+    </div>
+    <div style="margin-bottom:12px;">
+        <label for="editPriority" style="font-size:11px; color:var(--text-tertiary); text-transform:uppercase; font-weight:700;">Приоритет</label>
+        <select class="add-select" id="editPriority" style="width:100%; margin-top:6px;">
+          <option value="p1">P1</option>
+          <option value="p2">P2</option>
+          <option value="p3">P3</option>
+          <option value="p4">P4</option>
+        </select>
     </div>
     <div style="display:flex; gap:8px;">
         <button class="add-btn-main" id="saveBtn">Сохранить</button>
@@ -352,15 +383,25 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
         empty.textContent = 'Нет целей в выбранном периоде. Новая цель будет создана здесь.';
         content.appendChild(empty);
       } else {
+        var completedLabelAdded = false;
         goals.forEach(function(g){
+            if (g.done && !completedLabelAdded) {
+              var completedLabel = document.createElement('div');
+              completedLabel.className = 'completed-group-label';
+              completedLabel.textContent = 'Выполнено в этом периоде';
+              content.appendChild(completedLabel);
+              completedLabelAdded = true;
+            }
             var isCheck = g.type === 'check';
             var pct = isCheck ? (g.done?100:0) : Math.min(100, Math.round((g.current||0)/(g.target||1)*100));
             var card = document.createElement('div');
-            card.className = 'goal-card' + (g.done?' completed':'');
+            card.className = 'goal-card priority-' + g.priority + (g.done?' completed':'');
+            var priorityHtml = '<span class="priority-mark"><span class="priority-flag" aria-hidden="true"></span><span>' + G.esc(g.priority.toUpperCase()) + '</span></span>';
             
             if (isCheck) {
                 card.innerHTML = `
                     <div class="goal-top" style="margin-bottom:0">
+                        ${priorityHtml}
                         <span class="goal-title">${G.esc(g.title)}</span>
                         <div class="goal-check-btn" onclick="event.stopPropagation(); window.toggleGoalStatus('${g.id}')">
                             <span class="goal-check-icon">✓</span>
@@ -371,6 +412,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
             } else {
                 card.innerHTML = `
                     <div class="goal-top">
+                        ${priorityHtml}
                         <span class="goal-title">${G.esc(g.title)}</span>
                         <span class="goal-pct">${pct}%</span>
                     </div>
@@ -457,6 +499,9 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     var titleInput = document.getElementById('editTitle');
     titleInput.value = g.title;
     titleInput.setCustomValidity('');
+    var priorityInput = document.getElementById('editPriority');
+    priorityInput.value = g.priority;
+    priorityInput.disabled = !!g.done;
     
     var editRow = document.getElementById('editCurrent').parentElement;
     if (g.type === 'check') {
@@ -488,6 +533,17 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     var data = getData();
     var g = data.goals.find(it => it.id === editingId);
     if(g){
+        var requestedPriority = document.getElementById('editPriority').value;
+        if (!g.done && requestedPriority !== g.priority) {
+          var moveResult = Core.moveGoal(data, {
+            goalId: g.id,
+            targetPeriodKey: g.periodKey,
+            targetPriority: requestedPriority
+          });
+          if (!moveResult.ok) return;
+          data = moveResult.data;
+          g = data.goals.find(it => it.id === editingId);
+        }
         g.title = titleResult.value;
         if(g.type === 'number') {
           g.current = parseInt(document.getElementById('editCurrent').value, 10) || 0;
@@ -512,14 +568,41 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     document.getElementById('numberFields').style.display = this.value === 'number' ? 'flex' : 'none';
   };
 
+  function populateAddPeriodOptions(){
+    var horizon = document.getElementById('addHorizon').value;
+    var selected = selectedPeriodFor(horizon);
+    var periodInput = document.getElementById('addPeriod');
+    periodInput.innerHTML = horizon === 'life'
+      ? '<option value="life">Вся жизнь</option>'
+      : periodOptionsHtml(horizon, selected);
+    periodInput.value = selected;
+  }
+
+  document.getElementById('addHorizon').onchange = populateAddPeriodOptions;
+
+  function nextGoalOrder(data, horizon, periodKey, priority){
+    var maxOrder = data.goals.reduce(function(maximum, goal){
+      if (goal.horizon !== horizon || goal.periodKey !== periodKey || goal.priority !== priority) return maximum;
+      return Math.max(maximum, Number(goal.order) || 0);
+    }, 0);
+    return maxOrder + 100;
+  }
+
   document.getElementById('addBtn').onclick = function(){
     var title = document.getElementById('addTitle').value.trim();
     if(!title) return;
     var data = getData();
+    var horizon = document.getElementById('addHorizon').value;
+    var selectedPeriod = document.getElementById('addPeriod').value;
+    if (!Core.formatPeriodLabel(horizon, selectedPeriod)) selectedPeriod = selectedPeriodFor(horizon);
+    var priority = document.getElementById('addPriority').value;
     data.goals.push({
         id: 'hg_'+Date.now(),
         title: title,
-        horizon: document.getElementById('addHorizon').value,
+        horizon: horizon,
+        periodKey: selectedPeriod,
+        priority: priority,
+        order: nextGoalOrder(data, horizon, selectedPeriod, priority),
         type: document.getElementById('addType').value,
         target: parseInt(document.getElementById('addTarget').value, 10) || 1,
         unit: document.getElementById('addUnit').value || '',
@@ -531,6 +614,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     render();
   };
 
+  populateAddPeriodOptions();
   render();
 })();
 </script>

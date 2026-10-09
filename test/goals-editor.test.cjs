@@ -174,6 +174,9 @@ function loadGoalsPage(initialData, options = {}) {
     },
     firstGoalCard() {
       return created.find((element) => element.classList.contains('goal-card')) || null;
+    },
+    goalCards() {
+      return created.filter((element) => element.classList.contains('goal-card'));
     }
   };
 }
@@ -185,6 +188,75 @@ test('страница подключает календарное ядро до
 
   assert.notEqual(coreIndex, -1);
   assert.ok(coreIndex < controllerIndex);
+});
+
+test('форма создания и редактор содержат явные поля периода и приоритета', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'goals.html'), 'utf8');
+
+  assert.match(html, /id="addPeriod"/);
+  assert.match(html, /id="addPriority"/);
+  assert.match(html, /<option value="p3" selected>P3<\/option>/);
+  assert.match(html, /id="editPriority"/);
+});
+
+test('новая цель сохраняет выбранный период приоритет и следующий порядок группы', () => {
+  const page = loadGoalsPage({
+    schemaVersion: 3,
+    goals: [{
+      id: 'existing', title: 'Существующая', horizon: 'month', periodKey: '2026-11',
+      priority: 'p1', order: 100, type: 'check', target: 1, unit: '', current: 0, done: false
+    }]
+  });
+  page.nodes.get('addTitle').value = 'Новая P1';
+  page.nodes.get('addHorizon').value = 'month';
+  page.nodes.get('addPeriod').value = '2026-11';
+  page.nodes.get('addPriority').value = 'p1';
+  page.nodes.get('addType').value = 'check';
+
+  page.nodes.get('addBtn').onclick();
+
+  const created = page.getData().goals.find((goal) => goal.title === 'Новая P1');
+  assert.deepEqual({
+    horizon: created.horizon,
+    periodKey: created.periodKey,
+    priority: created.priority,
+    order: created.order,
+    done: created.done
+  }, {
+    horizon: 'month',
+    periodKey: '2026-11',
+    priority: 'p1',
+    order: 200,
+    done: false
+  });
+});
+
+test('редактор меняет приоритет через общую модель порядка и сохраняет остальные поля', () => {
+  const movedGoal = {
+    id: 'moving', title: 'Перенести приоритет', horizon: 'month', periodKey: '2026-10',
+    priority: 'p3', order: 100, type: 'number', target: 100, unit: 'часов', current: 40,
+    done: false, customField: 'сохранить'
+  };
+  const page = loadGoalsPage({
+    schemaVersion: 3,
+    goals: [
+      movedGoal,
+      {
+        id: 'p1-existing', title: 'Первая P1', horizon: 'month', periodKey: '2026-10',
+        priority: 'p1', order: 100, type: 'check', target: 1, unit: '', current: 0, done: false
+      }
+    ]
+  });
+
+  page.goalCards().find((card) => card.innerHTML.includes('Перенести приоритет')).onclick();
+  page.nodes.get('editPriority').value = 'p1';
+  page.nodes.get('saveBtn').onclick();
+
+  assert.deepEqual(page.getData().goals.find((goal) => goal.id === 'moving'), {
+    ...movedGoal,
+    priority: 'p1',
+    order: 200
+  });
 });
 
 test('старая схема мигрирует один раз и повторный render не пишет её снова', () => {
