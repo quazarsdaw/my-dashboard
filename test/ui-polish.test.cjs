@@ -309,3 +309,42 @@ test('topbar uses soft theme variables without owning page background', () => {
   assert.ok(!topbar.includes('body::before'));
   assert.ok(!topbar.includes('--profile-hero-bg'));
 });
+
+test('goals page keeps touch targets readable and the mobile navigator in two rows', () => {
+  const html = read('goals.html');
+
+  assert.match(html, /\.goal-move-btn[^}]*min-height:\s*44px/);
+  assert.match(html, /\.goal-check-btn[^}]*min-width:\s*44px[^}]*min-height:\s*44px/);
+  assert.match(html, /@media\(max-width:560px\)[\s\S]*?\.period-nav\{grid-template-columns:44px minmax\(0,1fr\) 44px/);
+  assert.match(html, /@media\(max-width:560px\)[\s\S]*?\.period-today\{grid-column:1\/-1/);
+  assert.match(html, /\.goal-title\{[^}]*min-width:0[^}]*overflow-wrap:anywhere/);
+  assert.match(html, /body\{[^}]*overflow-x:clip/);
+});
+
+test('goals page exposes keyboard focus and reduced motion rules', () => {
+  const html = read('goals.html');
+
+  assert.match(html, /\.goal-move-btn:focus-visible/);
+  assert.match(html, /\.goal-check-btn:focus-visible/);
+  assert.match(html, /\.horizon-header:focus-visible/);
+  assert.match(html, /@media\(prefers-reduced-motion:reduce\)/);
+  assert.match(html, /animation-duration:\.01ms!important/);
+  assert.match(html, /<button[^>]+class="horizon-header"/);
+  assert.match(html, /<button[^>]+class="goal-check-btn"/);
+});
+
+test('goals move dialog stays centered in the visible viewport after page scroll', () => {
+  const html = read('goals.html');
+
+  assert.match(html, /\.move-dialog\{[^}]*position:fixed[^}]*inset:0[^}]*margin:auto/);
+  assert.match(html, /\.move-dialog\{[^}]*max-height:calc\(100dvh - 32px\)[^}]*overflow:auto/);
+});
+
+test('goals page uses explicit priority labels and a fresh core cache version', () => {
+  const html = read('goals.html');
+
+  assert.ok(html.includes('<script src="goals-core.js?v=2"></script>'));
+  ['P1', 'P2', 'P3', 'P4'].forEach((priority) => {
+    assert.ok(html.includes(`>${priority}</option>`), priority);
+  });
+});

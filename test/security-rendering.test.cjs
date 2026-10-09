@@ -43,3 +43,12 @@ test('profile backup import only accepts application-owned storage keys', () => 
   assert.ok(profileHtml.includes("key.indexOf('openrouter_') === 0"));
   assert.ok(profileHtml.includes("key.indexOf('sb-') === 0"));
 });
+
+test('goals render user text as escaped content without interpolating goal ids into handlers', () => {
+  const goalsHtml = read('goals.html');
+
+  assert.ok(goalsHtml.includes('${G.esc(g.title)}'));
+  assert.ok(goalsHtml.includes("document.getElementById('moveGoalTitle').textContent = goal.title"));
+  assert.ok(!goalsHtml.includes("window.toggleGoalStatus('${g.id}')"));
+  assert.ok(!goalsHtml.includes('data-goal-id="${g.id}"'));
+});

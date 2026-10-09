@@ -12,6 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Цели и Горизонты</title>
 <script src="gamification.js?v=401"></script>
+<script src="goals-core.js?v=2"></script>
 <script src="supabase-sync.js?v=406-sb" defer></script>
 <script src="profile-theme.js?v=401"></script>
 <script src="topbar.js?v=404" defer></script><style>
@@ -25,7 +26,7 @@
 }
 html{background:#1C1E24; scrollbar-gutter: stable;}
 body{font-family:var(--font-sans);color:var(--text-primary);background:#1C1E24;
-  min-height:100vh;max-width:800px;margin:0 auto;-webkit-font-smoothing:antialiased}
+  min-height:100vh;max-width:800px;margin:0 auto;overflow-x:clip;-webkit-font-smoothing:antialiased}
 
 body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   background:radial-gradient(ellipse 50% 50% at 82% 14%,var(--app-theme-glow-primary, rgba(192,132,252,0.12)),transparent),
@@ -33,16 +34,14 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   filter:blur(40px);animation:bgDrift 36s ease-in-out infinite alternate}
 @keyframes bgDrift{0%{transform:translate(0,0)}100%{transform:translate(-12px,8px)}}
 
-.page-title{font-size:28px;font-weight:700;letter-spacing:-0.025em;
-  background:linear-gradient(180deg,#FFF 0%,#C7C4BC 120%);
-  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin:16px 0 4px}
+.page-title{font-size:28px;font-weight:700;letter-spacing:-0.025em;color:var(--text-primary);margin:16px 0 4px}
 
 /* Horizon Accordions */
 .horizon-section { margin-bottom: 12px; }
 .horizon-header {
-  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+  display: flex; align-items: center; gap: 12px; width:100%; padding: 14px 18px;
   background: var(--card-bg); border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 14px; cursor: pointer; user-select: none;
+  border-radius: 14px; color:var(--text-primary); font:inherit; text-align:left; cursor: pointer; user-select: none;
   transition: background 0.2s, border-color 0.2s;
 }
 .horizon-header:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.15); }
@@ -56,6 +55,29 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   padding: 10px 4px 20px;
 }
 .horizon-section.collapsed .horizon-content { max-height: 0; opacity: 0; padding: 0; pointer-events: none; }
+.period-nav{display:grid;grid-template-columns:44px minmax(170px,1fr) 44px auto;gap:8px;align-items:center;
+  padding:6px 4px 12px}
+.period-nav-static{grid-template-columns:1fr}
+.period-nav-btn,.period-today,.period-select{min-height:44px;border:1px solid rgba(255,255,255,0.08);
+  border-radius:10px;background:rgba(255,255,255,0.045);color:var(--text-secondary);font:inherit}
+.period-nav-btn,.period-today{cursor:pointer;font-weight:700}
+.period-nav-btn:hover,.period-today:hover,.period-select:hover{background:rgba(255,255,255,0.085);color:var(--text-primary)}
+.period-nav-btn:focus-visible,.period-today:focus-visible,.period-select:focus-visible,.month-tag:focus-visible,
+.horizon-header:focus-visible,.goal-move-btn:focus-visible,.goal-check-btn:focus-visible,.add-input:focus-visible,
+.add-select:focus-visible,.add-btn-main:focus-visible{
+  outline:2px solid #7DD3FC;outline-offset:2px}
+.period-select{width:100%;padding:0 12px;cursor:pointer;font-weight:700;text-align:center}
+.period-today{padding:0 14px;font-size:12px}
+.period-drop-zone{position:relative}
+.period-drop-zone::after{content:'Переместить сюда';position:absolute;left:50%;bottom:-24px;z-index:4;
+  transform:translate(-50%,4px);width:max-content;max-width:150px;padding:4px 7px;border-radius:7px;
+  background:#242730;border:1px solid rgba(125,211,252,0.28);color:#7DD3FC;font-size:9px;
+  opacity:0;pointer-events:none;transition:opacity .14s ease,transform .14s ease}
+.period-drop-zone.drag-over{border-color:#7DD3FC;background:rgba(125,211,252,0.13);color:#FAFAFA}
+.period-drop-zone.drag-over::after{opacity:1;transform:translate(-50%,0)}
+.period-static-label{min-height:44px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);
+  font-size:12px;font-weight:700;border-radius:10px;background:rgba(255,255,255,0.035)}
+.period-empty{padding:24px 16px;text-align:center;color:var(--text-tertiary);font-size:12px}
 
 /* Colors for horizons */
 .h-week .horizon-icon { color: #6BE3A4; }
@@ -70,21 +92,41 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   border: 1px solid rgba(255,255,255,0.05); padding:14px 16px; margin-bottom:8px;
   transition: transform 0.15s, border-color 0.15s; cursor:pointer}
 .goal-card:hover{ border-color:rgba(255,255,255,0.15); transform: translateY(-1px); }
-.goal-card.completed{ opacity: 0.6; background: rgba(107,227,164,0.02); }
+.goal-card[draggable="true"]{cursor:grab}
+.goal-card[draggable="true"]:active{cursor:grabbing}
+.goal-card.dragging{opacity:.42;transform:scale(.985);border-color:rgba(125,211,252,.35)}
+.goal-card.drop-before{transform:translateY(5px);box-shadow:0 -3px 0 #7DD3FC}
+.goal-card.priority-p1{background:linear-gradient(90deg,rgba(255,107,107,0.13),rgba(255,107,107,0) 48%),rgba(255,255,255,0.04)}
+.goal-card.priority-p2{background:linear-gradient(90deg,rgba(242,192,99,0.13),rgba(242,192,99,0) 48%),rgba(255,255,255,0.04)}
+.goal-card.priority-p3{background:linear-gradient(90deg,rgba(125,211,252,0.12),rgba(125,211,252,0) 48%),rgba(255,255,255,0.04)}
+.goal-card.priority-p4{background:linear-gradient(90deg,rgba(107,227,164,0.11),rgba(107,227,164,0) 48%),rgba(255,255,255,0.04)}
+.goal-card.completed{ opacity: 0.62; background:rgba(255,255,255,0.025); }
 .goal-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.goal-title{flex:1;font-size:14px;font-weight:600;}
+.goal-title{flex:1;min-width:0;font-size:14px;font-weight:600;overflow-wrap:anywhere;}
 .goal-pct{font-size:13px;font-weight:900;font-family:var(--font-mono);color:var(--success);text-shadow:0 0 10px rgba(107,227,164,0.3)}
 .goal-bar-bg{width:100%;height:4px;border-radius:2px;background:rgba(255,255,255,0.06);overflow:hidden;margin-bottom:6px}
-.goal-bar-fill{height:100%;border-radius:2px;transition:width 0.4s;background:var(--success)}
+.goal-bar-fill{height:100%;border-radius:2px;transition:width 0.22s cubic-bezier(0.25,1,0.5,1);background:rgba(250,250,250,0.78)}
 .goal-meta{display:flex;align-items:center;justify-content:space-between; font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)}
+.goal-move-btn{flex:0 0 auto;min-height:44px;padding:4px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.045);color:var(--text-tertiary);font:inherit;font-size:9px;font-weight:800;cursor:pointer}
+.goal-move-btn:hover,.goal-move-btn:focus-visible{background:rgba(125,211,252,.10);border-color:rgba(125,211,252,.32);color:#FAFAFA}
+.priority-mark{display:inline-flex;align-items:center;gap:5px;min-width:34px;color:var(--text-tertiary);
+  font-family:var(--font-mono);font-size:9px;font-weight:800}
+.priority-flag{width:13px;height:16px;display:inline-block;background:var(--priority-color);
+  clip-path:polygon(0 0,100% 0,100% 100%,50% 76%,0 100%)}
+.priority-p1{--priority-color:#FF6B6B}.priority-p2{--priority-color:#F2C063}
+.priority-p3{--priority-color:#7DD3FC}.priority-p4{--priority-color:#6BE3A4}
+.completed-group-label{display:flex;align-items:center;gap:10px;margin:18px 4px 10px;color:var(--text-tertiary);
+  font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase}
+.completed-group-label::after{content:'';height:1px;flex:1;background:rgba(255,255,255,0.07)}
 
 /* Goal Checkbox UI */
 .goal-check-btn {
-  width: 22px; height: 22px; border-radius: 7px;
+  min-width: 44px; min-height: 44px; padding:0; border-radius: 10px;
   border: 2px solid rgba(255,255,255,0.12);
   display: flex; align-items: center; justify-content: center;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  background: rgba(255,255,255,0.03);
+  background: rgba(255,255,255,0.03); color:inherit; cursor:pointer;
 }
 .goal-card.completed .goal-check-btn {
   background: var(--success); border-color: var(--success);
@@ -105,6 +147,37 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 .modal-overlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);align-items:center;justify-content:center;padding:20px}
 .modal-overlay.show{display:flex}
 .modal-box{background:#1C1E24;border-radius:24px;padding:24px;max-width:360px;width:100%;border:1px solid rgba(255,255,255,0.1);box-shadow:0 20px 50px rgba(0,0,0,0.5)}
+.move-dialog{position:fixed;inset:0;margin:auto;width:min(420px,calc(100vw - 32px));max-height:calc(100dvh - 32px);
+  overflow:auto;padding:0;border:1px solid rgba(255,255,255,.11);border-radius:22px;background:#1C1E24;
+  color:var(--text-primary);box-shadow:0 24px 70px rgba(0,0,0,.65)}
+.move-dialog::backdrop{background:rgba(0,0,0,.72);backdrop-filter:blur(8px)}
+.move-dialog-inner{padding:24px}
+.move-dialog-copy{margin:6px 0 18px;color:var(--text-tertiary);font-size:12px;line-height:1.5}
+.move-dialog-label{display:block;margin-bottom:12px;color:var(--text-secondary);font-size:11px;font-weight:700}
+.move-dialog-label .add-input,.move-dialog-label .add-select{margin:6px 0 0;width:100%}
+.move-dialog-actions{display:flex;gap:8px;margin-top:18px}
+.move-dialog-actions .add-btn-main:last-child{background:rgba(255,255,255,.05);color:var(--text-primary)}
+.goals-live{position:fixed;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:560px){
+  .page-title{font-size:24px;margin-top:10px}
+  .year-summary-card{padding:18px!important;gap:16px!important;align-items:flex-start!important}
+  .months-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .period-nav{grid-template-columns:44px minmax(0,1fr) 44px;padding-bottom:10px}
+  .period-nav-static{grid-template-columns:1fr}
+  .period-today{grid-column:1/-1;min-height:44px}
+  .period-select{min-width:0;padding-inline:8px;font-size:12px}
+  .goal-card{padding:12px}
+  .goal-top{gap:8px}
+  .goal-move-btn{padding-inline:9px}
+  .add-card{padding:16px}
+  .add-row-flex{flex-direction:column}
+  .add-select{width:100%;min-width:0;min-height:44px}
+  .move-dialog-actions{flex-direction:column}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
 </style>
 </head>
 <body>
@@ -131,9 +204,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 </div>
 
 <style>
-.month-tag { font-size: 8px; font-weight: 800; text-align: center; padding: 3px 0; border-radius: 4px; background: rgba(255,255,255,0.03); color: var(--text-tertiary); text-transform: uppercase; }
+.month-tag { font: inherit; font-size: 8px; font-weight: 800; text-align: center; min-height: 28px; padding: 3px 0; border: 1px solid transparent; border-radius: 4px; background: rgba(255,255,255,0.03); color: var(--text-tertiary); text-transform: uppercase; cursor: pointer; }
 .month-tag.past { text-decoration: line-through; opacity: 0.3; }
 .month-tag.current { color: var(--warning); border: 1px solid rgba(242,192,99,0.2); background: rgba(242,192,99,0.05); }
+.month-tag.selected { color: var(--text-primary); border-color: rgba(125,211,252,0.45); background: rgba(125,211,252,0.10); opacity: 1; text-decoration: none; }
 </style>
 
 <div id="horizonsList">
@@ -152,6 +226,15 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       <option value="year" selected>Год</option>
       <option value="5year">5 лет</option>
       <option value="life">Жизнь</option>
+    </select>
+    <select class="add-select" id="addPeriod" aria-label="Период новой цели"></select>
+  </div>
+  <div class="add-row-flex">
+    <select class="add-select" id="addPriority" aria-label="Приоритет новой цели">
+      <option value="p1">P1</option>
+      <option value="p2">P2</option>
+      <option value="p3" selected>P3</option>
+      <option value="p4">P4</option>
     </select>
     <select class="add-select" id="addType">
       <option value="check">Чекбокс</option>
@@ -177,6 +260,15 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
         <label for="editCurrent" style="font-size:11px; color:var(--text-tertiary); text-transform:uppercase; font-weight:700;">Прогресс</label>
         <input class="add-input" id="editCurrent" type="number" style="margin-top:6px;">
     </div>
+    <div style="margin-bottom:12px;">
+        <label for="editPriority" style="font-size:11px; color:var(--text-tertiary); text-transform:uppercase; font-weight:700;">Приоритет</label>
+        <select class="add-select" id="editPriority" style="width:100%; margin-top:6px;">
+          <option value="p1">P1</option>
+          <option value="p2">P2</option>
+          <option value="p3">P3</option>
+          <option value="p4">P4</option>
+        </select>
+    </div>
     <div style="display:flex; gap:8px;">
         <button class="add-btn-main" id="saveBtn">Сохранить</button>
         <button class="add-btn-main" id="closeBtn" style="background:rgba(255,255,255,0.05); color:#fff; width:100px;">Отмена</button>
@@ -185,10 +277,34 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   </div>
 </div>
 
+<dialog class="move-dialog" id="moveDialog" aria-labelledby="moveDialogTitle">
+  <div class="move-dialog-inner">
+    <h3 id="moveDialogTitle" style="font-size:17px;">Перенести цель</h3>
+    <p class="move-dialog-copy"><strong id="moveGoalTitle"></strong><br><span id="moveHorizonHint"></span></p>
+    <label class="move-dialog-label" for="movePeriod">Период
+      <input class="add-input" id="movePeriod" autocomplete="off" maxlength="20">
+    </label>
+    <label class="move-dialog-label" for="movePriority">Приоритет
+      <select class="add-select" id="movePriority">
+        <option value="p1">P1</option>
+        <option value="p2">P2</option>
+        <option value="p3">P3</option>
+        <option value="p4">P4</option>
+      </select>
+    </label>
+    <div class="move-dialog-actions">
+      <button type="button" class="add-btn-main" id="confirmMoveBtn">Перенести</button>
+      <button type="button" class="add-btn-main" id="cancelMoveBtn">Отмена</button>
+    </div>
+  </div>
+</dialog>
+<div class="goals-live" id="goalsLive" aria-live="polite" aria-atomic="true"></div>
+
 <script>
 (function(){
   'use strict';
   var G = window.Gamification;
+  var Core = window.GoalsCore;
 
   var HORIZONS = [
     { id: 'week',    name: 'Неделя',      icon: '🌱' },
@@ -204,20 +320,128 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     if(!d) {
         // Initial migration from old yearly goals
         var old = G.storeGet('yearly_goals_v1') || { goals: [] };
-        d = { goals: old.goals.map(function(g){ g.horizon = 'year'; return g; }) || [] };
+        d = { goals: (old.goals || []).map(function(g){
+          return Object.assign({}, g, { horizon: 'year' });
+        }) };
     }
-    return d;
+    var normalized = Core.normalizeData(d, new Date());
+    if (JSON.stringify(normalized) !== JSON.stringify(d)) setData(normalized);
+    return normalized;
   }
   function setData(d){ G.storeSet('horizons_goals_v2', d); }
+
+  function getPeriodSelection(){
+    var stored = G.storeGet('goals_period_selection_v1');
+    return stored && typeof stored === 'object' ? Object.assign({}, stored) : {};
+  }
+
+  function setPeriodSelection(selection){
+    G.storeSet('goals_period_selection_v1', Object.assign({}, selection));
+  }
+
+  function selectedPeriodFor(horizon){
+    var selection = getPeriodSelection();
+    var selected = selection[horizon];
+    if (selected && Core.formatPeriodLabel(horizon, selected)) return selected;
+    return Core.currentPeriodKey(horizon, new Date());
+  }
+
+  function periodOptionsHtml(horizon, selected){
+    if (horizon === 'life') return '';
+    var radius = horizon === 'week' || horizon === 'month' ? 6 : horizon === '5year' ? 3 : 4;
+    var options = [];
+    for (var offset = -radius; offset <= radius; offset += 1) {
+      var key = Core.shiftPeriodKey(horizon, selected, offset);
+      var label = Core.formatPeriodLabel(horizon, key);
+      options.push('<option value="' + G.esc(key) + '"' + (key === selected ? ' selected' : '') + '>' + G.esc(label) + '</option>');
+    }
+    return options.join('');
+  }
+
+  function periodNavigatorHtml(horizon, selected){
+    if (horizon === 'life') {
+      return '<div class="period-nav period-nav-static" data-horizon="life"><div class="period-static-label">Вся жизнь</div></div>';
+    }
+    return `
+      <div class="period-nav" data-horizon="${horizon}">
+        <button type="button" class="period-nav-btn period-drop-zone" data-period-action="previous" aria-label="Предыдущий период" onclick="window.shiftGoalPeriod('${horizon}', -1)" ondragover="window.allowAdjacentPeriodDrop(event, '${horizon}')" ondragleave="window.leaveGoalDropZone(event)" ondrop="window.dropGoalInAdjacentPeriod(event, '${horizon}', -1)">←</button>
+        <select class="period-select" aria-label="Выбрать период ${horizon}" onchange="window.selectGoalPeriod('${horizon}', this.value)">
+          ${periodOptionsHtml(horizon, selected)}
+        </select>
+        <button type="button" class="period-nav-btn period-drop-zone" data-period-action="next" aria-label="Следующий период" onclick="window.shiftGoalPeriod('${horizon}', 1)" ondragover="window.allowAdjacentPeriodDrop(event, '${horizon}')" ondragleave="window.leaveGoalDropZone(event)" ondrop="window.dropGoalInAdjacentPeriod(event, '${horizon}', 1)">→</button>
+        <button type="button" class="period-today" data-period-action="today" onclick="window.resetGoalPeriod('${horizon}')">Сегодня</button>
+      </div>
+    `;
+  }
 
   function getCollapsed(){ return G.storeGet('goals_collapsed_v1') || {}; }
   function setCollapsed(c){ G.storeSet('goals_collapsed_v1', c); }
 
+  var draggingGoalId = null;
+  var moveGoalId = null;
+  var moveDialogTrigger = null;
+
+  function goalById(data, id){
+    return data.goals.find(function(goal){ return goal.id === id; }) || null;
+  }
+
+  function announceGoalMove(goal, periodKey){
+    document.getElementById('goalsLive').textContent = goal.title + ' — ' + Core.formatPeriodLabel(goal.horizon, periodKey);
+  }
+
+  function focusGoalMoveResult(goalId, horizon, fallback){
+    var cards = document.querySelectorAll ? document.querySelectorAll('.goal-card') : [];
+    for (var i = 0; i < cards.length; i += 1) {
+      if (cards[i].goalId !== goalId) continue;
+      var moveButton = cards[i].querySelector && cards[i].querySelector('.goal-move-btn');
+      if (moveButton && moveButton.focus) {
+        moveButton.focus();
+        return;
+      }
+    }
+    var navigators = document.querySelectorAll ? document.querySelectorAll('.period-nav') : [];
+    for (var j = 0; j < navigators.length; j += 1) {
+      if (!navigators[j].dataset || navigators[j].dataset.horizon !== horizon) continue;
+      var periodSelect = navigators[j].querySelector && navigators[j].querySelector('.period-select');
+      if (periodSelect && periodSelect.focus) {
+        periodSelect.focus();
+        return;
+      }
+    }
+    if (fallback && fallback.focus) fallback.focus();
+  }
+
+  function applyGoalMove(command){
+    var data = getData();
+    var sourceGoal = goalById(data, command.goalId);
+    if (!sourceGoal || sourceGoal.done) return false;
+    var result = Core.moveGoal(data, command);
+    if (!result.ok) return false;
+    if (JSON.stringify(result.data) === JSON.stringify(data)) return true;
+    setData(result.data);
+    announceGoalMove(sourceGoal, command.targetPeriodKey);
+    draggingGoalId = null;
+    render();
+    return true;
+  }
+
+  function removeDropClass(event, className){
+    if (event && event.currentTarget && event.currentTarget.classList) {
+      event.currentTarget.classList.remove(className);
+    }
+  }
+
   function updateYearProgress(data) {
     var now = new Date();
-    var start = new Date(now.getFullYear(), 0, 1);
-    var end = new Date(now.getFullYear() + 1, 0, 1);
-    var pct = Math.min(100, Math.max(0, (now - start) / (end - start) * 100));
+    var selectedYear = Number(selectedPeriodFor('year'));
+    var currentYear = Number(Core.currentPeriodKey('year', now));
+    var start = new Date(currentYear, 0, 1);
+    var end = new Date(currentYear + 1, 0, 1);
+    var pct = selectedYear < currentYear
+      ? 100
+      : selectedYear > currentYear
+        ? 0
+        : Math.min(100, Math.max(0, (now - start) / (end - start) * 100));
     
     document.getElementById('yearPctText').textContent = Math.round(pct) + '%';
     
@@ -226,20 +450,25 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     ring.style.strokeDasharray = c;
     ring.style.strokeDashoffset = c - (pct / 100) * c;
     
-    document.getElementById('yearStatusText').textContent = now.getFullYear() + ' год';
+    document.getElementById('yearStatusText').textContent = selectedYear + ' год';
     
-    var goals = data.goals.filter(function(g) { return g.horizon === 'year'; });
+    var goals = data.goals.filter(function(g) {
+      return g.horizon === 'year' && g.periodKey === String(selectedYear);
+    });
     var doneCount = goals.filter(function(g) { return g.done; }).length;
     document.getElementById('goalsProgressLabel').textContent = doneCount + ' из ' + goals.length + ' целей выполнено';
     
     var grid = document.getElementById('monthsGrid');
     var monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-    var currentMonth = now.getMonth();
+    var currentMonthKey = Core.currentPeriodKey('month', now);
+    var selectedMonthKey = selectedPeriodFor('month');
     grid.innerHTML = monthNames.map(function(m, i) {
+      var monthKey = selectedYear + '-' + String(i + 1).padStart(2, '0');
       var cls = 'month-tag';
-      if (i < currentMonth) cls += ' past';
-      else if (i === currentMonth) cls += ' current';
-      return '<div class="' + cls + '">' + m + '</div>';
+      if (monthKey < currentMonthKey) cls += ' past';
+      else if (monthKey === currentMonthKey) cls += ' current';
+      if (monthKey === selectedMonthKey) cls += ' selected';
+      return '<button type="button" class="' + cls + '" aria-label="Открыть ' + G.esc(Core.formatPeriodLabel('month', monthKey)) + '" onclick="window.selectGoalMonth(' + i + ')">' + m + '</button>';
     }).join('');
   }
 
@@ -251,46 +480,78 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     container.innerHTML = '';
 
     HORIZONS.forEach(function(h){
-      var goals = data.goals.filter(function(g){ return g.horizon === h.id; });
+      var selectedPeriod = selectedPeriodFor(h.id);
+      var goals = Core.sortGoals(data.goals.filter(function(g){
+        return g.horizon === h.id && g.periodKey === selectedPeriod;
+      }));
       var isCollapsed = !!collapsed[h.id];
 
       var sec = document.createElement('div');
       sec.className = 'horizon-section h-' + h.id + (isCollapsed ? ' collapsed' : '');
       
       sec.innerHTML = `
-        <div class="horizon-header" onclick="window.toggleHorizon('${h.id}')">
+        <button type="button" class="horizon-header" aria-expanded="${isCollapsed ? 'false' : 'true'}" onclick="window.toggleHorizon('${h.id}')">
           <span class="horizon-icon">${h.icon}</span>
           <span class="horizon-title">${h.name}</span>
           <span class="horizon-count">${goals.length}</span>
           <span class="horizon-arrow">▼</span>
-        </div>
+        </button>
         <div class="horizon-content" id="content-${h.id}"></div>
       `;
 
       var content = sec.querySelector('.horizon-content');
+      content.innerHTML = periodNavigatorHtml(h.id, selectedPeriod);
       if(goals.length === 0) {
-        content.innerHTML = '<div style="text-align:center; padding:20px; font-size:12px; color:var(--text-tertiary);">Нет целей на этот горизонт.</div>';
+        var empty = document.createElement('div');
+        empty.className = 'period-empty';
+        empty.textContent = 'Нет целей в выбранном периоде. Новая цель будет создана здесь.';
+        content.appendChild(empty);
       } else {
+        var completedLabelAdded = false;
         goals.forEach(function(g){
+            if (g.done && !completedLabelAdded) {
+              var completedLabel = document.createElement('div');
+              completedLabel.className = 'completed-group-label';
+              completedLabel.textContent = 'Выполнено в этом периоде';
+              content.appendChild(completedLabel);
+              completedLabelAdded = true;
+            }
             var isCheck = g.type === 'check';
             var pct = isCheck ? (g.done?100:0) : Math.min(100, Math.round((g.current||0)/(g.target||1)*100));
             var card = document.createElement('div');
-            card.className = 'goal-card' + (g.done?' completed':'');
+            card.className = 'goal-card priority-' + g.priority + (g.done?' completed':'');
+            card.goalId = g.id;
+            var priorityHtml = '<span class="priority-mark"><span class="priority-flag" aria-hidden="true"></span><span>' + G.esc(g.priority.toUpperCase()) + '</span></span>';
+            var moveHtml = g.done ? '' : '<button type="button" class="goal-move-btn" data-goal-move="true">Перенести</button>';
             
             if (isCheck) {
                 card.innerHTML = `
                     <div class="goal-top" style="margin-bottom:0">
+                        ${priorityHtml}
                         <span class="goal-title">${G.esc(g.title)}</span>
-                        <div class="goal-check-btn" onclick="event.stopPropagation(); window.toggleGoalStatus('${g.id}')">
+                        ${moveHtml}
+                        <button type="button" class="goal-check-btn" aria-label="Изменить статус цели">
                             <span class="goal-check-icon">✓</span>
-                        </div>
+                        </button>
                     </div>
                 `;
-                card.onclick = () => openEdit(g);
+                card.onclick = function(event){
+                  if (event && event.target && event.target.closest && event.target.closest('.goal-move-btn')) {
+                    window.openGoalMoveDialog(g.id, event.target.closest('.goal-move-btn'));
+                    return;
+                  }
+                  if (event && event.target && event.target.closest && event.target.closest('.goal-check-btn')) {
+                    window.toggleGoalStatus(g.id);
+                    return;
+                  }
+                  openEdit(g);
+                };
             } else {
                 card.innerHTML = `
                     <div class="goal-top">
+                        ${priorityHtml}
                         <span class="goal-title">${G.esc(g.title)}</span>
+                        ${moveHtml}
                         <span class="goal-pct">${pct}%</span>
                     </div>
                     <div class="goal-bar-bg"><div class="goal-bar-fill" style="width:${pct}%"></div></div>
@@ -298,7 +559,33 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
                         <span>${(g.current||0)+' / '+g.target+' '+(g.unit||'')}</span>
                     </div>
                 `;
-                card.onclick = () => openEdit(g);
+                card.onclick = function(event){
+                  if (event && event.target && event.target.closest && event.target.closest('.goal-move-btn')) {
+                    window.openGoalMoveDialog(g.id, event.target.closest('.goal-move-btn'));
+                    return;
+                  }
+                  openEdit(g);
+                };
+            }
+            card.draggable = !g.done;
+            if (!g.done) {
+              card.ondragstart = function(event){ return window.startGoalDrag(event, g.id); };
+              card.ondragover = function(event){
+                var dataNow = getData();
+                var dragged = goalById(dataNow, draggingGoalId);
+                if (!dragged || dragged.id === g.id || dragged.horizon !== g.horizon || dragged.periodKey !== g.periodKey || dragged.priority !== g.priority) return false;
+                event.preventDefault();
+                if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                card.classList.add('drop-before');
+                return true;
+              };
+              card.ondragleave = function(){ card.classList.remove('drop-before'); };
+              card.ondrop = function(event){ return window.dropGoalBefore(event, g.id); };
+              card.ondragend = function(){
+                draggingGoalId = null;
+                card.classList.remove('dragging');
+                card.classList.remove('drop-before');
+              };
             }
             content.appendChild(card);
         });
@@ -306,6 +593,170 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       container.appendChild(sec);
     });
   }
+
+  window.selectGoalPeriod = function(horizon, periodKey){
+    if (!Core.formatPeriodLabel(horizon, periodKey)) return false;
+    var selection = getPeriodSelection();
+    if (selection[horizon] === periodKey) return true;
+    selection[horizon] = periodKey;
+    setPeriodSelection(selection);
+    render();
+    return true;
+  };
+
+  window.shiftGoalPeriod = function(horizon, delta){
+    var shifted = Core.shiftPeriodKey(horizon, selectedPeriodFor(horizon), delta);
+    return shifted ? window.selectGoalPeriod(horizon, shifted) : false;
+  };
+
+  window.resetGoalPeriod = function(horizon){
+    var current = Core.currentPeriodKey(horizon, new Date());
+    return current ? window.selectGoalPeriod(horizon, current) : false;
+  };
+
+  window.selectGoalMonth = function(monthIndex){
+    var index = Number(monthIndex);
+    if (!Number.isInteger(index) || index < 0 || index > 11) return false;
+    var selectedYear = selectedPeriodFor('year');
+    var key = selectedYear + '-' + String(index + 1).padStart(2, '0');
+    var collapsed = getCollapsed();
+    if (collapsed.month) {
+      collapsed.month = false;
+      setCollapsed(collapsed);
+    }
+    return window.selectGoalPeriod('month', key);
+  };
+
+  window.startGoalDrag = function(event, goalId){
+    var goal = goalById(getData(), goalId);
+    if (!goal || goal.done) return false;
+    draggingGoalId = goal.id;
+    if (event && event.currentTarget && event.currentTarget.classList) event.currentTarget.classList.add('dragging');
+    if (event && event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', goal.id);
+    }
+    return true;
+  };
+
+  window.dropGoalBefore = function(event, targetGoalId){
+    if (event) event.preventDefault();
+    removeDropClass(event, 'drop-before');
+    var data = getData();
+    var moved = goalById(data, draggingGoalId);
+    var target = goalById(data, targetGoalId);
+    if (!moved || !target || moved.id === target.id || moved.done || target.done) return false;
+    if (moved.horizon !== target.horizon || moved.periodKey !== target.periodKey || moved.priority !== target.priority) return false;
+    return applyGoalMove({
+      goalId: moved.id,
+      targetPeriodKey: target.periodKey,
+      targetPriority: target.priority,
+      beforeGoalId: target.id
+    });
+  };
+
+  window.allowAdjacentPeriodDrop = function(event, horizon){
+    var goal = goalById(getData(), draggingGoalId);
+    if (!goal || goal.done || goal.horizon !== horizon || horizon === 'life') return false;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    if (event.currentTarget && event.currentTarget.classList) event.currentTarget.classList.add('drag-over');
+    return true;
+  };
+
+  window.leaveGoalDropZone = function(event){
+    removeDropClass(event, 'drag-over');
+  };
+
+  window.dropGoalInAdjacentPeriod = function(event, horizon, delta){
+    if (event) event.preventDefault();
+    removeDropClass(event, 'drag-over');
+    var goal = goalById(getData(), draggingGoalId);
+    if (!goal || goal.done || goal.horizon !== horizon || horizon === 'life') return false;
+    var targetPeriod = Core.shiftPeriodKey(horizon, goal.periodKey, delta);
+    if (!targetPeriod) return false;
+    return applyGoalMove({
+      goalId: goal.id,
+      targetPeriodKey: targetPeriod,
+      targetPriority: goal.priority
+    });
+  };
+
+  function movePeriodInputFor(goal){
+    var input = document.getElementById('movePeriod');
+    input.disabled = goal.horizon === 'life';
+    input.type = goal.horizon === 'month' ? 'month'
+      : goal.horizon === 'week' ? 'date'
+        : goal.horizon === 'year' || goal.horizon === '5year' ? 'number' : 'text';
+    input.step = goal.horizon === '5year' ? '5' : '1';
+    input.placeholder = goal.horizon === 'quarter' ? 'например, 2027-Q2' : '';
+    input.value = goal.periodKey;
+    input.setCustomValidity('');
+  }
+
+  function closeMoveDialog(restoreFocus){
+    var dialog = document.getElementById('moveDialog');
+    if (dialog.open) dialog.close();
+    if (restoreFocus && moveDialogTrigger && moveDialogTrigger.focus) moveDialogTrigger.focus();
+    moveGoalId = null;
+    moveDialogTrigger = null;
+  }
+
+  window.openGoalMoveDialog = function(goalId, trigger){
+    var goal = goalById(getData(), goalId);
+    if (!goal || goal.done) return false;
+    moveGoalId = goal.id;
+    moveDialogTrigger = trigger || null;
+    document.getElementById('moveGoalTitle').textContent = goal.title;
+    document.getElementById('moveHorizonHint').textContent = goal.horizon === 'week'
+      ? 'Укажи понедельник нужной недели.'
+      : goal.horizon === 'quarter'
+        ? 'Формат квартала: 2027-Q2.'
+        : goal.horizon === '5year'
+          ? 'Начало пятилетки: 2026, 2031, 2036…'
+          : 'Можно выбрать прошлый или будущий период.';
+    movePeriodInputFor(goal);
+    document.getElementById('movePriority').value = goal.priority;
+    document.getElementById('moveDialog').showModal();
+    document.getElementById('movePeriod').focus();
+    return true;
+  };
+
+  document.getElementById('confirmMoveBtn').onclick = function(){
+    var data = getData();
+    var goal = goalById(data, moveGoalId);
+    if (!goal || goal.done) {
+      closeMoveDialog(true);
+      return;
+    }
+    var input = document.getElementById('movePeriod');
+    var targetPeriod = String(input.value || '').trim();
+    if (!Core.formatPeriodLabel(goal.horizon, targetPeriod)) {
+      input.setCustomValidity('Выбери корректный период');
+      input.reportValidity();
+      input.focus();
+      return;
+    }
+    input.setCustomValidity('');
+    var trigger = moveDialogTrigger;
+    var moved = applyGoalMove({
+      goalId: goal.id,
+      targetPeriodKey: targetPeriod,
+      targetPriority: document.getElementById('movePriority').value
+    });
+    if (!moved) return;
+    var dialog = document.getElementById('moveDialog');
+    if (dialog.open) dialog.close();
+    focusGoalMoveResult(goal.id, goal.horizon, trigger);
+    moveGoalId = null;
+    moveDialogTrigger = null;
+  };
+
+  document.getElementById('cancelMoveBtn').onclick = function(){ closeMoveDialog(true); };
+  document.getElementById('moveDialog').oncancel = function(event){
+    event.preventDefault();
+    closeMoveDialog(true);
+  };
 
   window.toggleGoalStatus = function(id) {
     var data = getData();
@@ -343,6 +794,9 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     var titleInput = document.getElementById('editTitle');
     titleInput.value = g.title;
     titleInput.setCustomValidity('');
+    var priorityInput = document.getElementById('editPriority');
+    priorityInput.value = g.priority;
+    priorityInput.disabled = !!g.done;
     
     var editRow = document.getElementById('editCurrent').parentElement;
     if (g.type === 'check') {
@@ -374,6 +828,17 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     var data = getData();
     var g = data.goals.find(it => it.id === editingId);
     if(g){
+        var requestedPriority = document.getElementById('editPriority').value;
+        if (!g.done && requestedPriority !== g.priority) {
+          var moveResult = Core.moveGoal(data, {
+            goalId: g.id,
+            targetPeriodKey: g.periodKey,
+            targetPriority: requestedPriority
+          });
+          if (!moveResult.ok) return;
+          data = moveResult.data;
+          g = data.goals.find(it => it.id === editingId);
+        }
         g.title = titleResult.value;
         if(g.type === 'number') {
           g.current = parseInt(document.getElementById('editCurrent').value, 10) || 0;
@@ -398,14 +863,41 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     document.getElementById('numberFields').style.display = this.value === 'number' ? 'flex' : 'none';
   };
 
+  function populateAddPeriodOptions(){
+    var horizon = document.getElementById('addHorizon').value;
+    var selected = selectedPeriodFor(horizon);
+    var periodInput = document.getElementById('addPeriod');
+    periodInput.innerHTML = horizon === 'life'
+      ? '<option value="life">Вся жизнь</option>'
+      : periodOptionsHtml(horizon, selected);
+    periodInput.value = selected;
+  }
+
+  document.getElementById('addHorizon').onchange = populateAddPeriodOptions;
+
+  function nextGoalOrder(data, horizon, periodKey, priority){
+    var maxOrder = data.goals.reduce(function(maximum, goal){
+      if (goal.horizon !== horizon || goal.periodKey !== periodKey || goal.priority !== priority) return maximum;
+      return Math.max(maximum, Number(goal.order) || 0);
+    }, 0);
+    return maxOrder + 100;
+  }
+
   document.getElementById('addBtn').onclick = function(){
     var title = document.getElementById('addTitle').value.trim();
     if(!title) return;
     var data = getData();
+    var horizon = document.getElementById('addHorizon').value;
+    var selectedPeriod = document.getElementById('addPeriod').value;
+    if (!Core.formatPeriodLabel(horizon, selectedPeriod)) selectedPeriod = selectedPeriodFor(horizon);
+    var priority = document.getElementById('addPriority').value;
     data.goals.push({
         id: 'hg_'+Date.now(),
         title: title,
-        horizon: document.getElementById('addHorizon').value,
+        horizon: horizon,
+        periodKey: selectedPeriod,
+        priority: priority,
+        order: nextGoalOrder(data, horizon, selectedPeriod, priority),
         type: document.getElementById('addType').value,
         target: parseInt(document.getElementById('addTarget').value, 10) || 1,
         unit: document.getElementById('addUnit').value || '',
@@ -417,6 +909,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     render();
   };
 
+  populateAddPeriodOptions();
   render();
 })();
 </script>
