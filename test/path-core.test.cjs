@@ -290,3 +290,36 @@ test('дальний ориентир я остаётся последним, о
     { code: 'DESTINATION_EXISTS' },
   );
 });
+test('полное допустимое название цели сохраняется в условии без обрезания', () => {
+  const title = 'ц'.repeat(200);
+  const p = P.upsertStage(
+    P.createPath(NOW),
+    stage('b', [{ id: 'g', type: 'goal', goalId: 'long', title }]),
+  );
+  assert.equal(p.stages[1].criteria[0].title, title);
+});
+test('неполные сохранённые visual и avatar отклоняются до вычисления состояния', () => {
+  for (const [object, field] of [
+    ['snapshot', 'avatar'],
+    ['snapshot', 'visual'],
+    ['stage', 'visual'],
+    ['path', 'avatar'],
+  ]) {
+    const p = P.createPath(NOW);
+    const target =
+      object === 'snapshot'
+        ? p.stages[0].snapshot
+        : object === 'stage'
+          ? p.stages[0]
+          : p;
+    delete target[field];
+    assert.throws(
+      () => P.validatePath(p),
+      { code: 'INVALID_DATA' },
+      object + '.' + field,
+    );
+  }
+  const partial = P.createPath(NOW);
+  delete partial.stages[0].snapshot.visual.energy;
+  assert.throws(() => P.validatePath(partial), { code: 'INVALID_DATA' });
+});

@@ -26,6 +26,8 @@ sync и включён в экспорт профиля. новая таблиц
 `node scripts/verify-path.cjs http://127.0.0.1:8766 /tmp/dashboard-path-check`
 при доступном `playwright` и chrome. он использует новый browser context,
 синтетические данные и отключает загрузку sdk с cdn, не обращаясь к аккаунту.
+ошибки повреждённых данных, длинных названий, отката галочки и фонового
+сравнения проверяются `node scripts/verify-path-regressions.cjs`.
 
 ## постоянные кабинеты школы
 

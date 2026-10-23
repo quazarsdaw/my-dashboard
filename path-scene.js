@@ -19,7 +19,7 @@ export function createScene(container, onSelect) {
   container.append(canvas);
   const world = new THREE.Scene();
   world.fog = new THREE.Fog('#20232b', 13, 32);
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 70);
+  const camera = new THREE.OrthographicCamera(-6, 6, 3.5, -3.5, 0.1, 70);
   const hemi = new THREE.HemisphereLight('#d4e2ff', '#4d4351', 2.5);
   world.add(hemi);
   const key = new THREE.DirectionalLight('#fff0d4', 4);
@@ -61,6 +61,7 @@ export function createScene(container, onSelect) {
     tween = null,
     pressed = null,
     resize;
+  let compact = container.clientWidth < 600;
   const pickables = [];
   function material(color, roughness = 0.8) {
     return new THREE.MeshStandardMaterial({ color, roughness });
@@ -284,8 +285,9 @@ export function createScene(container, onSelect) {
     avatar = null;
     currentProps = null;
     previousProps = null;
-    const start = Math.max(0, selectedIndex - 2),
-      end = Math.min(items.length, selectedIndex + 3);
+    const neighbours = compact ? 1 : 2;
+    const start = Math.max(0, selectedIndex - neighbours),
+      end = Math.min(items.length, selectedIndex + neighbours + 1);
     for (let i = start; i < end; i++) {
       const v = items[i],
         relative = i - selectedIndex,
@@ -447,8 +449,14 @@ export function createScene(container, onSelect) {
     const { width, height } = container.getBoundingClientRect();
     if (!width || !height) return;
     renderer.setSize(width, height, false);
-    camera.aspect = width / height;
+    camera.left = -(width / height) * 3.5;
+    camera.right = (width / height) * 3.5;
     camera.updateProjectionMatrix();
+    const nextCompact = width < 600;
+    if (nextCompact !== compact && items.length) {
+      compact = nextCompact;
+      rebuild();
+    }
     invalidate();
   });
   resize.observe(container);

@@ -67,12 +67,22 @@
       fail('INVALID_DATA');
     return { skin: a.skin, hair: a.hair };
   }
+  function storedVisual(value) {
+    if (
+      !value ||
+      !Number.isInteger(value.energy) ||
+      !OUTFITS.includes(value.outfit) ||
+      !SCENES.includes(value.scene)
+    )
+      fail('INVALID_DATA');
+    visual(value);
+  }
   function criterion(value) {
     if (!value || !validId(value.id)) fail('INVALID_DATA');
     var c = {
       id: value.id,
       type: value.type,
-      title: text(value.title, 160, true),
+      title: text(value.title, value.type === 'goal' ? 200 : 160, true),
       required: value.required !== false,
     };
     if (c.type === 'manual') c.done = value.done === true;
@@ -134,11 +144,13 @@
       value.stages.length > 24
     )
       fail('INVALID_DATA');
+    if (!value.avatar) fail('INVALID_DATA');
     avatar(value.avatar);
     var pending = false;
     var ids = new Set();
     value.stages.forEach(function (s, i) {
       stageDraft(s);
+      storedVisual(s.visual);
       if (ids.has(s.id)) fail('INVALID_DATA');
       ids.add(s.id);
       if (s.destination && i !== value.stages.length - 1)
@@ -152,7 +164,8 @@
           fail('INVALID_DATA');
         text(s.snapshot.title, 80, true);
         text(s.snapshot.description, 1000, false);
-        visual(s.snapshot.visual);
+        if (!s.snapshot.avatar) fail('INVALID_DATA');
+        storedVisual(s.snapshot.visual);
         avatar(s.snapshot.avatar);
         if (
           !Array.isArray(s.snapshot.criteria) ||
@@ -165,7 +178,7 @@
             typeof c.done !== 'boolean' ||
             !Number.isFinite(c.current) ||
             !Number.isFinite(c.target) ||
-            typeof c.progress !== 'number'
+            !Number.isFinite(c.progress)
           )
             fail('INVALID_DATA');
         });

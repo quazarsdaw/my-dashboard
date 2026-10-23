@@ -55,9 +55,31 @@
     function sources() {
       var goals = source('horizons_goals_v2', {});
       var tracker = source('tracker_v1', {});
+      function records(value) {
+        return Array.isArray(value)
+          ? value.filter(function (item) {
+              return (
+                item &&
+                typeof item === 'object' &&
+                typeof item.id === 'string' &&
+                item.id.trim()
+              );
+            })
+          : [];
+      }
+      tracker = tracker && typeof tracker === 'object' ? tracker : {};
       return {
-        goals: Array.isArray(goals.goals) ? goals.goals : [],
-        tracker: tracker,
+        goals: records(goals.goals),
+        tracker: {
+          good: records(tracker.good),
+          bad: records(tracker.bad),
+          marks:
+            tracker.marks &&
+            typeof tracker.marks === 'object' &&
+            !Array.isArray(tracker.marks)
+              ? tracker.marks
+              : {},
+        },
       };
     }
     function subscribe(fn) {

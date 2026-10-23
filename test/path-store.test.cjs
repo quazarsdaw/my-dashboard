@@ -97,3 +97,20 @@ test('применение sync и изменение источника уве�
   events.dispatchEvent(new Event('storage'));
   assert.equal(calls, 2);
 });
+test('списки источников фильтруют повреждённые элементы для безопасного редактора', () => {
+  const { s, values } = fixture();
+  values.set(
+    'horizons_goals_v2',
+    JSON.stringify({
+      goals: [null, {}, 'oops', { id: 'valid', title: 'цель' }],
+    }),
+  );
+  values.set('tracker_v1', JSON.stringify({ good: 'oops', marks: {} }));
+  assert.deepEqual(s.sources().goals, [{ id: 'valid', title: 'цель' }]);
+  assert.deepEqual(s.sources().tracker.good, []);
+  values.set(
+    'tracker_v1',
+    JSON.stringify({ good: [null, { id: 'sleep', name: 'сон' }], marks: {} }),
+  );
+  assert.deepEqual(s.sources().tracker.good, [{ id: 'sleep', name: 'сон' }]);
+});

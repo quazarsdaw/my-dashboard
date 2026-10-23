@@ -13,6 +13,7 @@
     return document.getElementById(id);
   };
   var selectedId = null,
+    compareSelection = null,
     path = null,
     views = [],
     scene = null,
@@ -123,6 +124,7 @@
         });
         $('sceneFallback').hidden = true;
         scene.setStages(views, selectedId);
+        scene.compare(Number($('compare').value) / 100);
       })
       .catch(function () {
         $('sceneFallback').textContent =
@@ -134,6 +136,7 @@
   function render() {
     try {
       path = store.read();
+      if (path) views = P.evaluate(path, store.sources());
     } catch (e) {
       notify(message(e), true);
       $('emptyState').hidden = true;
@@ -145,7 +148,6 @@
     $('pathContent').hidden = !path;
     $('addStage').hidden = !path;
     if (!path) return;
-    views = P.evaluate(path, store.sources());
     $('addStage').hidden = !!views.find(function (v) {
       return v.destination && v.acceptedAt;
     });
@@ -164,7 +166,8 @@
     });
     $('sceneTitle').textContent = 'Точка ' + stageLabel(v) + ' · ' + v.title;
     $('compare').disabled = v.index === 0;
-    $('compare').value = 100;
+    if (compareSelection !== selectedId) $('compare').value = 100;
+    compareSelection = selectedId;
     $('compareFrom').textContent = v.index
       ? views[v.index - 1].title
       : 'Исходная точка';
@@ -172,7 +175,10 @@
     renderDetail(v);
     renderNav();
     ensureScene();
-    if (scene) scene.setStages(views, selectedId);
+    if (scene) {
+      scene.setStages(views, selectedId);
+      scene.compare(Number($('compare').value) / 100);
+    }
   }
   function renderNav() {
     var nav = $('stageNav');
@@ -265,9 +271,10 @@
         checkbox.checked = c.done;
         checkbox.setAttribute('aria-label', c.title);
         checkbox.addEventListener('change', function () {
-          save(path.revision, function (p) {
+          var saved = save(path.revision, function (p) {
             return P.setManualCriterion(p, v.id, c.id, checkbox.checked);
           });
+          if (!saved) checkbox.checked = c.done;
         });
         row.append(checkbox);
       } else
