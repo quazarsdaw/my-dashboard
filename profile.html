@@ -14,7 +14,7 @@
 <script src="gamification.js?v=401"></script>
 <script src="supabase-sync.js?v=406-sb" defer></script>
 <script src="profile-theme.js?v=401"></script>
-<script src="topbar.js?v=404" defer></script><style>
+<script src="topbar.js?v=405-path" defer></script><style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -390,6 +390,8 @@ body::after {
 <body>
 
 <h1 class="page-title">Профиль</h1>
+
+<a href="path.html" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;margin:16px 0;border:1px solid rgba(242,192,99,.3);border-radius:14px;text-decoration:none;color:inherit;background:rgba(242,192,99,.05)"><span><strong>Мой путь</strong><span style="display:block;font-size:12px;color:var(--text-tertiary);margin-top:4px">Лестница версий себя, цели и новые этапы</span></span><span aria-hidden="true">↗</span></a>
 
 <!-- Hero card -->
 <div class="profile-hero" id="profileHero">
@@ -972,6 +974,7 @@ body::after {
     'goals_collapsed_v1',
     'habits_v1',
     'horizons_goals_v2',
+    'identity_path_v1',
     'inbox_v1',
     'nutrition_meals_v1',
     'nutrition_state_v1',

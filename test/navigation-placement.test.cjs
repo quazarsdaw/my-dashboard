@@ -163,10 +163,13 @@ test('все основные страницы загружают одну но�
     'profile.html',
     'health.html',
     'gym.html',
-    'finance.html'
+    'finance.html',
+    'path.html'
   ];
 
-  for (const page of pages) {
-    assert.match(read(page), /<script src="topbar\.js\?v=404" defer><\/script>/, page);
-  }
+  const versions=pages.map(page=>{
+    const match=read(page).match(/<script src="topbar\.js\?v=([^\"]+)" defer><\/script>/);
+    assert.ok(match,page+' подключает общую навигацию');return match[1];
+  });
+  assert.equal(new Set(versions).size,1,'страницы используют один cache key');
 });

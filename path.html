@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1C1E24" />
+    <link rel="icon" type="image/svg+xml" href="app-icon.svg" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="path.css?v=3" />
+    <title>Мой путь</title>
+    <script src="gamification.js?v=401"></script>
+    <script src="profile-theme.js?v=401"></script>
+    <script src="supabase-sync.js?v=406-sb" defer></script>
+    <script src="topbar.js?v=405-path" defer></script>
+    <script src="path-core.js?v=3" defer></script>
+    <script src="path-store.js?v=1" defer></script>
+    <script src="path-avatar-editor.js?v=3" defer></script>
+    <script src="path.js?v=3" defer></script>
+  </head>
+  <body>
+    <main>
+      <header class="path-heading">
+        <div>
+          <a class="back-link" href="goals.html">← К целям</a>
+          <h1>Мой путь</h1>
+          <p>От того, кто я сейчас, к тому, кем хочу стать.</p>
+        </div>
+        <button type="button" id="addStage" class="button primary" hidden>
+          + Новая ступень
+        </button>
+      </header>
+      <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+      <section id="emptyState" class="empty-state" hidden>
+        <div class="empty-letter" aria-hidden="true">А <span>→</span> Я</div>
+        <h2>У каждой версии тебя есть следующий шаг.</h2>
+        <p>
+          Сохрани исходную точку, добавь будущие этапы и свяжи их с целями и
+          привычками. Когда будешь готов, прими следующую версию сам.
+        </p>
+        <button type="button" id="createPath" class="button primary">
+          Создать мой путь
+        </button>
+        <p class="quiet">Начнём с одной ступени — «я сейчас».</p>
+      </section>
+      <div id="pathContent" hidden>
+        <div class="journey-layout">
+          <section class="world" aria-label="Трёхмерная лестница версий себя">
+            <div class="world-caption">
+              <span id="sceneTitle"></span
+              ><button type="button" id="editAvatar" class="text-button">
+                Внешность
+              </button>
+            </div>
+            <div
+              id="scene"
+              class="scene"
+              aria-label="3d-персонаж; поворот перетаскиванием"
+              role="img"
+            >
+              <p id="sceneFallback" class="scene-fallback">Загружаем 3D…</p>
+            </div>
+            <div class="scene-toolbar">
+              <span id="sceneHint">Перетаскивай, чтобы повернуть</span
+              ><button
+                type="button"
+                id="resetCamera"
+                class="text-button"
+                aria-label="Вернуть камеру в исходное положение"
+              >
+                Сбросить вид
+              </button>
+            </div>
+            <div class="compare-control">
+              <label for="compare">Сравнить с предыдущей версией</label
+              ><input
+                id="compare"
+                type="range"
+                min="0"
+                max="100"
+                value="100"
+                disabled
+              />
+              <div>
+                <span id="compareFrom">Исходная точка</span
+                ><span id="compareTo">Выбранная версия</span>
+              </div>
+              <p class="quiet">
+                Образ задаёшь ты. Условия показывают фактический прогресс.
+              </p>
+            </div>
+          </section>
+          <section
+            id="stageDetail"
+            class="stage-detail"
+            aria-label="Выбранная ступень"
+          ></section>
+        </div>
+        <section class="route-section" aria-label="Ступени пути">
+          <div class="route-heading">
+            <h2>Твоя траектория</h2>
+            <span id="routeSummary" class="quiet"></span>
+          </div>
+          <nav
+            id="stageNav"
+            class="stage-nav"
+            aria-label="Выбрать ступень"
+          ></nav>
+        </section>
+      </div>
+    </main>
+
+    <dialog
+      id="stageDialog"
+      class="editor-dialog"
+      aria-labelledby="editorTitle"
+    >
+      <form id="stageForm">
+        <header class="dialog-heading">
+          <h2 id="editorTitle">Новая ступень</h2>
+          <button
+            type="button"
+            class="icon-button"
+            id="closeEditor"
+            aria-label="Закрыть редактор"
+          >
+            ×
+          </button>
+        </header>
+        <p class="form-error" id="editorError" role="alert" hidden></p>
+        <label
+          >Название<input
+            id="stageTitle"
+            name="title"
+            required
+            maxlength="80"
+            placeholder="Например, стабильный режим"
+        /></label>
+        <label
+          >Какой я здесь<textarea
+            id="stageDescription"
+            rows="3"
+            maxlength="1000"
+            placeholder="Что меняется в моей жизни и самочувствии"
+          ></textarea>
+        </label>
+        <label
+          >Ориентир по дате <span class="quiet">необязательно</span
+          ><input id="stageDate" type="date"
+        /></label>
+        <label class="destination-label"
+          ><input id="stageDestination" type="checkbox" /> Дальний ориентир «Я»
+          — последняя ступень</label
+        >
+        <fieldset>
+          <legend>Образ этой версии</legend>
+          <label for="stageEnergy"
+            >Энергия и осанка <output id="energyOutput">70</output></label
+          ><input id="stageEnergy" type="range" min="0" max="100" value="70" />
+          <div class="form-row">
+            <label
+              >Одежда<select id="stageOutfit">
+                <option value="casual">Повседневная</option>
+                <option value="sport">Спортивная</option>
+                <option value="smart">Деловая</option>
+                <option value="hoodie">Худи и кеды</option>
+                <option value="coat">Пальто</option>
+              </select></label
+            ><label
+              >Окружение<select id="stageScene">
+                <option value="calm">Уютное пространство</option>
+                <option value="work">Рабочий кабинет</option>
+                <option value="graduate">Библиотека и учёба</option>
+                <option value="fitness">Движение и спорт</option>
+                <option value="creative">Творческая мастерская</option>
+              </select></label
+            >
+          </div>
+          <label
+            >Обустройство<select id="stageSetting">
+              <option value="0">Простое — самое необходимое</option>
+              <option value="1" selected>Обжитое — мебель и личные вещи</option>
+              <option value="2">Продуманное — больше деталей</option>
+            </select></label
+          >
+          <p class="quiet">
+            Выбирай то, что отражает именно твою версию. Вещи и одежда не
+            начисляются автоматически за достижения.
+          </p>
+        </fieldset>
+        <fieldset>
+          <legend>Условия перехода</legend>
+          <p class="quiet">
+            Все обязательные условия должны выполниться. Переход всегда
+            подтверждаешь ты.
+          </p>
+          <div id="criteriaEditor"></div>
+          <button type="button" id="addCriterion" class="button secondary">
+            + Добавить условие
+          </button>
+        </fieldset>
+        <footer class="dialog-actions">
+          <button type="button" id="cancelEditor" class="button secondary">
+            Отмена</button
+          ><button type="submit" class="button primary">
+            Сохранить ступень
+          </button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog
+      id="confirmDialog"
+      class="confirm-dialog"
+      aria-labelledby="confirmTitle"
+    >
+      <form method="dialog">
+        <h2 id="confirmTitle"></h2>
+        <p id="confirmText"></p>
+        <div class="dialog-actions">
+          <button value="cancel" class="button secondary">Отмена</button
+          ><button value="confirm" id="confirmAction" class="button primary">
+            Подтвердить
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog
+      id="avatarDialog"
+      class="avatar-dialog"
+      aria-labelledby="avatarTitle"
+    >
+      <form id="avatarForm">
+        <header class="dialog-heading">
+          <h2 id="avatarTitle">Мой персонаж</h2>
+          <button
+            type="button"
+            id="closeAvatar"
+            class="icon-button"
+            aria-label="Закрыть редактор внешности"
+          >
+            ×
+          </button>
+        </header>
+        <p class="quiet">
+          Общая внешность для будущих версий. Параметры принятых ступеней не
+          меняются.
+        </p>
+        <div class="avatar-layout">
+          <div class="avatar-preview-pane">
+            <div
+              id="avatarPreview"
+              class="avatar-preview"
+              role="img"
+              aria-label="Предпросмотр персонажа"
+            >
+              <p id="avatarPreviewFallback" class="quiet" role="status">
+                Загружаем 3D…
+              </p>
+            </div>
+            <p class="quiet avatar-preview-note">
+              Меняй детали и сразу смотри результат.<br />Данные сохранятся
+              только по кнопке.
+            </p>
+          </div>
+          <div class="avatar-fields">
+            <fieldset>
+              <legend>Лицо и характер</legend>
+              <div class="form-row">
+                <label
+                  >Форма лица<select id="avatarFaceShape">
+                    <option value="oval">Овальное</option>
+                    <option value="round">Округлое</option>
+                    <option value="angular">Угловатое</option>
+                  </select></label
+                >
+                <label
+                  >Выражение<select id="avatarExpression">
+                    <option value="softSmile">Лёгкая улыбка</option>
+                    <option value="confident">Уверенное</option>
+                    <option value="calm">Спокойное</option>
+                  </select></label
+                >
+              </div>
+              <div class="form-row">
+                <label
+                  >Телосложение<select id="avatarBodyType">
+                    <option value="standard">Среднее</option>
+                    <option value="lean">Стройное</option>
+                    <option value="broad">Широкое</option>
+                  </select></label
+                >
+                <label
+                  >Цвет кожи<input id="avatarSkin" type="color" value="#c99572"
+                /></label>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Волосы и детали</legend>
+              <div class="form-row">
+                <label
+                  >Причёска<select id="avatarHairStyle">
+                    <option value="swept">Набок</option>
+                    <option value="short">Короткая</option>
+                    <option value="curls">Кудри</option>
+                    <option value="buzz">Под машинку</option>
+                    <option value="bald">Без волос</option>
+                  </select></label
+                >
+                <label
+                  >Цвет волос<input
+                    id="avatarHair"
+                    type="color"
+                    value="#29221f"
+                /></label>
+              </div>
+              <div class="form-row">
+                <label
+                  >Борода<select id="avatarFacialHair">
+                    <option value="none">Без бороды</option>
+                    <option value="stubble">Щетина</option>
+                    <option value="beard">Борода</option>
+                  </select></label
+                >
+                <label
+                  >Очки<select id="avatarGlasses">
+                    <option value="none">Без очков</option>
+                    <option value="round">Круглые</option>
+                    <option value="square">Прямоугольные</option>
+                  </select></label
+                >
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Цвета одежды</legend>
+              <p class="quiet">
+                Фасон по-прежнему выбирается для каждой ступени.
+              </p>
+              <div class="avatar-color-row">
+                <label for="avatarTopColor">Верх</label
+                ><input
+                  id="avatarTopColor"
+                  type="color"
+                  value="#748e9d"
+                /><label class="avatar-auto"
+                  ><input id="avatarTopAuto" type="checkbox" checked />
+                  Авто</label
+                >
+              </div>
+              <div class="avatar-color-row">
+                <label for="avatarPantsColor">Брюки</label
+                ><input
+                  id="avatarPantsColor"
+                  type="color"
+                  value="#263343"
+                /><label class="avatar-auto"
+                  ><input id="avatarPantsAuto" type="checkbox" checked />
+                  Авто</label
+                >
+              </div>
+              <div class="avatar-color-row">
+                <label for="avatarShoesColor">Обувь</label
+                ><input
+                  id="avatarShoesColor"
+                  type="color"
+                  value="#e8e5db"
+                /><label class="avatar-auto"
+                  ><input id="avatarShoesAuto" type="checkbox" checked />
+                  Авто</label
+                >
+              </div>
+            </fieldset>
+          </div>
+        </div>
+        <p id="avatarError" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" id="cancelAvatar" class="button secondary">
+            Отмена</button
+          ><button type="submit" id="saveAvatar" class="button primary">
+            Сохранить внешность
+          </button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>
