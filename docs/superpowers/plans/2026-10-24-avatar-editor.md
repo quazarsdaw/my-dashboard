@@ -55,7 +55,7 @@ createAvatarPreview(container, stage) → setAvatar/dispose.
 - [x] проверить desktop/mobile, screenshot, повторное открытие и dispose;
 - [x] полный suite, syntax/format/diff checks;
 - [ ] финальное независимое ревью: blocked, coderabbit not_authenticated;
-- [ ] закоммитить, обновить pr #62 без merge.
+- [x] закоммитить, обновить pr #62 без merge.
 
 ## результат проверки
 
