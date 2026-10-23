@@ -53,5 +53,22 @@ createAvatarPreview(container, stage) → setAvatar/dispose.
 - [x] browser-тесты черновика/отмены/сохранения/reload/stale/fallback → red;
 - [x] реализовать изолированный controller и on-demand preview;
 - [x] проверить desktop/mobile, screenshot, повторное открытие и dispose;
-- [ ] полный suite, syntax/format/diff checks; финальное ревью;
+- [x] полный suite, syntax/format/diff checks;
+- [ ] финальное независимое ревью: blocked, coderabbit not_authenticated;
 - [ ] закоммитить, обновить pr #62 без merge.
+
+## результат проверки
+
+unit: 468/468; целевые core/store/scene: 33/33; syntax, prettier и diff checks
+прошли. browser verify-path-avatar прошёл: draft без writes, cancel/escape,
+save/reload/snapshot, stale/quota, mobile, fallback и close во время import.
+основной browser-сценарий и шесть прежних regression-сценариев также прошли.
+данные синтетические, production и реальные аккаунтные mutations не проверялись.
+
+независимый reviewer остановился на недоступной авторизации coderabbit:
+содержательного review нет, отсутствие findings не является approve.
+вход не запускался, права не менялись. pr остаётся без merge.
+
+решения реализации: цвета общие для будущих версий, не per-stage; старые
+snapshot читаются с default полями без перезаписи. дальнейшая проверка реального
+мобильного gpu и production delivery остаётся за пределами локального прогона.
