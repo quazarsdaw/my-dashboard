@@ -28,10 +28,10 @@
 интерфейс: normalizeAvatar(value) возвращает валидный полный avatar;
 evaluate возвращает нормализованный avatar, не меняя исходный path.
 
-- [ ] написать тесты полей, неизвестных значений и старых snapshot;
-- [ ] запустить `node --test test/path-core.test.cjs`, увидеть red;
-- [ ] реализовать normalizeAvatar и совместимость чтения;
-- [ ] получить green, закоммитить логический блок.
+- [x] написать тесты полей, неизвестных значений и старых snapshot;
+- [x] запустить `node --test test/path-core.test.cjs`, увидеть red;
+- [x] реализовать normalizeAvatar и совместимость чтения;
+- [x] получить green, закоммитить логический блок.
 
 ### задача 2: мультяшная взрослая модель
 
@@ -39,9 +39,9 @@ evaluate возвращает нормализованный avatar, не мен
 интерфейс: makePerson(stage), applyPerson(person, from, to, t) сохраняются;
 stage.avatar поступает нормализованным из задачи 1.
 
-- [ ] тесты переключения геометрии, цветов, пропорций и выражения → red;
-- [ ] реализовать стили и пропорции, обновить cache entrypoints;
-- [ ] получить green и проверить dispose, закоммитить блок.
+- [x] тесты переключения геометрии, цветов, пропорций и выражения → red;
+- [x] реализовать стили и пропорции, обновить cache entrypoints;
+- [x] получить green и проверить dispose, закоммитить блок.
 
 ### задача 3: редактор и проверка
 
@@ -50,8 +50,8 @@ path.js, scripts/verify-path-avatar.cjs, README.md, screenshots.
 интерфейс: mount({ core, store, getPath, getStage, onSaved, message }) → dispose;
 createAvatarPreview(container, stage) → setAvatar/dispose.
 
-- [ ] browser-тесты черновика/отмены/сохранения/reload/stale/fallback → red;
-- [ ] реализовать изолированный controller и on-demand preview;
-- [ ] проверить desktop/mobile, screenshot, повторное открытие и dispose;
+- [x] browser-тесты черновика/отмены/сохранения/reload/stale/fallback → red;
+- [x] реализовать изолированный controller и on-demand preview;
+- [x] проверить desktop/mobile, screenshot, повторное открытие и dispose;
 - [ ] полный suite, syntax/format/diff checks; финальное ревью;
 - [ ] закоммитить, обновить pr #62 без merge.

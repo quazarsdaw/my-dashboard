@@ -532,6 +532,92 @@ dialog::backdrop {
 .confirm-dialog {
   width: 440px;
 }
+.avatar-dialog {
+  width: 880px;
+}
+.avatar-dialog > form > .quiet {
+  margin: -6px 0 22px;
+  line-height: 1.5;
+}
+.avatar-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.85fr) minmax(0, 1fr);
+  gap: 28px;
+}
+.avatar-preview {
+  height: 385px;
+  border-radius: 12px;
+  background: #20242c;
+  overflow: hidden;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.avatar-preview canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.avatar-preview > p {
+  position: absolute;
+  max-width: 28ch;
+  padding: 16px;
+  text-align: center;
+  line-height: 1.5;
+}
+.avatar-preview-note {
+  font-size: 12px;
+  line-height: 1.65;
+  margin-top: 14px;
+}
+.avatar-fields {
+  max-height: 460px;
+  overflow-y: auto;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #626978 transparent;
+}
+.avatar-fields fieldset:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.avatar-fields label {
+  font-size: 14px;
+}
+.avatar-fields .quiet {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+.avatar-color-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+.avatar-color-row label {
+  margin: 0;
+}
+.avatar-color-row input[type='color'] {
+  margin: 0;
+}
+.avatar-auto {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 8px;
+}
+.avatar-auto input {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+}
+.avatar-dialog input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .confirm-dialog p {
   margin: 14px 0;
   color: var(--text-secondary);
@@ -671,6 +757,31 @@ output {
   }
 }
 @media (max-width: 740px) {
+  .avatar-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .avatar-preview {
+    height: 270px;
+  }
+  .avatar-preview-note {
+    margin-top: 8px;
+  }
+  .avatar-fields {
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+  }
+  .avatar-dialog .dialog-actions {
+    position: sticky;
+    bottom: -20px;
+    background: #25282f;
+    padding-bottom: 14px;
+  }
+  .avatar-dialog .dialog-actions .button {
+    padding-inline: 12px;
+    font-size: 13px;
+  }
   .path-heading {
     padding-top: 14px;
     align-items: flex-start;

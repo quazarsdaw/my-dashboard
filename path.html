@@ -9,15 +9,16 @@
     <meta name="theme-color" content="#1C1E24" />
     <link rel="icon" type="image/svg+xml" href="app-icon.svg" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="path.css?v=2" />
+    <link rel="stylesheet" href="path.css?v=3" />
     <title>Мой путь</title>
     <script src="gamification.js?v=401"></script>
     <script src="profile-theme.js?v=401"></script>
     <script src="supabase-sync.js?v=406-sb" defer></script>
     <script src="topbar.js?v=405-path" defer></script>
-    <script src="path-core.js?v=2" defer></script>
+    <script src="path-core.js?v=3" defer></script>
     <script src="path-store.js?v=1" defer></script>
-    <script src="path.js?v=2" defer></script>
+    <script src="path-avatar-editor.js?v=3" defer></script>
+    <script src="path.js?v=3" defer></script>
   </head>
   <body>
     <main>
@@ -229,30 +230,158 @@
 
     <dialog
       id="avatarDialog"
-      class="confirm-dialog"
+      class="avatar-dialog"
       aria-labelledby="avatarTitle"
     >
       <form id="avatarForm">
-        <h2 id="avatarTitle">Мой персонаж</h2>
+        <header class="dialog-heading">
+          <h2 id="avatarTitle">Мой персонаж</h2>
+          <button
+            type="button"
+            id="closeAvatar"
+            class="icon-button"
+            aria-label="Закрыть редактор внешности"
+          >
+            ×
+          </button>
+        </header>
         <p class="quiet">
-          Стилизованный образ общий для будущих ступеней. Принятые версии
-          сохраняют свою внешность.
+          Общая внешность для будущих версий. Параметры принятых ступеней не
+          меняются.
         </p>
-        <div class="form-row">
-          <label
-            >Цвет кожи<input
-              id="avatarSkin"
-              type="color"
-              value="#c99572" /></label
-          ><label
-            >Цвет волос<input id="avatarHair" type="color" value="#29221f"
-          /></label>
+        <div class="avatar-layout">
+          <div class="avatar-preview-pane">
+            <div
+              id="avatarPreview"
+              class="avatar-preview"
+              role="img"
+              aria-label="Предпросмотр персонажа"
+            >
+              <p id="avatarPreviewFallback" class="quiet" role="status">
+                Загружаем 3D…
+              </p>
+            </div>
+            <p class="quiet avatar-preview-note">
+              Меняй детали и сразу смотри результат.<br />Данные сохранятся
+              только по кнопке.
+            </p>
+          </div>
+          <div class="avatar-fields">
+            <fieldset>
+              <legend>Лицо и характер</legend>
+              <div class="form-row">
+                <label
+                  >Форма лица<select id="avatarFaceShape">
+                    <option value="oval">Овальное</option>
+                    <option value="round">Округлое</option>
+                    <option value="angular">Угловатое</option>
+                  </select></label
+                >
+                <label
+                  >Выражение<select id="avatarExpression">
+                    <option value="softSmile">Лёгкая улыбка</option>
+                    <option value="confident">Уверенное</option>
+                    <option value="calm">Спокойное</option>
+                  </select></label
+                >
+              </div>
+              <div class="form-row">
+                <label
+                  >Телосложение<select id="avatarBodyType">
+                    <option value="standard">Среднее</option>
+                    <option value="lean">Стройное</option>
+                    <option value="broad">Широкое</option>
+                  </select></label
+                >
+                <label
+                  >Цвет кожи<input id="avatarSkin" type="color" value="#c99572"
+                /></label>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Волосы и детали</legend>
+              <div class="form-row">
+                <label
+                  >Причёска<select id="avatarHairStyle">
+                    <option value="swept">Набок</option>
+                    <option value="short">Короткая</option>
+                    <option value="curls">Кудри</option>
+                    <option value="buzz">Под машинку</option>
+                    <option value="bald">Без волос</option>
+                  </select></label
+                >
+                <label
+                  >Цвет волос<input
+                    id="avatarHair"
+                    type="color"
+                    value="#29221f"
+                /></label>
+              </div>
+              <div class="form-row">
+                <label
+                  >Борода<select id="avatarFacialHair">
+                    <option value="none">Без бороды</option>
+                    <option value="stubble">Щетина</option>
+                    <option value="beard">Борода</option>
+                  </select></label
+                >
+                <label
+                  >Очки<select id="avatarGlasses">
+                    <option value="none">Без очков</option>
+                    <option value="round">Круглые</option>
+                    <option value="square">Прямоугольные</option>
+                  </select></label
+                >
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Цвета одежды</legend>
+              <p class="quiet">
+                Фасон по-прежнему выбирается для каждой ступени.
+              </p>
+              <div class="avatar-color-row">
+                <label for="avatarTopColor">Верх</label
+                ><input
+                  id="avatarTopColor"
+                  type="color"
+                  value="#748e9d"
+                /><label class="avatar-auto"
+                  ><input id="avatarTopAuto" type="checkbox" checked />
+                  Авто</label
+                >
+              </div>
+              <div class="avatar-color-row">
+                <label for="avatarPantsColor">Брюки</label
+                ><input
+                  id="avatarPantsColor"
+                  type="color"
+                  value="#263343"
+                /><label class="avatar-auto"
+                  ><input id="avatarPantsAuto" type="checkbox" checked />
+                  Авто</label
+                >
+              </div>
+              <div class="avatar-color-row">
+                <label for="avatarShoesColor">Обувь</label
+                ><input
+                  id="avatarShoesColor"
+                  type="color"
+                  value="#e8e5db"
+                /><label class="avatar-auto"
+                  ><input id="avatarShoesAuto" type="checkbox" checked />
+                  Авто</label
+                >
+              </div>
+            </fieldset>
+          </div>
         </div>
         <p id="avatarError" class="form-error" role="alert" hidden></p>
         <div class="dialog-actions">
           <button type="button" id="cancelAvatar" class="button secondary">
             Отмена</button
-          ><button type="submit" class="button primary">Сохранить</button>
+          ><button type="submit" id="saveAvatar" class="button primary">
+            Сохранить внешность
+          </button>
         </div>
       </form>
     </dialog>

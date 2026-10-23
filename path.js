@@ -19,8 +19,7 @@
     scene = null,
     sceneLoading = false,
     editorId = null,
-    editorRevision = null,
-    avatarRevision = null;
+    editorRevision = null;
   var errorMessages = {
     STALE_REVISION:
       'Путь изменился в другой вкладке или после синхронизации. Черновик сохранён в форме. Закрой редактор, проверь изменения и открой его снова.',
@@ -116,7 +115,7 @@
   function ensureScene() {
     if (scene || sceneLoading) return;
     sceneLoading = true;
-    import('./path-scene.js?v=2')
+    import('./path-scene.js?v=3')
       .then(function (mod) {
         scene = mod.createScene($('scene'), function (id) {
           selectedId = id;
@@ -668,31 +667,23 @@
       $('editorError').hidden = false;
     }
   });
-  $('editAvatar').addEventListener('click', function () {
-    avatarRevision = path.revision;
-    $('avatarSkin').value = path.avatar.skin;
-    $('avatarHair').value = path.avatar.hair;
-    $('avatarError').hidden = true;
-    $('avatarDialog').showModal();
-  });
-  $('cancelAvatar').addEventListener('click', function () {
-    $('avatarDialog').close();
-  });
-  $('avatarForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    try {
-      path = store.update(avatarRevision, function (p) {
-        return P.updateAvatar(p, {
-          skin: $('avatarSkin').value,
-          hair: $('avatarHair').value,
-        });
+  var avatarEditor = window.IdentityAvatarEditor.mount({
+    core: P,
+    store: store,
+    getPath: function () {
+      return path;
+    },
+    getStage: function () {
+      return views.find(function (v) {
+        return v.id === selectedId;
       });
-      $('avatarDialog').close();
+    },
+    onSaved: function (saved) {
+      path = saved;
       render();
-    } catch (err) {
-      $('avatarError').textContent = message(err);
-      $('avatarError').hidden = false;
-    }
+      notify('Внешность сохранена для будущих версий.');
+    },
+    message: message,
   });
   $('compare').addEventListener('input', function () {
     if (scene) scene.compare(Number(this.value) / 100);
@@ -722,6 +713,7 @@
     if (!e.persisted) {
       clearInterval(refresh);
       if (scene) scene.dispose();
+      avatarEditor.dispose();
     }
   });
   render();
