@@ -78,7 +78,26 @@
     var a = value || { skin: '#c99572', hair: '#29221f' };
     if (!/^#[a-fA-F0-9]{6}$/.test(a.skin) || !/^#[a-fA-F0-9]{6}$/.test(a.hair))
       fail('INVALID_DATA');
-    return { skin: a.skin, hair: a.hair };
+    var result = { skin: a.skin, hair: a.hair };
+    var options = {
+      hairStyle: ['swept', 'short', 'curls', 'buzz', 'bald'],
+      facialHair: ['none', 'stubble', 'beard'],
+      glasses: ['none', 'round', 'square'],
+      faceShape: ['oval', 'round', 'angular'],
+      bodyType: ['standard', 'lean', 'broad'],
+      expression: ['softSmile', 'confident', 'calm'],
+    };
+    Object.keys(options).forEach(function (key) {
+      var option = a[key] === undefined ? options[key][0] : a[key];
+      if (!options[key].includes(option)) fail('INVALID_DATA');
+      result[key] = option;
+    });
+    ['topColor', 'pantsColor', 'shoesColor'].forEach(function (key) {
+      var color = a[key] === undefined ? null : a[key];
+      if (color !== null && (typeof color !== 'string' || !/^#[a-fA-F0-9]{6}$/.test(color))) fail('INVALID_DATA');
+      result[key] = color;
+    });
+    return result;
   }
   function storedVisual(value) {
     if (
@@ -327,7 +346,7 @@
         description: snapshot ? snapshot.description : s.description,
         targetDate: snapshot ? snapshot.targetDate : s.targetDate,
         visual: clone(snapshot ? snapshot.visual : s.visual),
-        avatar: clone(snapshot ? snapshot.avatar : path.avatar),
+        avatar: avatar(snapshot ? snapshot.avatar : path.avatar),
         criteria: criteria,
         state: snapshot
           ? 'completed'
@@ -468,6 +487,7 @@
     moveStage: moveStage,
     removeStage: removeStage,
     updateAvatar: updateAvatar,
+    normalizeAvatar: avatar,
     dayKey: dayKey,
     label: label,
   };
