@@ -15,7 +15,7 @@
 <script src="goals-core.js?v=2"></script>
 <script src="supabase-sync.js?v=406-sb" defer></script>
 <script src="profile-theme.js?v=401"></script>
-<script src="topbar.js?v=404" defer></script><style>
+<script src="topbar.js?v=405-path" defer></script><style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 :root{
   --font-sans:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;
@@ -183,6 +183,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 <body>
 
 <h1 class="page-title">Горизонты Целей</h1>
+<a href="path.html" style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 16px;margin:16px 0 22px;border:1px solid rgba(242,192,99,.3);border-radius:12px;text-decoration:none;color:var(--text-primary);background:rgba(242,192,99,.05)"><span><strong>Мой путь</strong><span style="display:block;font-size:12px;color:var(--text-tertiary);margin-top:3px">Увидеть, к какой версии себя ведут мои цели</span></span><span aria-hidden="true">↗</span></a>
 
 <!-- Year Summary with Ring -->
 <div class="year-summary-card" style="background: var(--card-bg); border-radius: 20px; padding: 24px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 24px; display: flex; align-items: center; gap: 24px;">

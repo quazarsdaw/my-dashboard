@@ -208,6 +208,20 @@ test('initial push does not sync sensitive OpenRouter settings', async () => {
   assert.ok(!pushedKeys.includes('openrouter_settings_v1'));
 });
 
+test('путь синхронизируется существующим каналом аккаунта и применяет обновление из облака', async () => {
+  const P=require('../path-core.js');
+  const first=P.createPath('2026-10-23T12:00:00Z');
+  const app=await loadSupabaseSync({initialStorage:{identity_path_v1:JSON.stringify(first)}});
+  await app.runTimers();
+  const row=app.writes.upserts.flat().find(row=>row.key==='identity_path_v1');
+  assert.equal(row.user_id,'u1');
+  assert.equal(JSON.stringify(row.value),JSON.stringify(first));
+  const second=P.updateAvatar(first,{skin:'#ffffff',hair:'#111111'});
+  const reader=await loadSupabaseSync({initialStorage:{_sync_init_v1:'1'},cloudRows:[{key:'identity_path_v1',value:first,updated_at:new Date().toISOString()}]});
+  reader.emitCloudChange({eventType:'UPDATE',new:{user_id:'u1',key:'identity_path_v1',value:second,updated_at:new Date(Date.now()+10000).toISOString()}});
+  assert.deepEqual(JSON.parse(reader.localStorage.getItem('identity_path_v1')),second);
+});
+
 test('generic sync never uploads cabinet settings or account caches', async () => {
   const app = await loadSupabaseSync({
     initialStorage: {

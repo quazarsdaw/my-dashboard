@@ -172,6 +172,7 @@ body {\
     if (p.indexOf('gym') !== -1) return 'fitness';
     if (p.indexOf('finance') !== -1) return 'finance';
     if (p.indexOf('goals') !== -1) return 'goals';
+    if (p.indexOf('path.html') !== -1) return 'goals';
     if (p.indexOf('store') !== -1) return 'profile';
     if (p.indexOf('profile') !== -1) return 'profile';
     return 'main';
