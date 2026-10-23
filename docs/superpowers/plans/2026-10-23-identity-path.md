@@ -48,7 +48,7 @@
 - [x] `node --test test/*.test.cjs` — все проверки проходят;
 - [x] `node --check path-core.js`, `path-store.js`, `path.js`, `path-scene.js`;
 - [x] проверить diff, отсутствие секретов и build-пути github pages;
-- [ ] зафиксировать результаты, открыть подробный pr; не merge.
+- [x] зафиксировать результаты, открыть подробный pr; не merge.
 
 ## результаты и решения
 
@@ -69,3 +69,5 @@
   реальными устройствами и production deployment этим прогоном не проверялись.
 - screenshots в `docs/screenshots/identity-path/`; данные на них синтетические
   и не записывались в аккаунт.
+- pr: https://github.com/quazarsdaw/my-dashboard/pull/62; merge и production
+  deployment не выполнялись.
