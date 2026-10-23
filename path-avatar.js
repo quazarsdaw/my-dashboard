@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
+import { addHeadFeatures } from './path-avatar-features.js?v=3';
 import {
   material,
   mesh,
@@ -15,7 +16,8 @@ export function makePerson(stage) {
   const skin = material(stage.avatar.skin, 0.93),
     hair = material(stage.avatar.hair);
   const ivory = material('#e8e5db'),
-    dark = material('#263343');
+    pants = material('#263343'),
+    shoes = material('#e8e5db');
   const cloth = material('#748e9d'),
     sole = material('#d7d4c9'),
     leather = material('#3a3434');
@@ -37,7 +39,8 @@ export function makePerson(stage) {
   const torso = mesh(body, torsoGeometry, cloth);
   torso.scale.z = 0.64;
   cylinder(body, skin, 0, 0.76, 0, 0.103, 0.22);
-  const head = part(body, 'face');
+  const headAnchor = part(body, 'head-anchor');
+  const head = part(headAnchor, 'face');
   head.position.set(0, 1.06, 0);
   const face = sphere(head, skin, 0, 0, 0, 0.245, 0.31, 0.225);
   // Более узкая челюсть сохраняет читаемый подбородок даже в маленькой сцене.
@@ -46,64 +49,9 @@ export function makePerson(stage) {
     if (pos.getY(i) < -0.1) pos.setX(i, pos.getX(i) * (1 + pos.getY(i) * 0.18));
   }
   face.geometry.computeVertexNormals();
-  for (const side of [-1, 1]) {
-    sphere(head, skin, side * 0.238, -0.025, -0.005, 0.046, 0.073, 0.045);
-    sphere(
-      head,
-      material('#ac755d'),
-      side * 0.263,
-      -0.025,
-      0.008,
-      0.014,
-      0.038,
-      0.025,
-    );
-    sphere(head, ivory, side * 0.086, 0.015, 0.203, 0.039, 0.022, 0.018);
-    sphere(head, dark, side * 0.081, 0.016, 0.22, 0.017, 0.02, 0.009);
-    sphere(head, ivory, side * 0.075, 0.024, 0.228, 0.005, 0.006, 0.003);
-    const brow = capsule(head, hair, side * 0.087, 0.081, 0.207, 0.012, 0.052);
-    brow.rotation.z = Math.PI / 2 + side * 0.09;
-  }
-  sphere(head, skin, 0, -0.035, 0.221, 0.031, 0.063, 0.032);
-  sphere(head, skin, 0, -0.058, 0.24, 0.038, 0.03, 0.032);
-  const smile = mesh(
-    head,
-    new THREE.TorusGeometry(0.052, 0.007, 6, 16, Math.PI * 0.72),
-    material('#80564d'),
-    0,
-    -0.115,
-    0.211,
-  );
-  smile.rotation.z = Math.PI * 1.14;
-  const hairGroup = part(head, 'hair-locks');
-  const cap = mesh(
-    hairGroup,
-    new THREE.SphereGeometry(1, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.58),
-    hair,
-    0,
-    0.07,
-    -0.025,
-  );
-  cap.scale.set(0.256, 0.263, 0.232);
-  cap.rotation.x = -0.2;
-  // Направленные пряди, виски и затылок дают стрижке отдельный силуэт.
-  for (let i = 0; i < 5; i++) {
-    const lock = sphere(
-      hairGroup,
-      hair,
-      -0.15 + i * 0.067,
-      0.22 + Math.sin(i) * 0.018,
-      0.105,
-      0.072,
-      0.105,
-      0.12,
-    );
-    lock.rotation.z = -0.5;
-    lock.rotation.x = -0.3;
-  }
-  for (const side of [-1, 1])
-    sphere(hairGroup, hair, side * 0.216, 0.065, -0.03, 0.037, 0.11, 0.12);
+  const features = addHeadFeatures(head, { skin, hair });
   const arms = [];
+  const lower = part(group, 'lower-body');
   for (const side of [-1, 1]) {
     const arm = part(body, 'arm');
     arm.position.set(side * 0.305, 0.57, 0);
@@ -112,12 +60,12 @@ export function makePerson(stage) {
     sphere(arm, skin, 0, -0.585, 0.025, 0.067, 0.093, 0.052);
     sphere(arm, skin, -side * 0.051, -0.566, 0.048, 0.025, 0.047, 0.025);
     arms.push(arm);
-    capsule(group, dark, side * 0.145, 0.61, 0, 0.118, 0.72);
-    const foot = part(group, 'shoe');
+    capsule(lower, pants, side * 0.145, 0.61, 0, 0.118, 0.72);
+    const foot = part(lower, 'shoe');
     foot.position.set(side * 0.145, 0, 0.035);
     foot.rotation.y = side * 0.07;
     sphere(foot, sole, 0, 0.068, 0.055, 0.135, 0.055, 0.225);
-    sphere(foot, ivory, 0, 0.119, 0.055, 0.124, 0.077, 0.204);
+    sphere(foot, shoes, 0, 0.119, 0.055, 0.124, 0.077, 0.204);
     box(foot, cloth, 0, 0.155, -0.01, 0.14, 0.065, 0.16);
     const laces = part(foot, 'shoe-laces');
     for (let i = 0; i < 3; i++)
@@ -241,7 +189,22 @@ export function makePerson(stage) {
     return sleeve;
   });
   group.rotation.y = -0.08;
-  return { group, body, head, arms, cloth, skin, hair, outfits, sleeves };
+  return {
+    group,
+    body,
+    headAnchor,
+    head,
+    arms,
+    lower,
+    cloth,
+    pants,
+    shoes,
+    skin,
+    hair,
+    outfits,
+    sleeves,
+    ...features,
+  };
 }
 
 export function applyPerson(person, from, to, t) {
@@ -263,8 +226,11 @@ export function applyPerson(person, from, to, t) {
     coat: '#8f7c69',
   };
   person.cloth.color
-    .copy(new THREE.Color(palette[from.visual.outfit]))
-    .lerp(new THREE.Color(palette[to.visual.outfit]), mix);
+    .copy(new THREE.Color(from.avatar.topColor || palette[from.visual.outfit]))
+    .lerp(
+      new THREE.Color(to.avatar.topColor || palette[to.visual.outfit]),
+      mix,
+    );
   person.skin.color
     .copy(new THREE.Color(from.avatar.skin))
     .lerp(new THREE.Color(to.avatar.skin), mix);
@@ -278,4 +244,39 @@ export function applyPerson(person, from, to, t) {
   person.sleeves.forEach((sleeve) => {
     sleeve.visible = outfit !== 'casual';
   });
+  const appearance = mix < 0.5 ? from.avatar : to.avatar;
+  const select = (groups, choice) =>
+    Object.entries(groups).forEach(([name, node]) => {
+      node.visible = name === choice;
+    });
+  select(person.hairstyles, appearance.hairStyle || 'swept');
+  select(person.beards, appearance.facialHair || 'none');
+  select(person.glasses, appearance.glasses || 'none');
+  select(person.expressions, appearance.expression || 'softSmile');
+  person.stubble.color.copy(person.hair.color).lerp(person.skin.color, 0.5);
+  const build = { standard: 1, lean: 0.9, broad: 1.15 }[
+    appearance.bodyType || 'standard'
+  ];
+  const face = { oval: [1, 1], round: [1.12, 0.95], angular: [1.035, 1.04] }[
+    appearance.faceShape || 'oval'
+  ];
+  person.body.scale.x = build;
+  person.lower.scale.x = build;
+  person.headAnchor.scale.x = 1 / build;
+  person.head.scale.set(1.16 * face[0], 1.1 * face[1], 1.12);
+  person.brows.forEach((brow, i) => {
+    brow.rotation.z =
+      Math.PI / 2 +
+      (i === 0 ? -1 : 1) *
+        (appearance.expression === 'confident' ? -0.1 : 0.09);
+  });
+  person.eyes.forEach((eye) => {
+    eye.scale.y = appearance.expression === 'calm' ? 0.82 : 1;
+  });
+  person.pants.color
+    .copy(new THREE.Color(from.avatar.pantsColor || '#263343'))
+    .lerp(new THREE.Color(to.avatar.pantsColor || '#263343'), mix);
+  person.shoes.color
+    .copy(new THREE.Color(from.avatar.shoesColor || '#e8e5db'))
+    .lerp(new THREE.Color(to.avatar.shoesColor || '#e8e5db'), mix);
 }

@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import { material, box, disposeTree } from './path-mesh.js';
-import { makePerson, applyPerson } from './path-avatar.js';
+import { makePerson, applyPerson } from './path-avatar.js?v=3';
 import { makeEnvironment } from './path-environment.js';
 
 // Сцена получает готовые состояния и никогда не меняет данные пути.

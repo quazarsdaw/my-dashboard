@@ -94,7 +94,11 @@
     });
     ['topColor', 'pantsColor', 'shoesColor'].forEach(function (key) {
       var color = a[key] === undefined ? null : a[key];
-      if (color !== null && (typeof color !== 'string' || !/^#[a-fA-F0-9]{6}$/.test(color))) fail('INVALID_DATA');
+      if (
+        color !== null &&
+        (typeof color !== 'string' || !/^#[a-fA-F0-9]{6}$/.test(color))
+      )
+        fail('INVALID_DATA');
       result[key] = color;
     });
     return result;

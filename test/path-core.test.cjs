@@ -3,9 +3,17 @@ const assert = require('node:assert/strict');
 const P = require('../path-core.js');
 const NOW = '2026-10-23T12:00:00.000Z';
 const avatarOptions = {
-  skin: '#c99572', hair: '#29221f', hairStyle: 'curls', facialHair: 'beard',
-  glasses: 'round', faceShape: 'angular', bodyType: 'broad', expression: 'confident',
-  topColor: '#f0a050', pantsColor: '#445566', shoesColor: '#eeeeee',
+  skin: '#c99572',
+  hair: '#29221f',
+  hairStyle: 'curls',
+  facialHair: 'beard',
+  glasses: 'round',
+  faceShape: 'angular',
+  bodyType: 'broad',
+  expression: 'confident',
+  topColor: '#f0a050',
+  pantsColor: '#445566',
+  shoesColor: '#eeeeee',
 };
 const stage = (
   id,
@@ -39,7 +47,11 @@ test('редактор сохраняет все настройки внешно
   p = P.acceptStage(p, 'b', {}, NOW);
   assert.deepEqual(p.stages[1].snapshot.avatar, avatarOptions);
   const snapshot = JSON.stringify(p.stages[1].snapshot);
-  const updated = P.updateAvatar(p, { ...avatarOptions, hairStyle: 'bald', topColor: null });
+  const updated = P.updateAvatar(p, {
+    ...avatarOptions,
+    hairStyle: 'bald',
+    topColor: null,
+  });
   assert.equal(JSON.stringify(updated.stages[1].snapshot), snapshot);
   assert.equal(P.evaluate(updated, {}, NOW)[1].avatar.hairStyle, 'curls');
   assert.equal(P.evaluate(updated, {}, NOW)[2].avatar.hairStyle, 'bald');
@@ -58,11 +70,21 @@ test('старый avatar нормализуется только для чте�
 });
 test('неизвестные параметры внешности и небезопасные цвета отклоняются', () => {
   for (const [key, value] of [
-    ['hairStyle', 'unknown'], ['facialHair', 'unknown'], ['glasses', null],
-    ['faceShape', 'unknown'], ['bodyType', 9], ['expression', 'unknown'],
-    ['topColor', 'red'], ['pantsColor', '#fff'], ['shoesColor', 'url(secret)'],
+    ['hairStyle', 'unknown'],
+    ['facialHair', 'unknown'],
+    ['glasses', null],
+    ['faceShape', 'unknown'],
+    ['bodyType', 9],
+    ['expression', 'unknown'],
+    ['topColor', 'red'],
+    ['pantsColor', '#fff'],
+    ['shoesColor', 'url(secret)'],
   ]) {
-    assert.throws(() => P.updateAvatar(fixture(), { ...avatarOptions, [key]: value }), { code: 'INVALID_DATA' }, key);
+    assert.throws(
+      () => P.updateAvatar(fixture(), { ...avatarOptions, [key]: value }),
+      { code: 'INVALID_DATA' },
+      key,
+    );
   }
 });
 test('обустройство и новые стили сохраняются в версии и принятом снимке', () => {
