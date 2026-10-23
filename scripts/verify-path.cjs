@@ -60,7 +60,7 @@ async function run() {
         marks: {},
       });
     });
-    async function addManual(title, scene = 'calm') {
+    async function addManual(title, scene = 'calm', outfit = 'hoodie') {
       await page.locator('#addStage').click();
       await page.locator('#stageTitle').fill(title);
       await page
@@ -69,6 +69,8 @@ async function run() {
           'Собраннее, спокойнее и увереннее. Время на то, что для меня важно.',
         );
       await page.locator('#stageScene').selectOption(scene);
+      await page.locator('#stageOutfit').selectOption(outfit);
+      await page.locator('#stageSetting').selectOption('1');
       await page.locator('#addCriterion').click();
       await page
         .getByLabel('Что подтверждаю')
@@ -89,6 +91,7 @@ async function run() {
     await page.locator('#stageEnergy').fill('85');
     await page.locator('#stageOutfit').selectOption('smart');
     await page.locator('#stageScene').selectOption('work');
+    await page.locator('#stageSetting').selectOption('2');
     await page.locator('#addCriterion').click();
     await page.getByLabel('Тип условия').selectOption('goal');
     await page.getByLabel('Существующая цель').selectOption('income');
@@ -101,11 +104,13 @@ async function run() {
       await page.locator('#stageDetail').innerText(),
       /Готова заранее/,
     );
-    await addManual('Университет завершён', 'graduate');
+    await addManual('Университет завершён', 'graduate', 'coat');
     await page.locator('#addStage').click();
     await page.locator('#stageTitle').fill('Моя большая версия');
     await page.locator('#stageDestination').check();
     await page.locator('#stageEnergy').fill('95');
+    await page.locator('#stageScene').selectOption('creative');
+    await page.locator('#stageSetting').selectOption('2');
     await page.locator('#addCriterion').click();
     await page.getByLabel('Что подтверждаю').fill('Я живу так, как выбрал');
     await page
@@ -146,6 +151,19 @@ async function run() {
     );
     await page.reload();
     await page.getByRole('button', { name: /В Финансовая опора/ }).click();
+    assert.deepEqual(
+      await page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem('identity_path_v1')).stages[2].visual,
+      ),
+      {
+        energy: 85,
+        outfit: 'smart',
+        scene: 'work',
+        setting: 2,
+      },
+      'одежда и обустройство пережили reload',
+    );
     assert.equal(await page.locator('.accept-button').isEnabled(), true);
     await page.locator('#scene canvas').waitFor();
     await page.waitForFunction(
@@ -164,6 +182,7 @@ async function run() {
     await page
       .getByRole('button', { name: 'Редактировать', exact: true })
       .click();
+    assert.equal(await page.locator('#stageSetting').inputValue(), '2');
     await page.locator('#stageTitle').fill('Сохранённый черновик');
     await page.evaluate(() => {
       const p = JSON.parse(localStorage.getItem('identity_path_v1'));

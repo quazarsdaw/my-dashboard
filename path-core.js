@@ -5,9 +5,14 @@
 })(typeof window !== 'undefined' ? window : null, function () {
   'use strict';
   var KEY = 'identity_path_v1';
-  var DEFAULT_VISUAL = { energy: 40, outfit: 'casual', scene: 'calm' };
-  var OUTFITS = ['casual', 'sport', 'smart'];
-  var SCENES = ['calm', 'work', 'graduate'];
+  var DEFAULT_VISUAL = {
+    energy: 40,
+    outfit: 'casual',
+    scene: 'calm',
+    setting: 1,
+  };
+  var OUTFITS = ['casual', 'sport', 'smart', 'hoodie', 'coat'];
+  var SCENES = ['calm', 'work', 'graduate', 'fitness', 'creative'];
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
   }
@@ -56,10 +61,18 @@
       v.energy < 0 ||
       v.energy > 100 ||
       !OUTFITS.includes(v.outfit) ||
-      !SCENES.includes(v.scene)
+      !SCENES.includes(v.scene) ||
+      !Number.isInteger(v.setting) ||
+      v.setting < 0 ||
+      v.setting > 2
     )
       fail('INVALID_DATA');
-    return { energy: v.energy, outfit: v.outfit, scene: v.scene };
+    return {
+      energy: v.energy,
+      outfit: v.outfit,
+      scene: v.scene,
+      setting: v.setting,
+    };
   }
   function avatar(value) {
     var a = value || { skin: '#c99572', hair: '#29221f' };
@@ -191,7 +204,7 @@
   }
   function createPath(now) {
     var a = avatar();
-    var v = visual();
+    var v = visual({ setting: 0 });
     return {
       schemaVersion: 1,
       revision: 1,

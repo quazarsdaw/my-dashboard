@@ -9,15 +9,15 @@
     <meta name="theme-color" content="#1C1E24" />
     <link rel="icon" type="image/svg+xml" href="app-icon.svg" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="path.css?v=1" />
+    <link rel="stylesheet" href="path.css?v=2" />
     <title>Мой путь</title>
     <script src="gamification.js?v=401"></script>
     <script src="profile-theme.js?v=401"></script>
     <script src="supabase-sync.js?v=406-sb" defer></script>
     <script src="topbar.js?v=405-path" defer></script>
-    <script src="path-core.js?v=1" defer></script>
+    <script src="path-core.js?v=2" defer></script>
     <script src="path-store.js?v=1" defer></script>
-    <script src="path.js?v=1" defer></script>
+    <script src="path.js?v=2" defer></script>
   </head>
   <body>
     <main>
@@ -164,15 +164,30 @@
                 <option value="casual">Повседневная</option>
                 <option value="sport">Спортивная</option>
                 <option value="smart">Деловая</option>
+                <option value="hoodie">Худи и кеды</option>
+                <option value="coat">Пальто</option>
               </select></label
             ><label
               >Окружение<select id="stageScene">
-                <option value="calm">Спокойствие</option>
-                <option value="work">Рабочее место</option>
-                <option value="graduate">Образование</option>
+                <option value="calm">Уютное пространство</option>
+                <option value="work">Рабочий кабинет</option>
+                <option value="graduate">Библиотека и учёба</option>
+                <option value="fitness">Движение и спорт</option>
+                <option value="creative">Творческая мастерская</option>
               </select></label
             >
           </div>
+          <label
+            >Обустройство<select id="stageSetting">
+              <option value="0">Простое — самое необходимое</option>
+              <option value="1" selected>Обжитое — мебель и личные вещи</option>
+              <option value="2">Продуманное — больше деталей</option>
+            </select></label
+          >
+          <p class="quiet">
+            Выбирай то, что отражает именно твою версию. Вещи и одежда не
+            начисляются автоматически за достижения.
+          </p>
         </fieldset>
         <fieldset>
           <legend>Условия перехода</legend>

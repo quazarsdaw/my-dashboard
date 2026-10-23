@@ -27,6 +27,55 @@ test('создание пути фиксирует только исходную
   assert.equal(p.stages[0].acceptedAt, NOW);
   assert.equal(P.evaluate(p, {}, NOW)[0].state, 'completed');
 });
+test('обустройство и новые стили сохраняются в версии и принятом снимке', () => {
+  let p = P.createPath(NOW);
+  assert.equal(p.stages[0].visual.setting, 0);
+  p = P.upsertStage(p, {
+    ...stage('b'),
+    visual: { energy: 85, outfit: 'hoodie', scene: 'fitness', setting: 2 },
+  });
+  p = P.setManualCriterion(p, 'b', 'm', true);
+  p = P.acceptStage(p, 'b', {}, NOW);
+  assert.deepEqual(
+    P.evaluate(JSON.parse(JSON.stringify(p)), {}, NOW)[1].visual,
+    {
+      energy: 85,
+      outfit: 'hoodie',
+      scene: 'fitness',
+      setting: 2,
+    },
+  );
+  assert.deepEqual(p.stages[1].snapshot.visual, p.stages[1].visual);
+});
+test('старый путь без обустройства остаётся валидным без перезаписи истории', () => {
+  const p = fixture();
+  for (const s of p.stages) {
+    delete s.visual.setting;
+    if (s.snapshot) delete s.snapshot.visual.setting;
+  }
+  const raw = JSON.stringify(p);
+  P.validatePath(p);
+  P.evaluate(p, {}, NOW);
+  assert.equal(JSON.stringify(p), raw);
+  const updated = P.upsertStage(p, {
+    ...stage('b'),
+    visual: { energy: 70, outfit: 'coat', scene: 'creative', setting: 1 },
+  });
+  assert.equal(updated.stages[1].visual.setting, 1);
+  assert.equal(JSON.stringify(updated.stages[0]), JSON.stringify(p.stages[0]));
+});
+test('неизвестное обустройство не обрезается и не сбрасывается молча', () => {
+  for (const setting of [-1, 3, 1.5, '2', null]) {
+    assert.throws(
+      () =>
+        P.upsertStage(P.createPath(NOW), {
+          ...stage('b'),
+          visual: { energy: 70, outfit: 'casual', scene: 'calm', setting },
+        }),
+      { code: 'INVALID_DATA' },
+    );
+  }
+});
 test('будущая ступень готова заранее, но принятие не перескакивает текущую', () => {
   let p = P.setManualCriterion(fixture(), 'v', 'm', true);
   assert.deepEqual(

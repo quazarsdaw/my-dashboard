@@ -116,7 +116,7 @@
   function ensureScene() {
     if (scene || sceneLoading) return;
     sceneLoading = true;
-    import('./path-scene.js?v=1')
+    import('./path-scene.js?v=2')
       .then(function (mod) {
         scene = mod.createScene($('scene'), function (id) {
           selectedId = id;
@@ -602,6 +602,7 @@
     $('energyOutput').value = $('stageEnergy').value;
     $('stageOutfit').value = s?.visual.outfit || 'casual';
     $('stageScene').value = s?.visual.scene || 'calm';
+    $('stageSetting').value = s?.visual.setting ?? 1;
     $('criteriaEditor').replaceChildren();
     (s?.criteria || []).forEach(criterionEditor);
     $('stageDialog').showModal();
@@ -648,6 +649,7 @@
         energy: Number($('stageEnergy').value),
         outfit: $('stageOutfit').value,
         scene: $('stageScene').value,
+        setting: Number($('stageSetting').value),
       },
       criteria: Array.from($('criteriaEditor').children).map(function (row) {
         return row.read();
