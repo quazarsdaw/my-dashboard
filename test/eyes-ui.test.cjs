@@ -150,7 +150,14 @@ test('выбор одного упражнения не запускает ег�
   assert.deepEqual(h.store.settings().exerciseIds, ['jumps']);
   h.app.destroy();
 });
-test('инструкция вдаль скрывает svg-траекторию через применяемый браузером стиль',async()=>{const h=setup();h.app.choose('single','distance');h.app.setDuration(30);await h.app.start();assert.equal(h.ids.pathGuide.style.display,'none');h.app.destroy();});
+test('инструкция вдаль скрывает svg-траекторию через применяемый браузером стиль', async () => {
+  const h = setup();
+  h.app.choose('single', 'distance');
+  h.app.setDuration(30);
+  await h.app.start();
+  assert.equal(h.ids.pathGuide.style.display, 'none');
+  h.app.destroy();
+});
 test('пауза при скрытии не накручивает статистику, завершение записывается один раз', async () => {
   const h = setup();
   h.app.setDuration(30);
