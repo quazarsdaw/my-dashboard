@@ -12,6 +12,7 @@
       exerciseIds: plan.stages.map(function (s) {
         return s && s.exerciseId;
       }),
+      timingVersion: plan.timingVersion === undefined ? 1 : plan.timingVersion,
     });
     return (
       expected.ok &&
@@ -76,6 +77,10 @@
       stageIndex: index,
       exerciseId: s.plan.stages[index].exerciseId,
       stageElapsedMs: s.cursorMs - start,
+      stageRemainingMs: Math.max(
+        0,
+        s.plan.stages[index].durationSeconds * 1000 - (s.cursorMs - start),
+      ),
       remainingMs: Math.max(0, s.plan.durationSeconds * 1000 - s.cursorMs),
       progress: s.cursorMs / (s.plan.durationSeconds * 1000),
       skipped: s.skipped,

@@ -7,11 +7,14 @@
   function buildPlan(o) {
     o = o || {};
     var n = o.durationSeconds,
+      timingVersion = o.timingVersion === undefined ? 2 : o.timingVersion,
       ids;
     function fail(error, min) {
       return { ok: false, error: error, requiredSeconds: min || 0, stages: [] };
     }
     if ([30, 60, 120, 180].indexOf(n) < 0) return fail('INVALID_DURATION');
+    if (timingVersion !== 1 && timingVersion !== 2)
+      return fail('INVALID_TIMING_VERSION');
     if (o.mode === 'short')
       ids =
         n === 30
@@ -39,23 +42,34 @@
     var stages = ids.map(function (id) {
       return {
         exerciseId: id,
-        durationSeconds: D.CATALOG.find(function (x) {
-          return x.id === id;
-        }).minSeconds,
+        durationSeconds:
+          timingVersion === 1 && id === 'distance'
+            ? 20
+            : D.CATALOG.find(function (x) {
+                return x.id === id;
+              }).minSeconds,
       };
     });
     var min = stages.reduce(function (v, s) {
       return v + s.durationSeconds;
     }, 0);
     if (n < min) return fail('DURATION_TOO_SHORT', min);
+    var flexible = stages.filter(function (s) {
+      return (
+        timingVersion === 1 ||
+        stages.length === 1 ||
+        s.exerciseId !== 'distance'
+      );
+    });
     var rest = n - min,
-      each = Math.floor(rest / stages.length),
-      tail = rest % stages.length;
-    stages.forEach(function (s, i) {
+      each = Math.floor(rest / flexible.length),
+      tail = rest % flexible.length;
+    flexible.forEach(function (s, i) {
       s.durationSeconds += each + (i < tail ? 1 : 0);
     });
     return {
       ok: true,
+      timingVersion: timingVersion,
       mode: o.mode,
       durationSeconds: n,
       requiredSeconds: min,
@@ -89,7 +103,12 @@
         return { x: 0.5 + s, y: 0.5 - s };
       case 'circle':
         var h = Math.max(0, Number(o.stageDurationMs) || 0) / 2;
-        if (t > h) a = (2 * Math.PI * (2 * h - t)) / period;
+        if (h > 0) {
+          var turns = Math.max(1, Math.round(h / period));
+          var phase = Math.min(t, 2 * h) / h;
+          if (phase > 1) phase = 2 - phase;
+          a = 2 * Math.PI * turns * phase;
+        }
         return { x: 0.5 + 0.42 * Math.cos(a), y: 0.5 + 0.42 * Math.sin(a) };
       case 'figure-eight':
         return { x: 0.5 + 0.42 * Math.sin(a), y: 0.5 + 0.32 * Math.sin(2 * a) };
@@ -104,6 +123,32 @@
       default:
         return { x: 0.5, y: 0.5 };
     }
+  }
+  function guidePoints(id) {
+    if (
+      [
+        'horizontal',
+        'vertical',
+        'diagonal-left',
+        'diagonal-right',
+        'circle',
+        'figure-eight',
+      ].indexOf(id) < 0
+    )
+      return [];
+    var points = [];
+    for (var i = 0; i <= 120; i++)
+      points.push(
+        positionAt({
+          exerciseId: id,
+          elapsedMs: (i * 8000) / 120,
+          stageDurationMs: 16000,
+          speed: 'normal',
+        }),
+      );
+    if (id === 'circle' || id === 'figure-eight')
+      points[points.length - 1] = Object.assign({}, points[0]);
+    return points;
   }
   function instructionAt(o) {
     var t = Math.max(0, o.elapsedMs || 0),
@@ -133,6 +178,7 @@
   return {
     buildPlan: buildPlan,
     positionAt: positionAt,
+    guidePoints: guidePoints,
     instructionAt: instructionAt,
   };
 });

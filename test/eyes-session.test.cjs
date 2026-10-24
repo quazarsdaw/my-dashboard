@@ -10,6 +10,61 @@ function start() {
     nowMs: 0,
   });
 }
+test('остаток этапа независим от общего времени на старте, паузе и границе', () => {
+  let s = S.createSession(C.buildPlan({ mode: 'short', durationSeconds: 60 }), {
+    id: '11111111-1111-4111-8111-111111111111',
+    epoch: 'initial',
+    owner: 'local',
+    nowMs: 0,
+  });
+  assert.equal(S.sessionView(s).stageRemainingMs, 13000);
+  assert.equal(S.sessionView(s).remainingMs, 60000);
+  s = S.pauseSession(s, 3000);
+  assert.equal(S.sessionView(s).stageRemainingMs, 10000);
+  assert.equal(S.sessionView(s).remainingMs, 57000);
+  s = S.resumeSession(s, 5000);
+  s = S.advanceSession(s, 15000);
+  assert.equal(S.sessionView(s).exerciseId, 'vertical');
+  assert.equal(S.sessionView(s).stageRemainingMs, 13000);
+  assert.equal(S.sessionView(s).remainingMs, 47000);
+});
+test('старый frozen snapshot сохраняет прежние этапы, неизвестная версия не принимается', () => {
+  const plan = {
+    ok: true,
+    mode: 'short',
+    durationSeconds: 60,
+    requiredSeconds: 52,
+    stages: [
+      ['horizontal', 10],
+      ['vertical', 10],
+      ['circle', 10],
+      ['distance', 21],
+      ['blinking', 9],
+    ].map(([exerciseId, durationSeconds]) => ({ exerciseId, durationSeconds })),
+  };
+  const raw = S.createSession(plan, {
+    id: '11111111-1111-4111-8111-111111111111',
+    epoch: 'initial',
+    owner: 'local',
+    nowMs: 0,
+  });
+  const restored = S.restoreSession(raw, { owner: 'local', nowMs: 10000 });
+  assert.deepEqual(restored.plan, plan);
+  assert.equal(restored.phase, 'paused');
+  assert.equal(
+    S.restoreSession(
+      { ...raw, plan: { ...plan, timingVersion: 999 } },
+      { owner: 'local', nowMs: 10000 },
+    ),
+    null,
+  );
+  const damaged = structuredClone(raw);
+  damaged.plan.stages[0].durationSeconds = 11;
+  assert.equal(
+    S.restoreSession(damaged, { owner: 'local', nowMs: 10000 }),
+    null,
+  );
+});
 test('пауза и редкие кадры не меняют активные 30 секунд', () => {
   let s = start();
   s = S.pauseSession(s, 10000);

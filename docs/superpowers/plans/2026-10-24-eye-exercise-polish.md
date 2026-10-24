@@ -32,7 +32,7 @@
 
 **интерфейсы:** `buildPlan({mode,durationSeconds,exerciseIds,timingVersion?})`, default version 2; version 1 только для проверки старых plans. `guidePoints(exerciseId)` возвращает полную геометрию, `positionAt` сохраняет сигнатуру. `sessionView` добавляет `stageRemainingMs`.
 
-- [ ] написать red-тесты: short 60/120/180 и full 120/180 имеют distance 10; custom с distance в пределах разных бюджетов сохраняет сумму, single distance остаётся 30/60/120/180; версия 1 воспроизводит `[9,9,10,21,9]` short60.
+- [ ] написать red-тесты: short 60/120/180 и full 120/180 имеют distance 10; custom с distance в пределах разных бюджетов сохраняет сумму, single distance остаётся 30/60/120/180; версия 1 воспроизводит `[10,10,10,21,9]` short60.
 - [ ] red-тесты полного прямого/обратного круга при stage 8/10/15/30 секунд, всех темпах; точки направляющей замкнуты и проходят четыре четверти; неизвестный exercise не рисует фиктивный путь.
 - [ ] red-тесты stageRemainingMs на старте/границе/паузе; legacy frozen plan restore, неизвестная версия и подменённый duration отклоняются.
 - [ ] `node --test test/eyes-core.test.cjs test/eyes-session.test.cjs` — сначала ожидаемые red, затем минимальное исправление и green.

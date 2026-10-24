@@ -3,6 +3,90 @@ const assert = require('node:assert/strict');
 const D = require('../eyes-data.js');
 const C = require('../eyes-core.js');
 
+test('в многокомпонентных программах вдаль ровно 10 секунд без потери общего бюджета', () => {
+  for (const [mode, durationSeconds, exerciseIds] of [
+    ['short', 60],
+    ['short', 120],
+    ['short', 180],
+    ['full', 120],
+    ['full', 180],
+    ['custom', 30, ['horizontal', 'distance']],
+    ['custom', 60, ['circle', 'near-far', 'distance']],
+  ]) {
+    const p = C.buildPlan({ mode, durationSeconds, exerciseIds });
+    assert.equal(p.ok, true);
+    assert.equal(
+      p.stages.find((s) => s.exerciseId === 'distance').durationSeconds,
+      10,
+    );
+    assert.equal(
+      p.stages.reduce((n, s) => n + s.durationSeconds, 0),
+      durationSeconds,
+    );
+  }
+  assert.deepEqual(
+    C.buildPlan({ mode: 'short', durationSeconds: 60 }).stages.map(
+      (s) => s.durationSeconds,
+    ),
+    [13, 13, 12, 10, 12],
+  );
+  for (const mode of ['single', 'custom'])
+    for (const durationSeconds of [30, 60, 120, 180])
+      assert.equal(
+        C.buildPlan({ mode, durationSeconds, exerciseIds: ['distance'] })
+          .stages[0].durationSeconds,
+        durationSeconds,
+      );
+});
+test('круг завершает целые обороты до разворота при любом темпе и коротком этапе', () => {
+  for (const stageDurationMs of [8000, 10000, 15000, 30000])
+    for (const speed of ['slow', 'normal', 'fast']) {
+      const sample = (t) =>
+        C.positionAt({
+          exerciseId: 'circle',
+          elapsedMs: t,
+          stageDurationMs,
+          speed,
+        });
+      function turn(from, to) {
+        let last = Math.atan2(sample(from).y - 0.5, sample(from).x - 0.5),
+          sum = 0;
+        for (let i = 1; i <= 400; i++) {
+          const p = sample(from + ((to - from) * i) / 400),
+            a = Math.atan2(p.y - 0.5, p.x - 0.5);
+          let diff = a - last;
+          if (diff > Math.PI) diff -= 2 * Math.PI;
+          if (diff < -Math.PI) diff += 2 * Math.PI;
+          sum += diff;
+          last = a;
+        }
+        return sum / (2 * Math.PI);
+      }
+      const forward = turn(0, stageDurationMs / 2),
+        backward = turn(stageDurationMs / 2, stageDurationMs);
+      assert.ok(forward >= 1 - 1e-8);
+      assert.ok(Math.abs(forward - Math.round(forward)) < 1e-8);
+      assert.ok(Math.abs(forward + backward) < 1e-8);
+      const a = sample(stageDurationMs / 2 - 1),
+        b = sample(stageDurationMs / 2 + 1);
+      assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 0.01);
+    }
+});
+test('направляющая круга замкнута и покрывает четыре четверти независимо от таймера', () => {
+  const points = C.guidePoints('circle');
+  assert.deepEqual(points[0], points.at(-1));
+  for (const [x, y] of [
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+  ])
+    assert.ok(
+      points.some((p) => (p.x - 0.5) * x > 0.1 && (p.y - 0.5) * y > 0.1),
+    );
+  assert.deepEqual(C.guidePoints('unknown'), []);
+});
+
 test('короткая программа точно укладывается в бюджет и не теряет минимумы', () => {
   assert.equal(D.CATALOG.length, 11);
   for (const seconds of [30, 60, 120, 180]) {
