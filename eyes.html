@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1c1e24" />
+    <title>Разминка для глаз</title>
+    <link rel="icon" type="image/svg+xml" href="app-icon.svg" />
+    <link rel="stylesheet" href="eyes.css?v=2" />
+    <script src="gamification.js?v=401"></script>
+    <script src="profile-theme.js?v=401"></script>
+    <script src="supabase-sync.js?v=408-eyes" defer></script>
+    <script src="topbar.js?v=405-path" defer></script>
+    <script src="eyes-data.js?v=2" defer></script>
+    <script src="eyes-core.js?v=2" defer></script>
+    <script src="eyes-session.js?v=2" defer></script>
+    <script src="eyes-store.js?v=1" defer></script>
+    <script src="browser-lock.js?v=1" defer></script>
+    <script src="eyes-coordination.js?v=1" defer></script>
+    <script src="eyes-reminder-core.js?v=1" defer></script>
+    <script src="eyes-reminder.js?v=1" defer></script>
+    <script src="eyes.js?v=2" defer></script>
+  </head>
+  <body>
+    <main>
+      <div id="eyeError" class="eye-error" role="status" hidden></div>
+      <div id="eyeHome">
+        <a class="eye-back" href="index.html">← На главную</a>
+        <header class="eye-heading">
+          <div>
+            <h1>Разминка для глаз</h1>
+            <p>Небольшой перерыв. Выбери время — остальное подскажем.</p>
+          </div>
+          <span class="eye-heading-icon" aria-hidden="true">◉</span>
+        </header>
+        <section aria-labelledby="durationTitle" class="eye-duration-row">
+          <h2 id="durationTitle">Сколько у тебя времени?</h2>
+          <div
+            id="durationOptions"
+            class="eye-segments"
+            role="group"
+            aria-label="Общая длительность занятия"
+          >
+            <button type="button" data-duration="30">30 секунд</button
+            ><button type="button" data-duration="60">1 минута</button
+            ><button type="button" data-duration="120">2 минуты</button
+            ><button type="button" data-duration="180">3 минуты</button>
+          </div>
+        </section>
+        <section class="eye-presets" aria-label="Готовые комплексы">
+          <article class="eye-preset">
+            <div>
+              <h2>Короткий комплекс</h2>
+              <p>Простой способ переключиться между делами.</p>
+              <div class="eye-mini" aria-hidden="true">
+                ↔ &nbsp; ↕ &nbsp; ○ &nbsp; ◡
+              </div>
+            </div>
+            <button
+              id="presetShort"
+              class="eye-button eye-primary"
+              type="button"
+            >
+              ▶ Начать
+            </button>
+          </article>
+          <article class="eye-preset">
+            <div>
+              <h2>Полный комплекс</h2>
+              <p>Все 11 упражнений · 2 или 3 минуты.</p>
+              <div class="eye-mini" aria-hidden="true">
+                ↔ &nbsp; ↕ &nbsp; ↘ &nbsp; ↙ &nbsp; ○ &nbsp; ∞ &nbsp; ⠿
+                &nbsp; ◎ &nbsp; ◡
+              </div>
+            </div>
+            <button id="presetFull" class="eye-button" type="button">
+              ▶ Начать
+            </button>
+          </article>
+        </section>
+        <section class="eye-builder" aria-labelledby="builderTitle">
+          <div class="eye-section-head">
+            <div>
+              <h2 id="builderTitle">Твой комплекс</h2>
+              <p>Отметь нужные упражнения ниже или выбери готовый набор.</p>
+            </div>
+            <button id="presetCustom" class="eye-text-button" type="button">
+              Свой набор
+            </button>
+          </div>
+          <div class="eye-command">
+            <label class="eye-field"
+              >Темп<select id="speedSelect">
+                <option value="slow">Медленно</option>
+                <option value="normal">Обычно</option>
+                <option value="fast">Быстро</option>
+              </select></label
+            >
+            <div class="eye-plan-status">
+              <p id="planMessage" aria-live="polite"></p>
+              <button
+                id="durationFix"
+                class="eye-text-button"
+                type="button"
+                hidden
+              >
+                Выбрать подходящее время
+              </button>
+            </div>
+            <button id="startEye" class="eye-button eye-primary" type="button">
+              Начать разминку →
+            </button>
+          </div>
+        </section>
+        <section id="resumePanel" class="eye-resume" hidden>
+          <div>
+            <h2>Есть незавершённая разминка</h2>
+            <p>Продолжи с паузы — без потерянного времени.</p>
+          </div>
+          <button id="resumeEye" class="eye-button" type="button">
+            Продолжить</button
+          ><button id="discardEye" class="eye-text-button" type="button">
+            Начать заново
+          </button>
+        </section>
+        <section class="eye-catalog" aria-labelledby="catalogTitle">
+          <div class="eye-section-head">
+            <h2 id="catalogTitle">Упражнения</h2>
+            <span>Выбрать отдельно — ↗</span>
+          </div>
+          <div id="exerciseList" class="eye-exercises"></div>
+        </section>
+        <section class="eye-habit" aria-labelledby="habitTitle">
+          <h2 id="habitTitle">Ежедневная привычка</h2>
+          <div class="eye-habit-grid">
+            <div class="eye-metric">
+              <strong id="statsDays">0</strong><span>дней подряд</span>
+            </div>
+            <div class="eye-metric">
+              <strong id="statsSessions">0</strong><span>занятий</span>
+            </div>
+            <div class="eye-metric">
+              <strong id="statsMinutes">0</strong><span>минут практики</span>
+            </div>
+            <div class="eye-reminder-setting">
+              <label class="eye-switch-label"
+                ><strong>Напоминание 20–20–20</strong
+                ><input id="reminderEnabled" type="checkbox" role="switch"
+              /></label>
+              <p>
+                Каждые 20 минут — перерыв на 20 секунд, чтобы посмотреть вдаль.
+                На всех страницах, пока дашборд открыт.
+              </p>
+            </div>
+          </div>
+          <button
+            id="resetEyeStats"
+            class="eye-text-button eye-reset"
+            type="button"
+          >
+            Сбросить статистику
+          </button>
+        </section>
+        <details class="eye-more">
+          <summary>Точка и сопровождение</summary>
+          <div class="eye-more-grid">
+            <label class="eye-field"
+              >Размер точки<select id="dotSize">
+                <option value="small">Маленькая</option>
+                <option value="medium">Средняя</option>
+                <option value="large">Большая</option>
+              </select></label
+            ><label class="eye-field"
+              >Цвет точки<select id="dotColor">
+                <option value="amber">Янтарный</option>
+                <option value="mint">Мятный</option>
+                <option value="white">Белый</option>
+                <option value="pink">Розовый</option>
+              </select></label
+            ><label
+              ><input id="showPath" type="checkbox" /> Показывать
+              траекторию</label
+            ><label
+              ><input id="soundEnabled" type="checkbox" /> Мягкие звуковые
+              подсказки</label
+            ><label
+              ><input id="vibrationEnabled" type="checkbox" /> Вибрация, если
+              поддерживается</label
+            ><label
+              ><input id="fullscreenEnabled" type="checkbox" /> Полноэкранный
+              запуск</label
+            >
+          </div>
+        </details>
+        <p class="eye-safety">
+          Двигай глазами без усилия. Если неприятно, появилась боль или
+          головокружение — остановись. Это короткая разминка, не диагностика и
+          не лечение зрения.
+        </p>
+      </div>
+      <section
+        id="eyePlayer"
+        class="eye-player"
+        aria-labelledby="stageTitle"
+        hidden
+      >
+        <div class="eye-player-head">
+          <div>
+            <span id="eyeStage" class="eye-muted"></span>
+            <h1 id="stageTitle"></h1>
+          </div>
+          <div class="eye-clocks">
+            <span class="eye-clock-label">Упражнение</span>
+            <strong id="eyeTime" class="eye-time">0:30</strong>
+            <span class="eye-total-clock"
+              >Всего <span id="eyeTotalTime">0:30</span></span
+            >
+          </div>
+        </div>
+        <div id="motionArea" class="eye-motion">
+          <svg
+            class="eye-path"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <polyline
+              id="pathGuide"
+              fill="none"
+              stroke="currentColor"
+              stroke-width=".3"
+            />
+          </svg>
+          <div id="eyeDot" class="eye-dot" aria-hidden="true"></div>
+          <div id="stagePrompt" class="eye-prompt" aria-live="polite"></div>
+        </div>
+        <progress
+          id="eyeProgress"
+          max="1"
+          value="0"
+          aria-label="Прогресс разминки"
+        ></progress>
+        <div class="eye-player-controls">
+          <button id="pauseEye" class="eye-button eye-primary" type="button">
+            Пауза</button
+          ><button id="nextEye" class="eye-button" type="button">
+            Следующее</button
+          ><button id="exitEye" class="eye-text-button" type="button">
+            Завершить
+          </button>
+        </div>
+        <p class="eye-shortcuts">
+          Пробел — пауза · N — следующий этап · Esc — выход
+        </p>
+      </section>
+      <section id="eyeResult" class="eye-result" hidden>
+        <span class="eye-result-symbol" aria-hidden="true">◉</span>
+        <h1 id="resultTitle">Готово</h1>
+        <p id="resultText"></p>
+        <div>
+          <button id="againEye" class="eye-button eye-primary" type="button">
+            Ещё раз</button
+          ><button id="backEye" class="eye-button" type="button">
+            Другой комплекс</button
+          ><a class="eye-text-button" href="index.html">На главную →</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

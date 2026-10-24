@@ -12,8 +12,9 @@
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Профиль</title>
 <script src="gamification.js?v=401"></script>
-<script src="supabase-sync.js?v=406-sb" defer></script>
+<script src="supabase-sync.js?v=408-eyes" defer></script>
 <script src="profile-theme.js?v=401"></script>
+<script src="eyes-reminder.js?v=1" defer></script>
 <script src="topbar.js?v=405-path" defer></script><style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -807,6 +808,14 @@ body::after {
   }
 
   // --- Coin history ---
+  function coinHistoryRow(h) {
+    h=h||{};
+    var amount=typeof h.amount==='number'&&Number.isFinite(h.amount)?h.amount:0;
+    var positive=h.type==='adjust'?amount>=0:h.type==='earn';
+    return '<div class="coin-reason">' + G.esc(h.reason || '') + '</div>' +
+      '<div class="coin-amount '+(positive?'earn':'spend')+'">'+(positive?'+':'-')+Math.abs(amount)+' 🪙</div>' +
+      '<div class="coin-date">'+formatShortDate(h.date)+'</div>';
+  }
   function renderCoinHistory() {
     var coins = G.getCoins();
     var container = document.getElementById('coinHistory');
@@ -820,11 +829,7 @@ body::after {
       var h = coins.history[i];
       var row = document.createElement('div');
       row.className = 'coin-row';
-      var sign = h.type === 'earn' ? '+' : '-';
-      row.innerHTML =
-        '<div class="coin-reason">' + G.esc(h.reason || '') + '</div>' +
-        '<div class="coin-amount ' + (h.type === 'earn' ? 'earn' : 'spend') + '">' + sign + h.amount + ' 🪙</div>' +
-        '<div class="coin-date">' + formatShortDate(h.date) + '</div>';
+      row.innerHTML = coinHistoryRow(h);
       container.appendChild(row);
     }
     if (coins.history.length > 15) {
@@ -836,11 +841,7 @@ body::after {
         coins.history.forEach(function (h) {
           var row = document.createElement('div');
           row.className = 'coin-row';
-          var sign = h.type === 'earn' ? '+' : '-';
-          row.innerHTML =
-            '<div class="coin-reason">' + G.esc(h.reason || '') + '</div>' +
-            '<div class="coin-amount ' + (h.type === 'earn' ? 'earn' : 'spend') + '">' + sign + h.amount + ' 🪙</div>' +
-            '<div class="coin-date">' + formatShortDate(h.date) + '</div>';
+          row.innerHTML = coinHistoryRow(h);
           container.appendChild(row);
         });
       });
@@ -975,6 +976,8 @@ body::after {
     'habits_v1',
     'horizons_goals_v2',
     'identity_path_v1',
+    'eye_break_settings_v1',
+    'eye_break_stats_epoch_v1',
     'inbox_v1',
     'nutrition_meals_v1',
     'nutrition_state_v1',
@@ -1006,6 +1009,7 @@ body::after {
 
   function isAppStorageKey(key) {
     if (!key) return false;
+    if (key.indexOf('eye_break_session_v1:') === 0) return /^eye_break_session_v1:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key);
     if (key.indexOf('openrouter_') === 0) return false;
     if (key.indexOf('sb-') === 0) return false;
     if (key.indexOf('firebase:') === 0) return false;

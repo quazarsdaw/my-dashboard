@@ -21,8 +21,9 @@ function htmlAttribute(tag, name) {
 function assertSchoolAssetContract(html) {
   const expectedScripts = [
     'profile-theme.js?v=401',
+    'eyes-reminder.js?v=1',
     'topbar.js?v=405-path',
-    'supabase-sync.js?v=407-sb',
+    'supabase-sync.js?v=408-eyes',
     'school-core.js?v=6',
     'school-api.js',
     'school-teacher-config.js?v=3',
