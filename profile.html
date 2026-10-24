@@ -975,6 +975,8 @@ body::after {
     'habits_v1',
     'horizons_goals_v2',
     'identity_path_v1',
+    'eye_break_settings_v1',
+    'eye_break_stats_epoch_v1',
     'inbox_v1',
     'nutrition_meals_v1',
     'nutrition_state_v1',
@@ -1006,6 +1008,7 @@ body::after {
 
   function isAppStorageKey(key) {
     if (!key) return false;
+    if (key.indexOf('eye_break_session_v1:') === 0) return /^eye_break_session_v1:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key);
     if (key.indexOf('openrouter_') === 0) return false;
     if (key.indexOf('sb-') === 0) return false;
     if (key.indexOf('firebase:') === 0) return false;

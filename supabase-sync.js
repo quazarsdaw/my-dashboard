@@ -44,6 +44,7 @@
   var currentUser = null;
   var syncEnabled = false;
   var isSyncing = false; // true while applying cloud data to localStorage
+  var pullGeneration = 0;
   var hasPendingLocalChanges = false;
   var lastLocalPushAt = 0; // timestamp of last push to cloud
   var pendingKeys = {}; // Queue of keys that need to be pushed: { key: true }
@@ -78,6 +79,7 @@
     if (key.indexOf('sb-') === 0) return true; // Supabase internal keys
     if (key.indexOf('firebase:') === 0) return true;
     if (key.indexOf('openrouter_') === 0) return true;
+    if (key.indexOf('_eye_break_') === 0 || key.indexOf('_habit_reward_') === 0) return true;
     return false;
   }
 
@@ -123,6 +125,7 @@
 
   function handleAuthStateChange(user) {
     var userChanged = (!currentUser && user) || (currentUser && !user) || (currentUser && user && currentUser.id !== user.id);
+    if (userChanged) pullGeneration += 1;
     var previousSyncUser = readSyncUserId();
 
     if (currentUser && user && currentUser.id !== user.id) {
@@ -248,17 +251,17 @@
       pageSyncListenersInstalled = true;
       window.addEventListener('focus', function () {
         if (currentUser) {
-          pullFromCloud();
+          pullFromCloud().catch(function () {});
         }
       });
       window.addEventListener('online', function () {
         if (currentUser) {
-          pullFromCloud();
+          pullFromCloud().catch(function () {});
         }
       });
       document.addEventListener('visibilitychange', function () {
         if (!document.hidden && currentUser) {
-          pullFromCloud();
+        pullFromCloud().catch(function () {});
         }
       });
     }
@@ -437,7 +440,7 @@
         syncPollTimer = null;
         return;
       }
-      pullFromCloud().finally(function () {
+      pullFromCloud().catch(function () {}).finally(function () {
         if (currentUser && supabase) {
           syncPollTimer = setTimeout(poll, SYNC_POLL_MS);
         } else {
@@ -459,7 +462,7 @@
     if (!currentUser || !supabase) return;
 
     // 1. Initial Pull
-    pullFromCloud();
+    pullFromCloud().catch(function () {});
     startSyncPolling();
 
     // 2. Subscribe to changes
@@ -493,18 +496,38 @@
     stopSyncPolling();
   }
 
+  async function fetchAllUserData(client, userId) {
+    var rows = [], cursor = null, seen = new Set();
+    while (true) {
+      var query = client.from('user_data').select('key, value, updated_at').eq('user_id', userId).order('key', { ascending: true }).limit(500);
+      if (cursor !== null) query = query.gt('key', cursor);
+      var response = await query;
+      if (response.error) throw new Error('CLOUD_PAGE_FAILED');
+      if (!Array.isArray(response.data)) throw new Error('INVALID_CLOUD_PAGE');
+      if (!response.data.length) return rows;
+      for (var i = 0; i < response.data.length; i++) {
+        var row = response.data[i];
+        if (!row || typeof row.key !== 'string' || seen.has(row.key)) throw new Error('INVALID_CLOUD_CURSOR');
+        seen.add(row.key); rows.push(row);
+      }
+      var nextCursor = response.data[response.data.length - 1].key;
+      if (nextCursor === cursor) throw new Error('INVALID_CLOUD_CURSOR');
+      cursor = nextCursor;
+    }
+  }
+
   function pullFromCloud() {
     if (!currentUser || !supabase) return Promise.resolve();
-
-    isSyncing = true;
-    return supabase.from('user_data').select('key, value, updated_at')
-      .eq('user_id', currentUser.id)
-      .then(function(res) {
-        if (res.data) {
+    var userId = currentUser.id, generation = ++pullGeneration;
+    return fetchAllUserData(supabase, userId)
+      .then(function(rows) {
+        if (!currentUser || currentUser.id !== userId || generation !== pullGeneration) return;
+        isSyncing = true;
+        try {
           var changedKeys = [];
           var localMeta = readLocalMeta();
           var hasMetaUpdates = false;
-          res.data.forEach(function(row) {
+          rows.forEach(function(row) {
             if (shouldSkipStorageKey(row.key)) return;
             var cloudTime = new Date(row.updated_at).getTime();
             var localTime = localMeta[row.key] || 0;
@@ -529,18 +552,19 @@
               }
             }
           });
-          markMissingLocalKeysAfterSync(res.data);
+          markMissingLocalKeysAfterSync(rows);
           if (changedKeys.length > 0 || hasMetaUpdates) {
             writeLocalMeta(localMeta);
             notifySyncedDataApplied(changedKeys);
           }
-        }
-        isSyncing = false;
+        } finally { isSyncing = false; }
         showSyncIndicator('synced');
       })
       .catch(function(err) {
-        console.error('Pull error:', err);
+        if (!currentUser || currentUser.id !== userId || generation !== pullGeneration) return;
+        console.error('Не удалось загрузить полный снимок данных.');
         isSyncing = false;
+        showSyncIndicator('error');
         return Promise.reject(err);
       });
   }
