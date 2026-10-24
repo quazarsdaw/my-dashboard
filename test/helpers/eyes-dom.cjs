@@ -1,11 +1,187 @@
-function harness(){
- const listeners={},frames=new Map();let clock=0,seq=0;
- class El{constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.dataset={};this.style={};this.attributes={};this.listeners={};this.hidden=false;this.value='';this.checked=false;this.disabled=false;this.classList={add(){},remove(){},toggle(){}};this.clientWidth=900;this.clientHeight=400;}
-  appendChild(e){this.children.push(e);e.parentNode=this;return e}removeChild(e){this.children=this.children.filter(x=>x!==e);e.parentNode=null}remove(){if(this.parentNode)this.parentNode.removeChild(this)}append(...els){els.forEach(e=>this.appendChild(e))}replaceChildren(...els){this.children=[];this.append(...els)}setAttribute(k,v){this.attributes[k]=String(v)}getAttribute(k){return this.attributes[k]}addEventListener(k,fn){(this.listeners[k]||=[]).push(fn)}removeEventListener(){}focus(){this.focused=true}scrollIntoView(){}async fire(type,props={}){if(this.disabled)return;await Promise.all((this.listeners[type]||[]).map(fn=>fn({target:this,preventDefault(){},...props})));} }
- const ids={};for(const id of ['eyeHome','eyePlayer','exerciseList','durationOptions','speedSelect','presetShort','presetFull','presetCustom','startEye','planMessage','durationFix','resumePanel','resumeEye','discardEye','eyeError','eyeDot','motionArea','pathGuide','stagePrompt','stageTitle','eyeTime','eyeStage','eyeProgress','pauseEye','nextEye','exitEye','eyeResult','resultTitle','resultText','againEye','backEye','statsDays','statsSessions','statsMinutes','reminderEnabled','resetEyeStats','dotSize','dotColor','showPath','soundEnabled','vibrationEnabled','fullscreenEnabled'])ids[id]=new El();
- for(const n of [30,60,120,180]){const el=new El('button');el.dataset.duration=String(n);ids.durationOptions.appendChild(el)}
- const document={body:new El('body'),hidden:false,fullscreenElement:null,getElementById:id=>ids[id],createElement:t=>new El(t),createElementNS:(_ns,t)=>new El(t),addEventListener:(k,fn)=>(listeners[k]||=[]).push(fn),removeEventListener(){},querySelectorAll(selector){const all=[];function walk(e){if(selector==='[data-duration]'&&e.dataset.duration)all.push(e);if(selector==='[data-exercise]'&&e.dataset.exercise)all.push(e);e.children.forEach(walk)}Object.values(ids).forEach(walk);return [...new Set(all)]}};
- const window={document,performance:{now:()=>clock},matchMedia:()=>({matches:false}),navigator:{},crypto:require('node:crypto'),localStorage:{getItem(){return null},setItem(){}},sessionStorage:{getItem(){return null},setItem(){}},addEventListener:(k,fn)=>(listeners[k]||=[]).push(fn),removeEventListener(){},setInterval(){return 1},clearInterval(){},requestAnimationFrame(fn){const id=++seq;frames.set(id,fn);return id},cancelAnimationFrame(id){frames.delete(id)},confirm:()=>true};
- return {document,window,ids,async tick(ms){clock=ms;const work=[...frames.values()];frames.clear();work.forEach(fn=>fn(ms));await Promise.resolve();await Promise.resolve();},async emit(type){for(const fn of listeners[type]||[])await fn({target:{tagName:'DIV'},key:''});}};
+function harness() {
+  const listeners = {},
+    frames = new Map();
+  let clock = 0,
+    seq = 0;
+  class El {
+    constructor(tag = 'div') {
+      this.tagName = tag.toUpperCase();
+      this.children = [];
+      this.dataset = {};
+      this.style = {};
+      this.attributes = {};
+      this.listeners = {};
+      this.hidden = false;
+      this.value = '';
+      this.checked = false;
+      this.disabled = false;
+      this.classList = { add() {}, remove() {}, toggle() {} };
+      this.clientWidth = 900;
+      this.clientHeight = 400;
+    }
+    appendChild(e) {
+      this.children.push(e);
+      e.parentNode = this;
+      return e;
+    }
+    removeChild(e) {
+      this.children = this.children.filter((x) => x !== e);
+      e.parentNode = null;
+    }
+    remove() {
+      if (this.parentNode) this.parentNode.removeChild(this);
+    }
+    append(...els) {
+      els.forEach((e) => this.appendChild(e));
+    }
+    replaceChildren(...els) {
+      this.children = [];
+      this.append(...els);
+    }
+    setAttribute(k, v) {
+      this.attributes[k] = String(v);
+    }
+    getAttribute(k) {
+      return this.attributes[k];
+    }
+    addEventListener(k, fn) {
+      (this.listeners[k] ||= []).push(fn);
+    }
+    removeEventListener() {}
+    focus() {
+      this.focused = true;
+    }
+    scrollIntoView() {}
+    async fire(type, props = {}) {
+      if (this.disabled) return;
+      await Promise.all(
+        (this.listeners[type] || []).map((fn) =>
+          fn({ target: this, preventDefault() {}, ...props }),
+        ),
+      );
+    }
+  }
+  const ids = {};
+  for (const id of [
+    'eyeHome',
+    'eyePlayer',
+    'exerciseList',
+    'durationOptions',
+    'speedSelect',
+    'presetShort',
+    'presetFull',
+    'presetCustom',
+    'startEye',
+    'planMessage',
+    'durationFix',
+    'resumePanel',
+    'resumeEye',
+    'discardEye',
+    'eyeError',
+    'eyeDot',
+    'motionArea',
+    'pathGuide',
+    'stagePrompt',
+    'stageTitle',
+    'eyeTime',
+    'eyeStage',
+    'eyeProgress',
+    'pauseEye',
+    'nextEye',
+    'exitEye',
+    'eyeResult',
+    'resultTitle',
+    'resultText',
+    'againEye',
+    'backEye',
+    'statsDays',
+    'statsSessions',
+    'statsMinutes',
+    'reminderEnabled',
+    'resetEyeStats',
+    'dotSize',
+    'dotColor',
+    'showPath',
+    'soundEnabled',
+    'vibrationEnabled',
+    'fullscreenEnabled',
+  ])
+    ids[id] = new El();
+  for (const n of [30, 60, 120, 180]) {
+    const el = new El('button');
+    el.dataset.duration = String(n);
+    ids.durationOptions.appendChild(el);
+  }
+  const document = {
+    body: new El('body'),
+    hidden: false,
+    fullscreenElement: null,
+    getElementById: (id) => ids[id],
+    createElement: (t) => new El(t),
+    createElementNS: (_ns, t) => new El(t),
+    addEventListener: (k, fn) => (listeners[k] ||= []).push(fn),
+    removeEventListener() {},
+    querySelectorAll(selector) {
+      const all = [];
+      function walk(e) {
+        if (selector === '[data-duration]' && e.dataset.duration) all.push(e);
+        if (selector === '[data-exercise]' && e.dataset.exercise) all.push(e);
+        e.children.forEach(walk);
+      }
+      Object.values(ids).forEach(walk);
+      return [...new Set(all)];
+    },
+  };
+  const window = {
+    document,
+    performance: { now: () => clock },
+    matchMedia: () => ({ matches: false }),
+    navigator: {},
+    crypto: require('node:crypto'),
+    localStorage: {
+      getItem() {
+        return null;
+      },
+      setItem() {},
+    },
+    sessionStorage: {
+      getItem() {
+        return null;
+      },
+      setItem() {},
+    },
+    addEventListener: (k, fn) => (listeners[k] ||= []).push(fn),
+    removeEventListener() {},
+    setInterval() {
+      return 1;
+    },
+    clearInterval() {},
+    requestAnimationFrame(fn) {
+      const id = ++seq;
+      frames.set(id, fn);
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      frames.delete(id);
+    },
+    confirm: () => true,
+  };
+  return {
+    document,
+    window,
+    ids,
+    async tick(ms) {
+      clock = ms;
+      const work = [...frames.values()];
+      frames.clear();
+      work.forEach((fn) => fn(ms));
+      await Promise.resolve();
+      await Promise.resolve();
+    },
+    async emit(type) {
+      for (const fn of listeners[type] || [])
+        await fn({ target: { tagName: 'DIV' }, key: '' });
+    },
+  };
 }
-module.exports={harness};
+module.exports = { harness };

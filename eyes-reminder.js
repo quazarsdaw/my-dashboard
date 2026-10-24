@@ -1,45 +1,581 @@
-(function(root,factory){
- if(typeof module==='object'&&module.exports){module.exports=factory();return;}
- var api=factory(),source=root.document.currentScript&&root.document.currentScript.src||new URL('eyes-reminder.js',root.location.href).href,controller=null,loading=null;
- var modules=[['eyes-data.js','EyesData'],['browser-lock.js','BrowserLock'],['eyes-store.js','EyesStore'],['eyes-coordination.js','EyesCoordination'],['eyes-reminder-core.js','EyesReminderCore']];
- function enabled(){try{return JSON.parse(root.localStorage.getItem('eye_break_settings_v1')||'{}').reminderEnabled===true;}catch(_){return false;}}
- function load(file,name){if(root[name])return Promise.resolve();return new Promise(function(resolve,reject){var s=root.document.createElement('script');s.src=new URL(file+'?v=1',source).href;s.onload=resolve;s.onerror=function(){reject(new Error('REMINDER_LOAD_FAILED'));};root.document.head.appendChild(s);});}
- async function configure(){if(!enabled()){if(controller)controller.destroy();controller=null;return false;}if(!loading)loading=(async function(){for(var pair of modules)await load(pair[0],pair[1]);if(!root.document.getElementById('eyeReminderStyles')){var link=root.document.createElement('link');link.id='eyeReminderStyles';link.rel='stylesheet';link.href=new URL('eyes-reminder.css?v=1',source).href;root.document.head.appendChild(link);}})().catch(function(e){loading=null;throw e;});
-  try{await loading;if(!enabled())return false;if(!controller){controller=api.create({window:root,document:root.document});await controller.start();}else await controller.configure();return true;}catch(_){root.dispatchEvent(new CustomEvent('eyes-reminder-error'));return false;}}
- root.EyesReminder={configure:configure,onExerciseCompleted:function(record){if(controller)return controller.onExerciseCompleted(record);if(enabled())return configure().then(function(){if(controller)return controller.onExerciseCompleted(record);});},destroy:function(){if(controller)controller.destroy();controller=null;}};
- root.addEventListener('storage',function(e){if(e.key==='eye_break_settings_v1')configure();});root.addEventListener('dashboard-data-changed',function(e){if(e.detail&&e.detail.key==='eye_break_settings_v1')configure();});root.addEventListener('dashboard-sync-applied',configure);
- configure();
-})(typeof window==='object'?window:globalThis,function(){
- 'use strict';var KEY='_eye_break_runtime_v1',TABS='_eye_break_tabs_v1';
- function create(o){var w=o.window,doc=o.document,D=o.data||w.EyesData,R=o.core||w.EyesReminderCore,storage=o.storage||w.localStorage,uuid=o.uuid||function(){return w.crypto.randomUUID();},now=o.now||Date.now,mono=o.mono||function(){return w.performance.now();},owner=o.getOwner||function(){var u=w.SupabaseSync&&w.SupabaseSync.getUser();return u?u.id:'local';},G=w.Gamification;
-  var store=o.store||w.EyesStore.create({storage:storage,get:G&&G.storeGet,set:G&&G.storeSet,events:w,getOwner:owner,uuid:uuid}),tab=o.tabId;try{if(!tab){tab=w.sessionStorage.getItem('_eye_break_tab')||uuid();w.sessionStorage.setItem('_eye_break_tab',tab);}}catch(_){tab=uuid();}
-  var coord=o.coordination||w.EyesCoordination.create({locks:w.navigator.locks,indexedDB:w.indexedDB,storage:storage,uuid:uuid,tabId:tab,now:now}),timer=null,distanceTimer=null,distance=null,distanceToken=null,banner=null,heading=null,description=null,counter=null,primary=null,secondary=null,started=false,closed=false,working=false,bannerId=null,audio=null;
-  function read(k,fallback){try{return JSON.parse(storage.getItem(k))||fallback;}catch(_){return fallback;}}function write(k,v){storage.setItem(k,JSON.stringify(v));}
-  function hide(){if(banner)banner.remove();banner=null;bannerId=null;}
-  function button(text,fn){var b=doc.createElement('button');b.type='button';b.textContent=text;b.addEventListener('click',fn);return b;}
-  function mount(){if(banner)return;banner=doc.createElement('aside');banner.className='eye-reminder';banner.setAttribute('aria-label','Перерыв для глаз');heading=doc.createElement('strong');description=doc.createElement('p');counter=doc.createElement('span');counter.className='eye-reminder-clock';var body=doc.createElement('div');body.className='eye-reminder-copy';body.append(heading,description,counter);var actions=doc.createElement('div');actions.className='eye-reminder-actions';primary=button('20 секунд вдаль',function(){if(distance)return distance.state.distanceSession.phase==='paused'?resumeDistance():pauseDistance();return startDistance();});secondary=button('Позже',function(){if(distance)return cancelDistance();return later();});var link=doc.createElement('a');link.href='eyes.html';link.textContent='Открыть разминку →';link.className='eye-reminder-link';actions.append(primary,secondary,link);banner.append(body,actions);doc.body.appendChild(banner);}
-  function show(id){if(doc.hidden)return;mount();bannerId=id;heading.textContent='Время дать глазам перерыв';description.textContent='Посмотри на предмет примерно в 6 метрах или дальше.';counter.textContent='';primary.textContent='20 секунд вдаль';secondary.textContent='Позже';}
-  function paintDistance(){if(!distance)return;mount();var s=distance.state.distanceSession;if(!s)return;heading.textContent=s.phase==='paused'?'Перерыв на паузе':'Посмотри вдаль';description.textContent='Можно отвернуться от экрана. В конце — мягкий сигнал.';counter.textContent=String(Math.ceil((20000-s.elapsedMs)/1000))+' с';primary.textContent=s.phase==='paused'?'Продолжить':'Пауза';secondary.textContent='Завершить';}
-  function sound(unlock){try{if(!store.settings().soundEnabled)return;var A=w.AudioContext||w.webkitAudioContext;if(unlock&&A&&!audio)audio=new A();if(audio&&audio.state==='suspended'){audio.resume().catch(function(){});return;}if(audio&&audio.state==='running'){var oscillator=audio.createOscillator(),gain=audio.createGain();gain.gain.setValueAtTime(.04,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.2);oscillator.frequency.value=520;oscillator.connect(gain);gain.connect(audio.destination);oscillator.start();oscillator.stop(audio.currentTime+.22);}if(store.settings().vibrationEnabled&&w.navigator.vibrate)w.navigator.vibrate(40);}catch(_){} }
-  function clearDistance(){if(distanceTimer!==null)w.clearInterval(distanceTimer);distanceTimer=null;distance=null;if(distanceToken){coord.releaseSession(distanceToken).catch(function(){});distanceToken=null;}}
-  async function update(event){return coord.withLock('eye-reminder-runtime',function(){var raw=read(KEY,{});var result=R.reduce(raw,Object.assign({nowMs:now()},event));result.state.owner=owner();result.state.distanceSession=null;if(result.effects.some(function(e){return e.type==='hide';}))result.state.notificationId=null;write(KEY,result.state);return result;});}
-  async function later(){await update({type:'later'});hide();}
-  async function tickDistance(){if(!distance)return;var local=distance,oldOwner=local.owner;if(oldOwner!==owner()){clearDistance();hide();return;}var r=R.reduce(local.state,{type:'distanceTick',monoMs:mono(),nowMs:now(),visible:!doc.hidden});local.state=r.state;var done=r.effects.find(function(e){return e.type==='completeDistance';});if(!done){paintDistance();return;}clearDistance();try{store.recordCompletion({version:1,id:done.session.id,epoch:done.session.epoch,completedAt:new Date(now()).toISOString(),durationSeconds:20,mode:'reminder',exerciseIds:['distance']});await update({type:'completeExercise'});sound(false);hide();}catch(_){mount();heading.textContent='Перерыв окончен';description.textContent='Сохранить статистику не удалось.';counter.textContent='';primary.textContent='Закрыть';primary.onclick=hide;}}
-  async function tick(initialize){if(closed||!store.settings().reminderEnabled)return;if(working)return;working=true;try{var result=await coord.withLock('eye-reminder-runtime',function(){var stamp=now(),raw=read(KEY,{}),tabs=read(TABS,{});Object.keys(tabs).forEach(function(id){if(!Number.isFinite(tabs[id])||stamp-tabs[id]>90000)delete tabs[id];});var fresh=initialize&&Object.keys(tabs).length===0&&!(raw.handoffTab===tab&&raw.handoffUntil>=stamp);tabs[tab]=stamp;write(TABS,tabs);var state=R.reduce(raw,{type:'open',nowMs:stamp,fresh:!!fresh}).state;if(state.owner!==owner())state=R.reduce(state,{type:'ownerChanged',nowMs:stamp,owner:owner()}).state;if(!state.enabled)state=R.reduce(state,{type:'enable',nowMs:stamp}).state;
-    var modal=doc.querySelector&&doc.querySelector('dialog[open], [aria-modal="true"], .task-details-overlay.show');var active=coord.active?coord.active():null;var r=R.reduce(state,{type:'tick',nowMs:stamp,visible:!doc.hidden,busy:!!active||!!modal});r.state.owner=owner();r.state.distanceSession=null;if(r.effects.some(function(e){return e.type==='show';}))r.state.notificationId=uuid();write(KEY,r.state);return r;});
-    if(result.effects.some(function(e){return e.type==='show';}))show(result.state.notificationId);else if(bannerId&&bannerId!==result.state.notificationId&&!distance)hide();
-    if(distanceToken&&coord.renewSession){var ok=await coord.renewSession(distanceToken);if(!ok)pauseDistance();}await tickDistance();
-   }finally{working=false;}}
-  async function startDistance(){if(distance)return;var id=uuid(),who=owner();sound(true);var claim=await coord.claimSession({id:id,owner:who});if(!claim.ok){mount();description.textContent='Другая разминка уже открыта. Заверши её перед новым перерывом.';return false;}if(who!==owner()){coord.releaseSession(claim.token).catch(function(){});return false;}distanceToken=claim.token;distance={owner:who,state:R.reduce(null,{type:'startDistance',id:id,epoch:store.epoch(),owner:who,nowMs:now(),monoMs:mono()}).state};paintDistance();distanceTimer=w.setInterval(function(){tickDistance().catch(function(){});},250);return true;}
-  function pauseDistance(){if(!distance)return;distance.state=R.reduce(distance.state,{type:'pauseDistance',nowMs:now(),monoMs:mono()}).state;paintDistance();}
-  async function resumeDistance(){if(!distance)return;var s=distance.state.distanceSession;if(distance.owner!==owner()){clearDistance();hide();return;}var claim=await coord.claimSession({id:s.id,owner:owner()});if(!claim.ok)return;distanceToken=claim.token;sound(true);distance.state=R.reduce(distance.state,{type:'resumeDistance',nowMs:now(),monoMs:mono()}).state;paintDistance();}
-  async function cancelDistance(){clearDistance();hide();await update({type:'later'});}
-  async function onExerciseCompleted(){if(!store.settings().reminderEnabled)return;await update({type:'completeExercise'});hide();}
-  async function start(){if(started||closed)return;started=true;if(!store.settings().reminderEnabled)return;await tick(true);if(closed)return;timer=w.setInterval(function(){tick().catch(function(){hide();});},5000);doc.addEventListener('visibilitychange',function(){if(doc.hidden)pauseDistance();else tick().catch(function(){});});w.addEventListener('storage',storageChanged);w.addEventListener('pagehide',function(){destroy(true);});}
-  function storageChanged(e){if(e.key===KEY){var state=read(KEY,{});if(bannerId&&state.notificationId!==bannerId&&!distance)hide();}if(e.key==='eye_break_settings_v1'&&!store.settings().reminderEnabled)destroy();}
-  async function configure(){if(!store.settings().reminderEnabled){destroy();return;}return tick();}
-  function destroy(handoff){if(closed)return;closed=true;if(timer!==null)w.clearInterval(timer);timer=null;clearDistance();hide();w.removeEventListener('storage',storageChanged);coord.withLock('eye-reminder-runtime',function(){var tabs=read(TABS,{});delete tabs[tab];write(TABS,tabs);if(handoff){var state=read(KEY,{});state.handoffTab=tab;state.handoffUntil=now()+10000;write(KEY,state);}}).catch(function(){});if(audio&&audio.close)audio.close().catch(function(){});}
-  return {start:start,configure:configure,tick:tick,startDistance:startDistance,pauseDistance:pauseDistance,resumeDistance:resumeDistance,later:later,onExerciseCompleted:onExerciseCompleted,destroy:destroy};
- }
- return {create:create};
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+    return;
+  }
+  var api = factory(),
+    source =
+      (root.document.currentScript && root.document.currentScript.src) ||
+      new URL('eyes-reminder.js', root.location.href).href,
+    controller = null,
+    loading = null;
+  var modules = [
+    ['eyes-data.js', 'EyesData'],
+    ['browser-lock.js', 'BrowserLock'],
+    ['eyes-store.js', 'EyesStore'],
+    ['eyes-coordination.js', 'EyesCoordination'],
+    ['eyes-reminder-core.js', 'EyesReminderCore'],
+  ];
+  function enabled() {
+    try {
+      return (
+        JSON.parse(root.localStorage.getItem('eye_break_settings_v1') || '{}')
+          .reminderEnabled === true
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+  function load(file, name) {
+    if (root[name]) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var s = root.document.createElement('script');
+      s.src = new URL(file + '?v=1', source).href;
+      s.onload = resolve;
+      s.onerror = function () {
+        reject(new Error('REMINDER_LOAD_FAILED'));
+      };
+      root.document.head.appendChild(s);
+    });
+  }
+  async function configure() {
+    if (!enabled()) {
+      if (controller) controller.destroy();
+      controller = null;
+      return false;
+    }
+    if (!loading)
+      loading = (async function () {
+        for (var pair of modules) await load(pair[0], pair[1]);
+        if (!root.document.getElementById('eyeReminderStyles')) {
+          var link = root.document.createElement('link');
+          link.id = 'eyeReminderStyles';
+          link.rel = 'stylesheet';
+          link.href = new URL('eyes-reminder.css?v=1', source).href;
+          root.document.head.appendChild(link);
+        }
+      })().catch(function (e) {
+        loading = null;
+        throw e;
+      });
+    try {
+      await loading;
+      if (!enabled()) return false;
+      if (!controller) {
+        controller = api.create({ window: root, document: root.document });
+        await controller.start();
+      } else await controller.configure();
+      return true;
+    } catch (_) {
+      root.dispatchEvent(new CustomEvent('eyes-reminder-error'));
+      return false;
+    }
+  }
+  root.EyesReminder = {
+    configure: configure,
+    onExerciseCompleted: function (record) {
+      if (controller) return controller.onExerciseCompleted(record);
+      if (enabled())
+        return configure().then(function () {
+          if (controller) return controller.onExerciseCompleted(record);
+        });
+    },
+    destroy: function () {
+      if (controller) controller.destroy();
+      controller = null;
+    },
+  };
+  root.addEventListener('storage', function (e) {
+    if (e.key === 'eye_break_settings_v1') configure();
+  });
+  root.addEventListener('dashboard-data-changed', function (e) {
+    if (e.detail && e.detail.key === 'eye_break_settings_v1') configure();
+  });
+  root.addEventListener('dashboard-sync-applied', configure);
+  configure();
+})(typeof window === 'object' ? window : globalThis, function () {
+  'use strict';
+  var KEY = '_eye_break_runtime_v1',
+    TABS = '_eye_break_tabs_v1';
+  function create(o) {
+    var w = o.window,
+      doc = o.document,
+      D = o.data || w.EyesData,
+      R = o.core || w.EyesReminderCore,
+      storage = o.storage || w.localStorage,
+      uuid =
+        o.uuid ||
+        function () {
+          return w.crypto.randomUUID();
+        },
+      now = o.now || Date.now,
+      mono =
+        o.mono ||
+        function () {
+          return w.performance.now();
+        },
+      owner =
+        o.getOwner ||
+        function () {
+          var u = w.SupabaseSync && w.SupabaseSync.getUser();
+          return u ? u.id : 'local';
+        },
+      G = w.Gamification;
+    var store =
+        o.store ||
+        w.EyesStore.create({
+          storage: storage,
+          get: G && G.storeGet,
+          set: G && G.storeSet,
+          events: w,
+          getOwner: owner,
+          uuid: uuid,
+        }),
+      tab = o.tabId;
+    try {
+      if (!tab) {
+        tab = w.sessionStorage.getItem('_eye_break_tab') || uuid();
+        w.sessionStorage.setItem('_eye_break_tab', tab);
+      }
+    } catch (_) {
+      tab = uuid();
+    }
+    var coord =
+        o.coordination ||
+        w.EyesCoordination.create({
+          locks: w.navigator.locks,
+          indexedDB: w.indexedDB,
+          storage: storage,
+          uuid: uuid,
+          tabId: tab,
+          now: now,
+        }),
+      timer = null,
+      distanceTimer = null,
+      distance = null,
+      distanceToken = null,
+      banner = null,
+      heading = null,
+      description = null,
+      counter = null,
+      primary = null,
+      secondary = null,
+      started = false,
+      closed = false,
+      working = false,
+      bannerId = null,
+      bannerDone = false,
+      audio = null;
+    function read(k, fallback) {
+      try {
+        return JSON.parse(storage.getItem(k)) || fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+    function write(k, v) {
+      storage.setItem(k, JSON.stringify(v));
+    }
+    function hide() {
+      if (banner) banner.remove();
+      banner = null;
+      bannerId = null;
+      bannerDone = false;
+    }
+    function button(text, fn) {
+      var b = doc.createElement('button');
+      b.type = 'button';
+      b.textContent = text;
+      b.addEventListener('click', function () {
+        return Promise.resolve().then(fn).catch(function () {
+          if (description) description.textContent='Не удалось сохранить действие. Проверь доступ к данным браузера.';
+        });
+      });
+      return b;
+    }
+    function mount() {
+      if (banner) return;
+      banner = doc.createElement('aside');
+      banner.className = 'eye-reminder';
+      banner.setAttribute('aria-label', 'Перерыв для глаз');
+      heading = doc.createElement('strong');
+      description = doc.createElement('p');
+      counter = doc.createElement('span');
+      counter.className = 'eye-reminder-clock';
+      var body = doc.createElement('div');
+      body.className = 'eye-reminder-copy';
+      body.append(heading, description, counter);
+      var actions = doc.createElement('div');
+      actions.className = 'eye-reminder-actions';
+      primary = button('20 секунд вдаль', function () {
+        if (bannerDone) return hide();
+        if (distance)
+          return distance.state.distanceSession.phase === 'paused'
+            ? resumeDistance()
+            : pauseDistance();
+        return startDistance();
+      });
+      secondary = button('Позже', function () {
+        if (bannerDone) return hide();
+        if (distance) return cancelDistance();
+        return later();
+      });
+      var link = doc.createElement('a');
+      link.href = 'eyes.html';
+      link.textContent = 'Открыть разминку →';
+      link.className = 'eye-reminder-link';
+      actions.append(primary, secondary, link);
+      banner.append(body, actions);
+      doc.body.appendChild(banner);
+    }
+    function show(id) {
+      if (doc.hidden) return;
+      mount();
+      bannerId = id;
+      heading.textContent = 'Время дать глазам перерыв';
+      description.textContent =
+        'Посмотри на предмет примерно в 6 метрах или дальше.';
+      counter.textContent = '';
+      primary.textContent = '20 секунд вдаль';
+      secondary.textContent = 'Позже';
+    }
+    function paintDistance() {
+      if (!distance) return;
+      mount();
+      var s = distance.state.distanceSession;
+      if (!s) return;
+      heading.textContent =
+        s.phase === 'paused' ? 'Перерыв на паузе' : 'Посмотри вдаль';
+      description.textContent =
+        'Можно отвернуться от экрана. В конце — мягкий сигнал.';
+      counter.textContent =
+        String(Math.ceil((20000 - s.elapsedMs) / 1000)) + ' с';
+      primary.textContent = s.phase === 'paused' ? 'Продолжить' : 'Пауза';
+      secondary.textContent = 'Завершить';
+    }
+    function sound(unlock) {
+      try {
+        if (!store.settings().soundEnabled) return;
+        var A = w.AudioContext || w.webkitAudioContext;
+        if (unlock && A && !audio) audio = new A();
+        if (audio && audio.state === 'suspended') {
+          audio.resume().catch(function () {});
+          return;
+        }
+        if (audio && audio.state === 'running') {
+          var oscillator = audio.createOscillator(),
+            gain = audio.createGain();
+          gain.gain.setValueAtTime(0.04, audio.currentTime);
+          gain.gain.exponentialRampToValueAtTime(
+            0.001,
+            audio.currentTime + 0.2,
+          );
+          oscillator.frequency.value = 520;
+          oscillator.connect(gain);
+          gain.connect(audio.destination);
+          oscillator.start();
+          oscillator.stop(audio.currentTime + 0.22);
+        }
+        if (store.settings().vibrationEnabled && w.navigator.vibrate)
+          w.navigator.vibrate(40);
+      } catch (_) {}
+    }
+    function clearDistance() {
+      if (distanceTimer !== null) w.clearInterval(distanceTimer);
+      distanceTimer = null;
+      distance = null;
+      if (distanceToken) {
+        coord.releaseSession(distanceToken).catch(function () {});
+        distanceToken = null;
+      }
+    }
+    async function update(event) {
+      return coord.withLock('eye-reminder-runtime', function () {
+        var raw = read(KEY, {});
+        var result = R.reduce(raw, Object.assign({ nowMs: now() }, event));
+        result.state.owner = owner();
+        result.state.distanceSession = null;
+        if (
+          result.effects.some(function (e) {
+            return e.type === 'hide';
+          })
+        )
+          result.state.notificationId = null;
+        write(KEY, result.state);
+        return result;
+      });
+    }
+    async function later() {
+      await update({ type: 'later' });
+      hide();
+    }
+    async function tickDistance() {
+      if (!distance) return;
+      var local = distance,
+        oldOwner = local.owner;
+      if (oldOwner !== owner()) {
+        clearDistance();
+        hide();
+        return;
+      }
+      var r = R.reduce(local.state, {
+        type: 'distanceTick',
+        monoMs: mono(),
+        nowMs: now(),
+        visible: !doc.hidden,
+      });
+      local.state = r.state;
+      var done = r.effects.find(function (e) {
+        return e.type === 'completeDistance';
+      });
+      if (!done) {
+        paintDistance();
+        return;
+      }
+      clearDistance();
+      try {
+        store.recordCompletion({
+          version: 1,
+          id: done.session.id,
+          epoch: done.session.epoch,
+          completedAt: new Date(now()).toISOString(),
+          durationSeconds: 20,
+          mode: 'reminder',
+          exerciseIds: ['distance'],
+        });
+        await update({ type: 'completeExercise' });
+        sound(false);
+        hide();
+      } catch (_) {
+        mount();
+        heading.textContent = 'Перерыв окончен';
+        description.textContent = 'Сохранить статистику не удалось.';
+        counter.textContent = '';
+        primary.textContent = 'Закрыть';
+        secondary.textContent = 'Закрыть';
+        bannerDone = true;
+      }
+    }
+    async function tick(initialize) {
+      if (closed || !store.settings().reminderEnabled) return;
+      if (working) return;
+      working = true;
+      try {
+        var result = await coord.withLock('eye-reminder-runtime', function () {
+          var stamp = now(),
+            raw = read(KEY, {}),
+            tabs = read(TABS, {});
+          Object.keys(tabs).forEach(function (id) {
+            if (!Number.isFinite(tabs[id]) || stamp - tabs[id] > 90000)
+              delete tabs[id];
+          });
+          var fresh =
+            initialize &&
+            Object.keys(tabs).length === 0 &&
+            !(raw.handoffTab === tab && raw.handoffUntil >= stamp);
+          tabs[tab] = stamp;
+          write(TABS, tabs);
+          var state = R.reduce(raw, {
+            type: 'open',
+            nowMs: stamp,
+            fresh: !!fresh,
+          }).state;
+          if (state.owner !== owner())
+            state = R.reduce(state, {
+              type: 'ownerChanged',
+              nowMs: stamp,
+              owner: owner(),
+            }).state;
+          if (!state.enabled)
+            state = R.reduce(state, { type: 'enable', nowMs: stamp }).state;
+          var modal =
+            doc.querySelector &&
+            doc.querySelector(
+              'dialog[open], [aria-modal="true"], .task-details-overlay.show',
+            );
+          var active = coord.active ? coord.active() : null;
+          var r = R.reduce(state, {
+            type: 'tick',
+            nowMs: stamp,
+            visible: !doc.hidden,
+            busy: !!active || !!modal,
+          });
+          r.state.owner = owner();
+          r.state.distanceSession = null;
+          if (
+            r.effects.some(function (e) {
+              return e.type === 'show';
+            })
+          )
+            r.state.notificationId = uuid();
+          write(KEY, r.state);
+          return r;
+        });
+        if (
+          result.effects.some(function (e) {
+            return e.type === 'show';
+          })
+        )
+          show(result.state.notificationId);
+        else if (
+          bannerId &&
+          bannerId !== result.state.notificationId &&
+          !distance
+        )
+          hide();
+        if (distanceToken && coord.renewSession) {
+          var ok = await coord.renewSession(distanceToken);
+          if (!ok) pauseDistance();
+        }
+        await tickDistance();
+      } finally {
+        working = false;
+      }
+    }
+    async function startDistance() {
+      if (distance) return;
+      var id = uuid(),
+        who = owner();
+      sound(true);
+      var claim = await coord.claimSession({ id: id, owner: who });
+      if (!claim.ok) {
+        mount();
+        description.textContent =
+          'Другая разминка уже открыта. Заверши её перед новым перерывом.';
+        return false;
+      }
+      if (who !== owner()) {
+        coord.releaseSession(claim.token).catch(function () {});
+        return false;
+      }
+      distanceToken = claim.token;
+      distance = {
+        owner: who,
+        state: R.reduce(null, {
+          type: 'startDistance',
+          id: id,
+          epoch: store.epoch(),
+          owner: who,
+          nowMs: now(),
+          monoMs: mono(),
+        }).state,
+      };
+      paintDistance();
+      distanceTimer = w.setInterval(function () {
+        tickDistance().catch(function () {});
+      }, 250);
+      return true;
+    }
+    function pauseDistance() {
+      if (!distance) return;
+      distance.state = R.reduce(distance.state, {
+        type: 'pauseDistance',
+        nowMs: now(),
+        monoMs: mono(),
+      }).state;
+      paintDistance();
+    }
+    async function resumeDistance() {
+      if (!distance) return;
+      var s = distance.state.distanceSession;
+      if (distance.owner !== owner()) {
+        clearDistance();
+        hide();
+        return;
+      }
+      var claim = await coord.claimSession({ id: s.id, owner: owner() });
+      if (!claim.ok) return;
+      distanceToken = claim.token;
+      sound(true);
+      distance.state = R.reduce(distance.state, {
+        type: 'resumeDistance',
+        nowMs: now(),
+        monoMs: mono(),
+      }).state;
+      paintDistance();
+    }
+    async function cancelDistance() {
+      clearDistance();
+      hide();
+      await update({ type: 'later' });
+    }
+    async function onExerciseCompleted() {
+      if (!store.settings().reminderEnabled) return;
+      await update({ type: 'completeExercise' });
+      hide();
+    }
+    async function start() {
+      if (started || closed) return;
+      started = true;
+      if (!store.settings().reminderEnabled) return;
+      await tick(true);
+      if (closed) return;
+      timer = w.setInterval(function () {
+        tick().catch(function () {
+          hide();
+        });
+      }, 5000);
+      doc.addEventListener('visibilitychange', function () {
+        if (doc.hidden) pauseDistance();
+        else tick().catch(function () {});
+      });
+      w.addEventListener('storage', storageChanged);
+      w.addEventListener('pagehide', function () {
+        destroy(true);
+      });
+    }
+    function storageChanged(e) {
+      if (e.key === KEY) {
+        var state = read(KEY, {});
+        if (bannerId && state.notificationId !== bannerId && !distance) hide();
+      }
+      if (
+        e.key === 'eye_break_settings_v1' &&
+        !store.settings().reminderEnabled
+      )
+        destroy();
+    }
+    async function configure() {
+      if (!store.settings().reminderEnabled) {
+        destroy();
+        return;
+      }
+      return tick();
+    }
+    function destroy(handoff) {
+      if (closed) return;
+      closed = true;
+      if (timer !== null) w.clearInterval(timer);
+      timer = null;
+      clearDistance();
+      hide();
+      w.removeEventListener('storage', storageChanged);
+      coord
+        .withLock('eye-reminder-runtime', function () {
+          var tabs = read(TABS, {});
+          delete tabs[tab];
+          write(TABS, tabs);
+          if (handoff) {
+            var state = read(KEY, {});
+            state.handoffTab = tab;
+            state.handoffUntil = now() + 10000;
+            write(KEY, state);
+          }
+        })
+        .catch(function () {});
+      if (audio && audio.close) audio.close().catch(function () {});
+    }
+    return {
+      start: start,
+      configure: configure,
+      tick: tick,
+      startDistance: startDistance,
+      pauseDistance: pauseDistance,
+      resumeDistance: resumeDistance,
+      later: later,
+      onExerciseCompleted: onExerciseCompleted,
+      destroy: destroy,
+    };
+  }
+  return { create: create };
 });
