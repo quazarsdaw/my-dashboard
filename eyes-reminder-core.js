@@ -71,6 +71,7 @@
           owner: e.owner,
           elapsedMs: 0,
           lastMono: e.monoMs,
+          lastWall: e.nowMs,
           phase: 'running',
         };
         effects.push({ type: 'startDistance' });
@@ -83,7 +84,15 @@
         ) {
           var d = Object.assign({}, s.distanceSession),
             delta = Math.max(0, e.monoMs - d.lastMono);
+          if (delta > 5000 || e.nowMs - d.lastWall > 5000) {
+            d.phase = 'paused';
+            d.lastMono = e.monoMs;
+            d.lastWall = e.nowMs;
+            s.distanceSession = d;
+            break;
+          }
           d.lastMono = Math.max(d.lastMono, e.monoMs);
+          d.lastWall = e.nowMs;
           d.elapsedMs = Math.min(20000, d.elapsedMs + delta);
           s.distanceSession = d;
           if (d.elapsedMs >= 20000) {
@@ -104,6 +113,7 @@
           s.distanceSession = Object.assign({}, s.distanceSession, {
             phase: 'running',
             lastMono: e.monoMs,
+            lastWall: e.nowMs,
           });
         break;
       case 'cancelDistance':

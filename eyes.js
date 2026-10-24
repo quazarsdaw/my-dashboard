@@ -80,6 +80,7 @@
       lastSaved = 0,
       lastCue = '',
       lastStage = '',
+      lastWall = Date.now(),
       audio = null,
       unsubscribe = null,
       activeSettings = null;
@@ -255,6 +256,64 @@
         token = null;
       }
     }
+    function startHeartbeat() {
+      if (heartbeat !== null) w.clearInterval(heartbeat);
+      heartbeat = w.setInterval(function () {
+        if (doc.hidden) return;
+        coord
+          .renewSession(token)
+          .then(function (ok) {
+            if (!ok) {
+              pause();
+              notice(
+                'Владение таймером потеряно. Нажми «Продолжить», чтобы проверить другую вкладку.',
+              );
+            }
+          })
+          .catch(function () {
+            pause();
+            notice('Не удалось проверить вкладку. Таймер приостановлен.');
+          });
+      }, 5000);
+    }
+    function guardProgress() {
+      if (!state || state.phase !== 'running') return false;
+      var current = now(),
+        wall = Date.now(),
+        active = coord.active ? coord.active() : null;
+      var lost = coord.active && (!active || active.token !== token);
+      var stalled = current - state.lastTickMs > 5000 || wall - lastWall > 5000;
+      lastWall = wall;
+      if (doc.hidden || lost || stalled) {
+        state = Object.assign({}, state, {
+          phase: 'paused',
+          lastTickMs: current,
+        });
+        stopFrames();
+        saveActive();
+        paint();
+        if (stalled || lost)
+          notice(
+            'Разминка приостановлена после перерыва в работе страницы. Продолжи, когда будешь готов.',
+          );
+        return true;
+      }
+      return false;
+    }
+    function readSaved() {
+      if (state) return;
+      var raw = store.loadActive();
+      saved = raw
+        ? S.restoreSession(raw, { owner: owner(), nowMs: now() })
+        : null;
+      if (saved && raw.settings) saved.settings = raw.settings;
+    }
+    function refreshFromStore() {
+      ownerChanged();
+      readSaved();
+      settings = store.settings();
+      render();
+    }
     function chart(v) {
       if (lastStage === v.exerciseId) return;
       lastStage = v.exerciseId;
@@ -328,6 +387,7 @@
     function finish() {
       if (finished || ownerChanged()) return;
       finished = true;
+      cue('session-complete');
       stopFrames();
       release();
       leaveFullscreen();
@@ -367,6 +427,7 @@
     function frame() {
       raf = null;
       if (!state || state.phase !== 'running' || ownerChanged()) return;
+      if (guardProgress()) return;
       state = S.advanceSession(state, now());
       paint();
       if (state.phase === 'completed') {
@@ -443,6 +504,7 @@
         saved = null;
         lastCue = '';
         lastStage = '';
+        lastWall = Date.now();
         el('eyeHome').hidden = true;
         el('eyeResult').hidden = true;
         el('eyePlayer').hidden = false;
@@ -452,23 +514,7 @@
         paint();
         stopFrames();
         raf = w.requestAnimationFrame(frame);
-        heartbeat = w.setInterval(function () {
-          if (doc.hidden) return;
-          coord
-            .renewSession(token)
-            .then(function (ok) {
-              if (!ok) {
-                pause();
-                notice(
-                  'Владение таймером потеряно. Нажми «Продолжить», чтобы проверить другую вкладку.',
-                );
-              }
-            })
-            .catch(function () {
-              pause();
-              notice('Не удалось проверить вкладку. Таймер приостановлен.');
-            });
-        }, 5000);
+        startHeartbeat();
         return true;
       } catch (_) {
         release();
@@ -484,6 +530,7 @@
     }
     function pause() {
       if (!state || ownerChanged()) return;
+      if (guardProgress()) return;
       state = S.pauseSession(state, now());
       stopFrames();
       if (state.phase === 'completed') {
@@ -512,6 +559,8 @@
           token = claim.token;
           unlockAudio();
           state = S.resumeSession(state, now());
+          lastWall = Date.now();
+          startHeartbeat();
           paint();
           raf = w.requestAnimationFrame(frame);
         } catch (_) {
@@ -646,6 +695,7 @@
       on('pauseEye', 'click', togglePause);
       on('nextEye', 'click', function () {
         if (!state) return;
+        if (guardProgress()) return;
         state = S.skipStage(state, now());
         paint();
         saveActive();
@@ -670,11 +720,7 @@
             notice('Не удалось сбросить статистику.');
           }
       });
-      var raw = store.loadActive();
-      saved = raw
-        ? S.restoreSession(raw, { owner: owner(), nowMs: now() })
-        : null;
-      if (saved && raw.settings) saved.settings = raw.settings;
+      readSaved();
       on('resumeEye', 'click', function () {
         return saved ? start(saved) : false;
       });
@@ -693,8 +739,15 @@
       w.addEventListener('pagehide', function () {
         pause();
         stopFrames();
-        if (heartbeat !== null) w.clearInterval(heartbeat);
+        release();
       });
+      w.addEventListener('pageshow', function (e) {
+        if (e.persisted) {
+          lastWall = Date.now();
+          refreshFromStore();
+        }
+      });
+      w.addEventListener('dashboard-auth-changed', refreshFromStore);
       w.addEventListener('resize', paint);
       doc.addEventListener('keydown', function (e) {
         if (
@@ -718,11 +771,7 @@
           'Напоминание недоступно. Проверь разрешение браузера на локальные данные.',
         );
       });
-      unsubscribe = store.subscribe(function () {
-        ownerChanged();
-        settings = store.settings();
-        render();
-      });
+      unsubscribe = store.subscribe(refreshFromStore);
       render();
     }
     return {
@@ -734,6 +783,7 @@
         stopFrames();
         release();
         if (unsubscribe) unsubscribe();
+        w.removeEventListener('dashboard-auth-changed', refreshFromStore);
         if (audio && audio.close) audio.close().catch(function () {});
         coord.close();
       },

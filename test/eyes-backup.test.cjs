@@ -16,6 +16,7 @@ test('backup разрешает только пользовательские ey
   vm.runInContext(code + ';this.allowed=isAppStorageKey;', ctx);
   for (const key of [
     'eye_break_settings_v1',
+    'coins_v1',
     'eye_break_stats_epoch_v1',
     'eye_break_session_v1:11111111-1111-4111-8111-111111111111',
   ])
@@ -24,6 +25,7 @@ test('backup разрешает только пользовательские ey
     'eye_break_session_v1:bad',
     '_eye_break_active_v1',
     '_habit_reward_tx_v1',
+    '_habit_reward_tx_v1:user-a',
     'sb-secret',
     'eye_break_session_v1:<img>',
   ])

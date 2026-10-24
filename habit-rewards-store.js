@@ -34,6 +34,10 @@
       var tracker = o.get('tracker_v1'),
         coins = o.get('coins_v1'),
         change = H.prepareChange(tracker, coins, j.command);
+      if (change.obsolete) {
+        o.runtimeStorage.removeItem(key(who));
+        return { tracker: tracker, coins: coins, delta: 0 };
+      }
       var nextCoins = H.applyCoinChange(coins, change);
       if (nextCoins !== coins) {
         check(who);
@@ -91,8 +95,9 @@
           command,
         );
         if (
-          change.noOp &&
-          (o.get('tracker_v1').marks[change.markKey] || 0) === targetMark
+          change.obsolete ||
+          (change.noOp &&
+            (o.get('tracker_v1').marks[change.markKey] || 0) === targetMark)
         )
           return {
             tracker: o.get('tracker_v1'),

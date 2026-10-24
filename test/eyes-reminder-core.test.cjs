@@ -1,6 +1,28 @@
 const test = require('node:test'),
   assert = require('node:assert/strict'),
   R = require('../eyes-reminder-core.js');
+test('разрыв исполнения distance timer ставит паузу без фонового зачёта', () => {
+  const state = R.reduce(null, {
+    type: 'startDistance',
+    nowMs: 0,
+    monoMs: 0,
+    id: 'x',
+    epoch: 'initial',
+    owner: 'local',
+  }).state;
+  const r = R.reduce(state, {
+    type: 'distanceTick',
+    nowMs: 61000,
+    monoMs: 61000,
+    visible: true,
+  });
+  assert.equal(r.state.distanceSession.phase, 'paused');
+  assert.equal(r.state.distanceSession.elapsedMs, 0);
+  assert.equal(
+    r.effects.some((e) => e.type === 'completeDistance'),
+    false,
+  );
+});
 test('напоминание сохраняет срок при навигации и не дублируется в интервале', () => {
   let s = R.reduce(null, { type: 'enable', nowMs: 0 }).state;
   assert.equal(s.dueAt, 1200000);
@@ -64,12 +86,16 @@ test('двадцать секунд перерыва считают активн
     monoMs: 60000,
     nowMs: 60000,
   }).state;
-  const r = R.reduce(s, {
-    type: 'distanceTick',
-    monoMs: 75000,
-    nowMs: 75000,
-    visible: true,
-  });
+  let r;
+  for (const ms of [65000, 70000, 75000]) {
+    r = R.reduce(s, {
+      type: 'distanceTick',
+      monoMs: ms,
+      nowMs: ms,
+      visible: true,
+    });
+    s = r.state;
+  }
   assert.equal(r.effects[0].type, 'completeDistance');
   assert.equal(r.state.distanceSession, null);
 });

@@ -243,8 +243,10 @@ test('поздний снимок предыдущего аккаунта или
  assert.equal(app.context.window.SupabaseSync.getUser().id,'u2');
 });
 test('служебные состояния глаз и монет не попадают в облако',async()=>{
- const app=await loadSupabaseSync({initialStorage:{_eye_break_active_v1:'{}',_eye_break_runtime_v1:'{}',_habit_reward_tx_v1:'{}',eye_break_settings_v1:'{}'}});await app.runTimers();
+ const ledger={balance:2,earned:2,spent:0,history:[],habitRewardsV1:{mark:{paid:2}},habitRewardOperationsV1:{accepted:['local','h','2026-10-24',0,1]}};
+ const app=await loadSupabaseSync({initialStorage:{_eye_break_active_v1:'{}',_eye_break_runtime_v1:'{}','_habit_reward_tx_v1:user-a':'{}',eye_break_settings_v1:'{}',coins_v1:JSON.stringify(ledger)}});await app.runTimers();
  const keys=app.writes.upserts.flat().map(r=>r.key);assert.ok(keys.includes('eye_break_settings_v1'));assert.ok(!keys.some(k=>k.startsWith('_eye_break_')||k.startsWith('_habit_reward_')));
+ assert.deepEqual(JSON.parse(JSON.stringify(app.writes.upserts.flat().find(r=>r.key==='coins_v1').value)),ledger);
 });
 
 test('путь синхронизируется существующим каналом аккаунта и применяет обновление из облака', async () => {

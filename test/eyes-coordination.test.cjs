@@ -20,6 +20,24 @@ function storage() {
     removeItem: (k) => m.delete(k),
   };
 }
+test('duplicate tab с скопированным sessionStorage не переиспользует владение', async () => {
+  const s = storage(),
+    locks = mutex();
+  const make = () =>
+    E.create({
+      locks,
+      storage: s,
+      now: () => 1000,
+      uuid: require('node:crypto').randomUUID,
+      tabId: 'copied-tab',
+    });
+  const a = make(),
+    b = make();
+  const x = await a.claimSession({ id: 'same', owner: 'user' });
+  assert.equal(x.ok, true);
+  assert.equal((await b.claimSession({ id: 'same', owner: 'user' })).ok, false);
+  assert.equal(await a.renewSession(x.token), true);
+});
 test('параллельные вкладки не владеют одним активным уроком разминки', async () => {
   const locks = mutex(),
     s = storage();

@@ -2,6 +2,26 @@ const test = require('node:test'),
   assert = require('node:assert/strict'),
   crypto = require('node:crypto');
 const H = require('../habit-rewards-core.js');
+test('повтор старой команды после следующего цикла не меняет отметку и монеты', () => {
+  let { tracker, coins } = fixture();
+  const a = command(0, 1),
+    b = command(1, 0.5),
+    c = command(0.5, 0);
+  for (const cmd of [a, b, c]) {
+    const change = H.prepareChange(tracker, coins, cmd);
+    coins = H.applyCoinChange(coins, change);
+    tracker = H.applyTrackerChange(tracker, change);
+  }
+  const before = JSON.stringify({ tracker, coins }),
+    repeat = H.prepareChange(tracker, coins, a);
+  coins = H.applyCoinChange(coins, repeat);
+  tracker = H.applyTrackerChange(tracker, repeat);
+  assert.equal(JSON.stringify({ tracker, coins }), before);
+  assert.throws(
+    () => H.prepareChange(tracker, coins, { ...a, targetMark: 0.5 }),
+    /OPERATION_CONFLICT/,
+  );
+});
 function fixture(mark = 0) {
   return {
     tracker: {

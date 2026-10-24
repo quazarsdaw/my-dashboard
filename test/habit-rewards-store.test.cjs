@@ -71,6 +71,19 @@ function harness() {
   };
 }
 const opts = () => ({ expectedMark: 0, operationId: crypto.randomUUID() });
+test('journal service не применяет принятую старую команду после других операций', async () => {
+  const h = harness(),
+    a = opts();
+  await h.service.setGoodMark('h', '2026-10-24', 1, a);
+  await h.service.setGoodMark('h', '2026-10-24', 0.5, { expectedMark: 1 });
+  await h.service.setGoodMark('h', '2026-10-24', 0, { expectedMark: 0.5 });
+  const before = JSON.stringify([h.get('tracker_v1'), h.get('coins_v1')]);
+  await h.service.setGoodMark('h', '2026-10-24', 1, a);
+  assert.equal(
+    JSON.stringify([h.get('tracker_v1'), h.get('coins_v1')]),
+    before,
+  );
+});
 test('каждая точка сбоя восстанавливает только одну принятую выплату', async () => {
   for (const at of [1, 2, 3, 4]) {
     const h = harness(),

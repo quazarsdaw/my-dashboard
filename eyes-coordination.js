@@ -8,6 +8,7 @@
   function create(o) {
     var lock = B.create(o),
       now = o.now || Date.now,
+      instanceId = o.uuid(),
       channel = o.channelFactory
         ? o.channelFactory('dashboard-eye-breaks')
         : null,
@@ -44,7 +45,7 @@
           x &&
           (x.id !== request.id ||
             x.owner !== request.owner ||
-            x.tabId !== o.tabId)
+            x.instanceId !== instanceId)
         )
           return { ok: false, active: x };
         var token = x ? x.token : o.uuid();
@@ -54,6 +55,7 @@
             id: request.id,
             owner: request.owner,
             tabId: o.tabId,
+            instanceId: instanceId,
             token: token,
             until: now() + 15000,
           }),
@@ -65,7 +67,8 @@
     async function renewSession(token) {
       return lock.withLock('eye-active-session', function () {
         var x = active();
-        if (!x || x.token !== token || x.tabId !== o.tabId) return false;
+        if (!x || x.token !== token || x.instanceId !== instanceId)
+          return false;
         x.until = now() + 15000;
         o.storage.setItem(KEY, JSON.stringify(x));
         return true;
@@ -74,7 +77,8 @@
     async function releaseSession(token) {
       return lock.withLock('eye-active-session', function () {
         var x = active();
-        if (!x || x.token !== token || x.tabId !== o.tabId) return false;
+        if (!x || x.token !== token || x.instanceId !== instanceId)
+          return false;
         o.storage.removeItem(KEY);
         publish();
         return true;

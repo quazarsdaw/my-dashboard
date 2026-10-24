@@ -6,9 +6,13 @@ const UI = require('../eyes.js'),
   S = require('../eyes-session.js'),
   Store = require('../eyes-store.js');
 const { harness } = require('./helpers/eyes-dom.cjs');
-function setup() {
+function setup(options = {}) {
   const h = harness(),
-    map = new Map();
+    map = new Map(
+      options.snapshot
+        ? [['_eye_break_active_v1', JSON.stringify(options.snapshot)]]
+        : [],
+    );
   let currentOwner = 'local';
   const getOwner = () => currentOwner;
   const storage = {
@@ -44,8 +48,19 @@ function setup() {
     getOwner,
   });
   app.init();
+  let frameClock = 0;
+  async function tick(ms) {
+    while (frameClock + 1000 < ms) {
+      frameClock += 1000;
+      await h.tick(frameClock);
+    }
+    frameClock = ms;
+    await h.tick(ms);
+  }
   return {
     ...h,
+    rawTick: h.tick,
+    tick,
     app,
     store,
     coordination,
@@ -53,6 +68,71 @@ function setup() {
     owner: (v) => (currentOwner = v),
   };
 }
+test('долгая остановка кадров не засчитывает сон как практику', async () => {
+  const h = setup();
+  h.app.setDuration(30);
+  await h.app.start();
+  await h.tick(1000);
+  await h.rawTick(61000);
+  assert.equal(h.store.summary().sessions, 0);
+  assert.equal(h.store.loadActive().phase, 'paused');
+  assert.equal(h.store.loadActive().playedMs, 1000);
+  h.app.destroy();
+});
+test('отложенное восстановление auth снова читает snapshot текущего владельца', async () => {
+  for (const event of ['dashboard-sync-applied', 'dashboard-auth-changed']) {
+    const snapshot = S.createSession(
+      C.buildPlan({ mode: 'short', durationSeconds: 30 }),
+      {
+        id: require('node:crypto').randomUUID(),
+        epoch: 'initial',
+        owner: 'user-a',
+        nowMs: 0,
+      },
+    );
+    const h = setup({ snapshot });
+    assert.equal(h.ids.resumePanel.hidden, true);
+    h.owner('user-a');
+    await h.emit(event);
+    assert.equal(h.ids.resumePanel.hidden, false);
+    await h.ids.resumeEye.fire('click');
+    assert.equal(h.store.loadActive().id, snapshot.id);
+    h.app.destroy();
+  }
+});
+test('после bfcache и продолжения снова работает heartbeat', async () => {
+  const h = setup(),
+    timers = new Set();
+  h.window.setInterval = (fn) => {
+    timers.add(fn);
+    return fn;
+  };
+  h.window.clearInterval = (fn) => timers.delete(fn);
+  await h.app.start();
+  assert.equal(timers.size, 1);
+  await h.emit('pagehide', { persisted: true });
+  assert.equal(timers.size, 0);
+  await h.emit('pageshow', { persisted: true });
+  await h.ids.pauseEye.fire('click');
+  assert.equal(timers.size, 1);
+  h.app.destroy();
+});
+test('инструкция вдаль даёт однократный сигнал окончания', async () => {
+  const h = setup(),
+    signals = [];
+  h.window.navigator.vibrate = (n) => signals.push(n);
+  h.ids.vibrationEnabled.checked = true;
+  await h.ids.vibrationEnabled.fire('change');
+  h.app.choose('single', 'distance');
+  h.app.setDuration(30);
+  await h.app.start();
+  assert.equal(signals.length, 1);
+  await h.tick(30000);
+  assert.equal(signals.length, 2);
+  await h.tick(31000);
+  assert.equal(signals.length, 2);
+  h.app.destroy();
+});
 test('неподходящее время блокирует полный комплекс, изменение времени разрешает запуск', async () => {
   const h = setup();
   h.app.choose('full');
@@ -113,6 +193,7 @@ test('пауза на границе завершения не оставляе�
   const h = setup();
   h.app.setDuration(30);
   await h.app.start();
+  await h.tick(29000);
   h.window.performance.now = () => 30000;
   await h.ids.pauseEye.fire('click');
   assert.equal(h.store.summary().sessions, 1);

@@ -162,9 +162,12 @@
       secondary = null,
       started = false,
       closed = false,
+      suspended = false,
+      listenersBound = false,
       working = false,
       bannerId = null,
       bannerDone = false,
+      registryId = uuid(),
       audio = null;
     function read(k, fallback) {
       try {
@@ -187,9 +190,13 @@
       b.type = 'button';
       b.textContent = text;
       b.addEventListener('click', function () {
-        return Promise.resolve().then(fn).catch(function () {
-          if (description) description.textContent='Не удалось сохранить действие. Проверь доступ к данным браузера.';
-        });
+        return Promise.resolve()
+          .then(fn)
+          .catch(function () {
+            if (description)
+              description.textContent =
+                'Не удалось сохранить действие. Проверь доступ к данным браузера.';
+          });
       });
       return b;
     }
@@ -318,6 +325,13 @@
         hide();
         return;
       }
+      if (coord.active) {
+        var active = coord.active();
+        if (!active || active.token !== distanceToken) {
+          pauseDistance();
+          return;
+        }
+      }
       var r = R.reduce(local.state, {
         type: 'distanceTick',
         monoMs: mono(),
@@ -357,7 +371,7 @@
       }
     }
     async function tick(initialize) {
-      if (closed || !store.settings().reminderEnabled) return;
+      if (closed || suspended || !store.settings().reminderEnabled) return;
       if (working) return;
       working = true;
       try {
@@ -373,7 +387,7 @@
             initialize &&
             Object.keys(tabs).length === 0 &&
             !(raw.handoffTab === tab && raw.handoffUntil >= stamp);
-          tabs[tab] = stamp;
+          tabs[registryId] = stamp;
           write(TABS, tabs);
           var state = R.reduce(raw, {
             type: 'open',
@@ -493,6 +507,10 @@
         monoMs: mono(),
       }).state;
       paintDistance();
+      if (distanceTimer === null)
+        distanceTimer = w.setInterval(function () {
+          tickDistance().catch(function () {});
+        }, 250);
     }
     async function cancelDistance() {
       clearDistance();
@@ -515,14 +533,52 @@
           hide();
         });
       }, 5000);
-      doc.addEventListener('visibilitychange', function () {
-        if (doc.hidden) pauseDistance();
-        else tick().catch(function () {});
-      });
-      w.addEventListener('storage', storageChanged);
-      w.addEventListener('pagehide', function () {
+      if (!listenersBound) {
+        listenersBound = true;
+        doc.addEventListener('visibilitychange', visibilityChanged);
+        w.addEventListener('storage', storageChanged);
+        w.addEventListener('pagehide', pageHidden);
+        w.addEventListener('pageshow', pageShown);
+      }
+    }
+    function visibilityChanged() {
+      if (doc.hidden) pauseDistance();
+      else if (!suspended) tick().catch(function () {});
+    }
+    function leaveRegistry(handoff) {
+      return coord
+        .withLock('eye-reminder-runtime', function () {
+          var tabs = read(TABS, {});
+          delete tabs[registryId];
+          write(TABS, tabs);
+          if (handoff) {
+            var state = read(KEY, {});
+            state.handoffTab = tab;
+            state.handoffUntil = now() + 10000;
+            write(KEY, state);
+          }
+        })
+        .catch(function () {});
+    }
+    async function pageHidden(e) {
+      if (!e.persisted) {
         destroy(true);
-      });
+        return;
+      }
+      suspended = true;
+      started = false;
+      pauseDistance();
+      if (timer !== null) w.clearInterval(timer);
+      timer = null;
+      if (distanceTimer !== null) w.clearInterval(distanceTimer);
+      distanceTimer = null;
+      await leaveRegistry(true);
+    }
+    async function pageShown(e) {
+      if (e.persisted && !closed) {
+        suspended = false;
+        await start();
+      }
     }
     function storageChanged(e) {
       if (e.key === KEY) {
@@ -550,19 +606,10 @@
       clearDistance();
       hide();
       w.removeEventListener('storage', storageChanged);
-      coord
-        .withLock('eye-reminder-runtime', function () {
-          var tabs = read(TABS, {});
-          delete tabs[tab];
-          write(TABS, tabs);
-          if (handoff) {
-            var state = read(KEY, {});
-            state.handoffTab = tab;
-            state.handoffUntil = now() + 10000;
-            write(KEY, state);
-          }
-        })
-        .catch(function () {});
+      doc.removeEventListener('visibilitychange', visibilityChanged);
+      w.removeEventListener('pagehide', pageHidden);
+      w.removeEventListener('pageshow', pageShown);
+      leaveRegistry(handoff);
       if (audio && audio.close) audio.close().catch(function () {});
     }
     return {

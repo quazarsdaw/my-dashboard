@@ -153,6 +153,7 @@
       }
     }
     updateAuthUI();
+    if (userChanged) window.dispatchEvent(new CustomEvent('dashboard-auth-changed'));
   }
 
   function startSignIn() {

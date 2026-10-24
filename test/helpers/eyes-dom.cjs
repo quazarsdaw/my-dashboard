@@ -178,9 +178,9 @@ function harness() {
       await Promise.resolve();
       await Promise.resolve();
     },
-    async emit(type) {
+    async emit(type, props = {}) {
       for (const fn of listeners[type] || [])
-        await fn({ target: { tagName: 'DIV' }, key: '' });
+        await fn({ target: { tagName: 'DIV' }, key: '', ...props });
     },
   };
 }

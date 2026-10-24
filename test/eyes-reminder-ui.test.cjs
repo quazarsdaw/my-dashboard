@@ -81,6 +81,19 @@ test('две страницы показывают одно напоминани
   a.app.destroy();
   b.app.destroy();
 });
+test('bfcache возвращает heartbeat и актуальное напоминание', async () => {
+  const g = group(),
+    a = g.page('a');
+  await a.app.start();
+  await a.emit('pagehide', { persisted: true });
+  assert.equal(a.timers.size, 0);
+  await a.emit('pageshow', { persisted: true });
+  assert.ok(a.timers.size > 0);
+  g.time(1200000);
+  await a.app.tick();
+  assert.equal(a.document.body.children.length, 1);
+  a.app.destroy();
+});
 test('выключенное напоминание не создаёт heartbeat и не показывает баннер', async () => {
   const g = group(false),
     a = g.page('a');

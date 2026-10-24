@@ -79,6 +79,21 @@
       fail('INVALID_REWARD_LEDGER');
     return x || null;
   }
+  function operationIdentity(cmd) {
+    return [cmd.owner, cmd.habitId, cmd.date, cmd.expectedMark, cmd.targetMark];
+  }
+  function acceptedOperation(coins, cmd) {
+    var ops = coins.habitRewardOperationsV1;
+    if (ops && (typeof ops !== 'object' || Array.isArray(ops)))
+      fail('INVALID_REWARD_LEDGER');
+    var identity = ops && ops[cmd.operationId];
+    if (
+      identity &&
+      JSON.stringify(identity) !== JSON.stringify(operationIdentity(cmd))
+    )
+      fail('OPERATION_CONFLICT');
+    return !!identity;
+  }
   function habitFor(tracker, id) {
     if (
       !tracker ||
@@ -101,9 +116,10 @@
       slot = slotFor(coins, key),
       current = tracker.marks[key] || 0;
     if (!mark(current)) fail('INVALID_MARK');
-    var duplicate = slot && slot.operationId === cmd.operationId;
-    if (duplicate && slot.targetMark !== cmd.targetMark)
-      fail('OPERATION_CONFLICT');
+    var accepted = acceptedOperation(coins, cmd),
+      last = slot && slot.operationId === cmd.operationId;
+    var duplicate = accepted || last;
+    if (last && slot.targetMark !== cmd.targetMark) fail('OPERATION_CONFLICT');
     if (!duplicate && current !== cmd.expectedMark) fail('STALE_MARK');
     var previous = slot ? slot.paid : 0;
     return {
@@ -114,6 +130,7 @@
       targetReward: rewardForMark(cmd.targetMark),
       delta: duplicate ? 0 : rewardForMark(cmd.targetMark) - previous,
       noOp: !!duplicate,
+      obsolete: !!accepted && !last,
       reason:
         'Привычка: ' + String(habit.name || 'Без названия') + ' · ' + cmd.date,
     };
@@ -123,6 +140,7 @@
       cmd = validateCommand(change.command),
       key = cmd.habitId + ':' + cmd.date,
       slot = slotFor(coins, key);
+    if (acceptedOperation(coins, cmd)) return coins;
     if (slot && slot.operationId === cmd.operationId) {
       if (slot.targetMark !== cmd.targetMark) fail('OPERATION_CONFLICT');
       return coins;
@@ -141,6 +159,8 @@
       targetMark: cmd.targetMark,
       at: cmd.at,
     };
+    result.habitRewardOperationsV1 = result.habitRewardOperationsV1 || {};
+    result.habitRewardOperationsV1[cmd.operationId] = operationIdentity(cmd);
     if (delta) {
       result.history.unshift({
         type: 'adjust',
@@ -154,6 +174,7 @@
     return result;
   }
   function applyTrackerChange(tracker, change) {
+    if (change.obsolete) return tracker;
     var cmd = validateCommand(change.command);
     habitFor(tracker, cmd.habitId);
     var key = cmd.habitId + ':' + cmd.date,
