@@ -808,6 +808,14 @@ body::after {
   }
 
   // --- Coin history ---
+  function coinHistoryRow(h) {
+    h=h||{};
+    var amount=typeof h.amount==='number'&&Number.isFinite(h.amount)?h.amount:0;
+    var positive=h.type==='adjust'?amount>=0:h.type==='earn';
+    return '<div class="coin-reason">' + G.esc(h.reason || '') + '</div>' +
+      '<div class="coin-amount '+(positive?'earn':'spend')+'">'+(positive?'+':'-')+Math.abs(amount)+' 🪙</div>' +
+      '<div class="coin-date">'+formatShortDate(h.date)+'</div>';
+  }
   function renderCoinHistory() {
     var coins = G.getCoins();
     var container = document.getElementById('coinHistory');
@@ -821,11 +829,7 @@ body::after {
       var h = coins.history[i];
       var row = document.createElement('div');
       row.className = 'coin-row';
-      var sign = h.type === 'earn' ? '+' : '-';
-      row.innerHTML =
-        '<div class="coin-reason">' + G.esc(h.reason || '') + '</div>' +
-        '<div class="coin-amount ' + (h.type === 'earn' ? 'earn' : 'spend') + '">' + sign + h.amount + ' 🪙</div>' +
-        '<div class="coin-date">' + formatShortDate(h.date) + '</div>';
+      row.innerHTML = coinHistoryRow(h);
       container.appendChild(row);
     }
     if (coins.history.length > 15) {
@@ -837,11 +841,7 @@ body::after {
         coins.history.forEach(function (h) {
           var row = document.createElement('div');
           row.className = 'coin-row';
-          var sign = h.type === 'earn' ? '+' : '-';
-          row.innerHTML =
-            '<div class="coin-reason">' + G.esc(h.reason || '') + '</div>' +
-            '<div class="coin-amount ' + (h.type === 'earn' ? 'earn' : 'spend') + '">' + sign + h.amount + ' 🪙</div>' +
-            '<div class="coin-date">' + formatShortDate(h.date) + '</div>';
+          row.innerHTML = coinHistoryRow(h);
           container.appendChild(row);
         });
       });
