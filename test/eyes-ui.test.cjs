@@ -79,6 +79,62 @@ test('долгая остановка кадров не засчитывает �
   assert.equal(h.store.loadActive().playedMs, 1000);
   h.app.destroy();
 });
+test('крупный таймер считает этап, маленький — комплекс, включая паузу и skip', async () => {
+  const h = setup();
+  h.app.setDuration(60);
+  await h.app.start();
+  assert.equal(h.ids.eyeTime.textContent, '0:13');
+  assert.equal(h.ids.eyeTotalTime.textContent, '1:00');
+  await h.tick(3000);
+  assert.equal(h.ids.eyeTime.textContent, '0:10');
+  assert.equal(h.ids.eyeTotalTime.textContent, '0:57');
+  await h.ids.pauseEye.fire('click');
+  await h.tick(20000);
+  assert.equal(h.ids.eyeTime.textContent, '0:10');
+  assert.equal(h.ids.eyeTotalTime.textContent, '0:57');
+  await h.ids.nextEye.fire('click');
+  assert.equal(h.ids.eyeTime.textContent, '0:13');
+  assert.equal(h.ids.eyeTotalTime.textContent, '0:47');
+  assert.equal(h.store.summary().sessions, 0);
+  h.app.destroy();
+});
+test('близко-далеко показывает палец, затем центральную точку и снова палец без зависимости от звука', async () => {
+  const h = setup();
+  h.ids.soundEnabled.checked = false;
+  await h.ids.soundEnabled.fire('change');
+  h.ids.dotSize.value = 'large';
+  await h.ids.dotSize.fire('change');
+  h.app.choose('single', 'near-far');
+  h.app.setDuration(30);
+  await h.app.start();
+  assert.equal(h.ids.eyeDot.hidden, true);
+  assert.match(h.ids.stagePrompt.textContent, /палец/);
+  await h.tick(6000);
+  assert.equal(h.ids.eyeDot.hidden, false);
+  assert.match(h.ids.stagePrompt.textContent, /Теперь сюда/);
+  assert.match(h.ids.eyeDot.style.transform, /translate3d\(450px,200px,0\)/);
+  assert.equal(h.ids.eyeDot.style.width, '36px');
+  assert.equal(h.ids.pathGuide.style.display, 'none');
+  await h.tick(12000);
+  assert.equal(h.ids.eyeDot.hidden, true);
+  assert.match(h.ids.stagePrompt.textContent, /палец/);
+  h.app.destroy();
+});
+test('направляющая короткого круга не обрезается разворотом текущего этапа', async () => {
+  const h = setup();
+  h.app.setDuration(60);
+  await h.app.start();
+  await h.ids.nextEye.fire('click');
+  await h.ids.nextEye.fire('click');
+  const points = h.ids.pathGuide
+    .getAttribute('points')
+    .split(' ')
+    .map((x) => x.split(',').map(Number));
+  assert.deepEqual(points[0], points.at(-1));
+  assert.ok(points.some(([x, y]) => x < 30 && y < 30));
+  assert.ok(points.some(([x, y]) => x > 70 && y > 70));
+  h.app.destroy();
+});
 test('отложенное восстановление auth снова читает snapshot текущего владельца', async () => {
   for (const event of ['dashboard-sync-applied', 'dashboard-auth-changed']) {
     const snapshot = S.createSession(

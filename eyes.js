@@ -317,17 +317,9 @@
     function chart(v) {
       if (lastStage === v.exerciseId) return;
       lastStage = v.exerciseId;
-      var points = [];
-      for (var i = 0; i <= 120; i++) {
-        var p = C.positionAt({
-          exerciseId: v.exerciseId,
-          elapsedMs: (i * 8000) / 120,
-          stageDurationMs:
-            state.plan.stages[v.stageIndex].durationSeconds * 1000,
-          speed: 'normal',
-        });
-        points.push(p.x * 100 + ',' + p.y * 100);
-      }
+      var points = C.guidePoints(v.exerciseId).map(function (p) {
+        return p.x * 100 + ',' + p.y * 100;
+      });
       el('pathGuide').setAttribute('points', points.join(' '));
     }
     function paint() {
@@ -339,9 +331,14 @@
       el('stageTitle').textContent = item.title;
       el('eyeStage').textContent =
         'Упражнение ' + (v.stageIndex + 1) + ' из ' + state.plan.stages.length;
-      var sec = Math.ceil(v.remainingMs / 1000);
+      var sec = Math.ceil(v.stageRemainingMs / 1000),
+        totalSec = Math.ceil(v.remainingMs / 1000);
       el('eyeTime').textContent =
         Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+      el('eyeTotalTime').textContent =
+        Math.floor(totalSec / 60) +
+        ':' +
+        String(totalSec % 60).padStart(2, '0');
       el('eyeProgress').value = v.progress;
       el('pauseEye').textContent =
         state.phase === 'paused' ? 'Продолжить' : 'Пауза';
@@ -351,12 +348,15 @@
           elapsedMs: v.stageElapsedMs,
           speed: activeSettings.speed,
         });
-      el('eyeDot').hidden = rest;
+      var screenTarget =
+        item.id === 'near-far' && instruction.target === 'screen';
+      el('motionArea').classList.toggle('eye-target-screen', screenTarget);
+      el('eyeDot').hidden = rest && !screenTarget;
       el('stagePrompt').hidden = !rest;
       el('stagePrompt').textContent = instruction.text;
       el('pathGuide').style.display =
         rest || !activeSettings.showPath || item.id === 'jumps' ? 'none' : '';
-      if (!rest) {
+      if (!rest || screenTarget) {
         var size = { small: 18, medium: 26, large: 36 }[activeSettings.dotSize],
           color = {
             amber: '#f2c063',
@@ -380,7 +380,7 @@
           'px,' +
           p.y * el('motionArea').clientHeight +
           'px,0) translate(-50%,-50%)';
-        chart(v);
+        if (!rest) chart(v);
       }
       if (state.phase === 'running') cue(instruction.cueId);
     }

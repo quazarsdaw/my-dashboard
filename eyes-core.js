@@ -154,6 +154,7 @@
     var t = Math.max(0, o.elapsedMs || 0),
       id = o.exerciseId,
       step = 0,
+      target,
       text;
     var item = D.CATALOG.find(function (x) {
       return x.id === id;
@@ -161,9 +162,10 @@
     text = item ? item.instruction : '';
     if (id === 'near-far') {
       step = Math.floor(t / 6000);
+      target = step % 2 ? 'screen' : 'finger';
       text =
         step % 2
-          ? 'Теперь посмотрите на удалённый предмет.'
+          ? 'Теперь сюда — посмотрите на точку на экране.'
           : 'Посмотрите на свой палец перед собой.';
     }
     if (id === 'blinking') {
@@ -173,7 +175,7 @@
           ? 'Откройте глаза. Моргните спокойно.'
           : 'Мягко закройте глаза. Не сжимайте веки.';
     }
-    return { text: text, cueId: id + ':' + step };
+    return { text: text, cueId: id + ':' + step, target: target };
   }
   return {
     buildPlan: buildPlan,

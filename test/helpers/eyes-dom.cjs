@@ -84,6 +84,7 @@ function harness() {
     'stagePrompt',
     'stageTitle',
     'eyeTime',
+    'eyeTotalTime',
     'eyeStage',
     'eyeProgress',
     'pauseEye',

@@ -448,13 +448,34 @@ input[type='checkbox'] {
   font-size: 24px;
   margin-top: 5px;
 }
+.eye-player-head > div:first-child {
+  min-width: 0;
+}
+.eye-clocks {
+  text-align: right;
+  flex-shrink: 0;
+}
+.eye-clock-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.eye-total-clock {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .eye-muted {
   color: var(--text-tertiary);
   font-size: 13px;
 }
 .eye-time {
   font:
-    750 40px/1 ui-monospace,
+    750 52px/1 ui-monospace,
     'SF Mono',
     monospace;
   font-variant-numeric: tabular-nums;
@@ -503,6 +524,14 @@ input[type='checkbox'] {
   color: #e9edf1;
   max-width: 700px;
   margin: auto;
+}
+.eye-target-screen .eye-prompt {
+  inset: auto 16px 18px;
+  padding: 0;
+  max-width: none;
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.4;
 }
 .eye-player progress {
   appearance: none;
@@ -634,7 +663,7 @@ input[type='checkbox'] {
     font-size: 19px;
   }
   .eye-time {
-    font-size: 32px;
+    font-size: 46px;
   }
   .eye-player-head {
     gap: 12px;
@@ -642,6 +671,10 @@ input[type='checkbox'] {
   .eye-prompt {
     font-size: 21px;
     padding: 20px;
+  }
+  .eye-target-screen .eye-prompt {
+    font-size: 16px;
+    padding: 0;
   }
   .eye-player-controls {
     flex-wrap: wrap;

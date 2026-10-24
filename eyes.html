@@ -9,20 +9,20 @@
     <meta name="theme-color" content="#1c1e24" />
     <title>Разминка для глаз</title>
     <link rel="icon" type="image/svg+xml" href="app-icon.svg" />
-    <link rel="stylesheet" href="eyes.css?v=1" />
+    <link rel="stylesheet" href="eyes.css?v=2" />
     <script src="gamification.js?v=401"></script>
     <script src="profile-theme.js?v=401"></script>
     <script src="supabase-sync.js?v=408-eyes" defer></script>
     <script src="topbar.js?v=405-path" defer></script>
-    <script src="eyes-data.js?v=1" defer></script>
-    <script src="eyes-core.js?v=1" defer></script>
-    <script src="eyes-session.js?v=1" defer></script>
+    <script src="eyes-data.js?v=2" defer></script>
+    <script src="eyes-core.js?v=2" defer></script>
+    <script src="eyes-session.js?v=2" defer></script>
     <script src="eyes-store.js?v=1" defer></script>
     <script src="browser-lock.js?v=1" defer></script>
     <script src="eyes-coordination.js?v=1" defer></script>
     <script src="eyes-reminder-core.js?v=1" defer></script>
     <script src="eyes-reminder.js?v=1" defer></script>
-    <script src="eyes.js?v=1" defer></script>
+    <script src="eyes.js?v=2" defer></script>
   </head>
   <body>
     <main>
@@ -212,7 +212,13 @@
             <span id="eyeStage" class="eye-muted"></span>
             <h1 id="stageTitle"></h1>
           </div>
-          <strong id="eyeTime" class="eye-time">0:30</strong>
+          <div class="eye-clocks">
+            <span class="eye-clock-label">Упражнение</span>
+            <strong id="eyeTime" class="eye-time">0:30</strong>
+            <span class="eye-total-clock"
+              >Всего <span id="eyeTotalTime">0:30</span></span
+            >
+          </div>
         </div>
         <div id="motionArea" class="eye-motion">
           <svg
