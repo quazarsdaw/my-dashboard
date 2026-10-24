@@ -354,8 +354,8 @@
       el('eyeDot').hidden = rest;
       el('stagePrompt').hidden = !rest;
       el('stagePrompt').textContent = instruction.text;
-      el('pathGuide').hidden =
-        rest || !activeSettings.showPath || item.id === 'jumps';
+      el('pathGuide').style.display =
+        rest || !activeSettings.showPath || item.id === 'jumps' ? 'none' : '';
       if (!rest) {
         var size = { small: 18, medium: 26, large: 36 }[activeSettings.dotSize],
           color = {
