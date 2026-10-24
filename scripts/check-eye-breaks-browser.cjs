@@ -160,6 +160,101 @@ const server = http.createServer((req, res) => {
     assert.match(await b.locator('#eyeError').innerText(), /другой вкладке/);
     await fallback.close();
     console.log('indexeddb fallback: два окна не запускают две разминки');
+    async function checkExercisePolish(viewport, isMobile) {
+      const c = await context({ viewport, isMobile, hasTouch: isMobile }),
+        p = await c.newPage(),
+        suffix = isMobile ? 'mobile' : 'desktop';
+      await p.clock.install({ time: new Date('2026-10-24T10:00:00Z') });
+      await p.goto(base + 'eyes.html');
+      await p.locator('[data-exercise]').first().waitFor();
+      await p.clock.pauseAt(new Date('2026-10-24T10:01:00Z'));
+      p.on('dialog', (d) => d.accept());
+      await p.locator('#startEye').click();
+      await p.locator('#eyePlayer').waitFor({ state: 'visible' });
+      assert.equal(await p.locator('#eyeTime').innerText(), '0:13');
+      assert.equal(await p.locator('#eyeTotalTime').innerText(), '1:00');
+      assert.ok(
+        (await p
+          .locator('#eyeTime')
+          .evaluate((e) => parseFloat(getComputedStyle(e).fontSize))) >= 46,
+      );
+      assert.ok(
+        (await p
+          .locator('.eye-total-clock')
+          .evaluate((e) => parseFloat(getComputedStyle(e).fontSize))) <= 13,
+      );
+      await p.clock.runFor(3100);
+      assert.equal(await p.locator('#eyeTime').innerText(), '0:10');
+      assert.equal(await p.locator('#eyeTotalTime').innerText(), '0:57');
+      await p.locator('#nextEye').click();
+      await p.locator('#nextEye').click();
+      assert.equal(await p.locator('#stageTitle').innerText(), 'Круг');
+      const points = await p
+        .locator('#pathGuide')
+        .evaluate((e) => [...e.points].map((p) => [p.x, p.y]));
+      assert.deepEqual(points[0], points.at(-1));
+      assert.ok(points.some(([x, y]) => x < 30 && y < 30));
+      assert.ok(points.some(([x, y]) => x > 70 && y > 70));
+      await p.clock.runFor(1500);
+      await p.screenshot({ path: out + '/circle-' + suffix + '.png' });
+      await p.locator('#nextEye').click();
+      assert.equal(await p.locator('#stageTitle').innerText(), 'Взгляд вдаль');
+      assert.equal(await p.locator('#eyeTime').innerText(), '0:10');
+      assert.equal(await p.locator('#eyeTotalTime').innerText(), '0:22');
+      await p.clock.runFor(10050);
+      assert.equal(await p.locator('#stageTitle').innerText(), 'Моргание');
+      await p.locator('#exitEye').click();
+      await p.locator('[data-duration="30"]').click();
+      await p
+        .locator('[data-exercise="near-far"]')
+        .locator('..')
+        .locator('..')
+        .getByRole('button')
+        .click();
+      await p.locator('#startEye').click();
+      await p.locator('#eyePlayer').waitFor({ state: 'visible' });
+      assert.equal(await p.locator('#eyeDot').isVisible(), false);
+      assert.match(await p.locator('#stagePrompt').innerText(), /палец/);
+      await p.screenshot({ path: out + '/near-finger-' + suffix + '.png' });
+      await p.clock.runFor(6100);
+      assert.equal(await p.locator('#eyeDot').isVisible(), true);
+      assert.match(await p.locator('#stagePrompt').innerText(), /Теперь сюда/);
+      const target = await p.locator('#eyeDot').boundingBox(),
+        area = await p.locator('#motionArea').boundingBox(),
+        caption = await p.locator('#stagePrompt').boundingBox();
+      assert.ok(
+        Math.abs(target.x + target.width / 2 - area.x - area.width / 2) < 2,
+      );
+      assert.ok(
+        Math.abs(target.y + target.height / 2 - area.y - area.height / 2) < 2,
+      );
+      assert.ok(caption.y > target.y + target.height + 8);
+      assert.ok(
+        await p.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+      await p.screenshot({ path: out + '/near-screen-' + suffix + '.png' });
+      await p.clock.runFor(6000);
+      assert.equal(await p.locator('#eyeDot').isVisible(), false);
+      assert.match(await p.locator('#stagePrompt').innerText(), /палец/);
+      if (isMobile) {
+        await p.setViewportSize({ width: 844, height: 390 });
+        assert.ok(
+          await p.evaluate(() => document.documentElement.scrollWidth <= 844),
+        );
+        await p.clock.runFor(6000);
+        const dot = await p.locator('#eyeDot').boundingBox(),
+          text = await p.locator('#stagePrompt').boundingBox();
+        assert.ok(text.y > dot.y + dot.height + 8);
+      }
+      await c.close();
+    }
+    await checkExercisePolish({ width: 1440, height: 1000 }, false);
+    await checkExercisePolish({ width: 390, height: 844 }, true);
+    console.log(
+      'управляемые часы: stage/total, замкнутый круг, ровно 10с вдаль, палец ↔ центр; desktop/mobile/landscape без перекрытий',
+    );
     const mobile = await context({
       viewport: { width: 390, height: 844 },
       isMobile: true,
