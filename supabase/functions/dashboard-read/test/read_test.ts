@@ -359,11 +359,16 @@ Deno.test("api делает только bounded get с фиксированны
       assert.equal(options?.redirect, "error");
       const headers = new Headers(options?.headers);
       assert.equal(headers.get("x-dashboard-token"), null);
+      assert.equal(headers.get("prefer"), "count=exact");
       assert.equal(
         headers.get("authorization"),
         "Bearer service-secret-not-for-client",
       );
-      return Promise.resolve(Response.json([row("goals:2026-10-25", [])]));
+      return Promise.resolve(
+        Response.json([row("goals:2026-10-25", [])], {
+          headers: { "content-range": "0-0/1" },
+        }),
+      );
     },
   });
   assert.equal(result.status, 200);
@@ -401,4 +406,46 @@ Deno.test("unknown fields, oversized input/upstream и provider errors не ст
     fetch: () => Promise.resolve(new Response("x".repeat(4 * 1024 * 1024 + 1))),
   });
   assert.equal(huge.status, 502);
+});
+
+Deno.test("серверный лимит строк не превращает усечённый ответ в missing", async () => {
+  const result = await handleRead(
+    request({ operation: "list_tasks", from: "2026-10-25", to: "2026-10-26" }),
+    {
+      env: await env(),
+      now: () => now,
+      fetch: () =>
+        Promise.resolve(
+          Response.json([row("goals:2026-10-25", [])], {
+            headers: { "content-range": "0-0/2" },
+          }),
+        ),
+    },
+  );
+  assert.equal(result.status, 502);
+});
+
+Deno.test("oversized domain response не обрезается до успешной страницы", async () => {
+  const rows = [
+    row(
+      "goals:2026-10-25",
+      Array.from(
+        { length: 100 },
+        () => ({ text: "я".repeat(10000), done: false }),
+      ),
+    ),
+  ];
+  const result = await handleRead(
+    request({ operation: "get_today_tasks", limit: 100 }),
+    {
+      env: await env(),
+      now: () => now,
+      fetch: () =>
+        Promise.resolve(
+          Response.json(rows, { headers: { "content-range": "0-0/1" } }),
+        ),
+    },
+  );
+  assert.equal(result.status, 502);
+  assert.deepEqual(await result.json(), { error: "RESPONSE_TOO_LARGE" });
 });

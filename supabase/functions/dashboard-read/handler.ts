@@ -126,6 +126,7 @@ export async function handleRead(
         apikey: env.SUPABASE_SERVICE_ROLE_KEY,
         authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE_KEY,
         accept: "application/json",
+        prefer: "count=exact",
       },
     });
     if (!upstream.ok) {
@@ -138,6 +139,12 @@ export async function handleRead(
       "DASHBOARD_UNAVAILABLE",
       502,
     );
+    const range = /^(?:\d+-\d+|\*)\/(\d+)$/.exec(
+      upstream.headers.get("content-range") ?? "",
+    );
+    if (!Array.isArray(rows) || !range || Number(range[1]) !== rows.length) {
+      throw new ReadError("DASHBOARD_UNAVAILABLE", 502);
+    }
     const result = readDashboard(command, rows as Row[], now),
       output = JSON.stringify(result);
     if (new TextEncoder().encode(output).length > 1024 * 1024) {
