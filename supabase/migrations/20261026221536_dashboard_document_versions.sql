@@ -43,7 +43,7 @@ begin
     v_owner := new.user_id;
     v_key := new.key;
     if tg_op = 'UPDATE' and (new.user_id is distinct from old.user_id or new.key is distinct from old.key) then
-      raise exception 'identity_immutable' using errcode = '22023';
+      raise exception 'identity_immutable' using errcode = '42501';
     end if;
   end if;
   select a.guard_enabled into v_guard from private.dashboard_write_accounts a where a.owner_id = v_owner;

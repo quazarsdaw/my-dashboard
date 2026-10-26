@@ -252,28 +252,24 @@ select throws_ok(
   null,
   'authenticated owner cannot transfer a row to another user'
 );
+with changed as (
+  update public.user_data
+  set value = 'not-updated'
+  where user_id = '22222222-2222-4222-8222-222222222222'
+  returning 1
+)
 select is(
-  (
-    with changed as (
-      update public.user_data
-      set value = 'not-updated'
-      where user_id = '22222222-2222-4222-8222-222222222222'
-      returning 1
-    )
-    select count(*) from changed
-  ),
+  (select count(*) from changed),
   0::bigint,
   'authenticated owner cannot update another user row'
 );
+with removed as (
+  delete from public.user_data
+  where user_id = '22222222-2222-4222-8222-222222222222'
+  returning 1
+)
 select is(
-  (
-    with removed as (
-      delete from public.user_data
-      where user_id = '22222222-2222-4222-8222-222222222222'
-      returning 1
-    )
-    select count(*) from removed
-  ),
+  (select count(*) from removed),
   0::bigint,
   'authenticated owner cannot delete another user row'
 );

@@ -55,3 +55,4 @@
 - run `40414663465`: контейнер не создался из-за single quotes в healthcheck; исправлено `fe3a7d0`;
 - run `40415574977`: cas 20/20 на pg17, затем pgTAP не нашёл функцию в закрытой extensions schema. тестовый bootstrap дополнен schema usage/legacy auth claim и отдельной проверкой 21/21 локально, коммит `aa931f7`;
 - run `40417079622`: cas 21/21 на pg17; старый `user_data_rls.sql` упал на вложенном data-modifying cte. полный ci пока не green; это не failure cas-транзакций и не доказательство production состояния.
+- issue #72: modifying cte вынесены на верхний уровень без изменения assertions. новый identity trigger сохраняет код отказа `42501`, как прежняя rls; regression сначала показал `22023`, затем локальные postgres tests прошли 22/22. повторный pg17/pgTAP ci обязателен.

@@ -117,6 +117,12 @@ class DocumentVersions(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "identity_immutable"):
                 self.db.sql(f"update public.user_data set {assignments} where key={literal(KEY)}")
 
+    def test_owner_transfer_keeps_authorization_error_contract(self):
+        self.save([change(KEY, "0", "[]")])
+        with self.assertRaises(RuntimeError) as error:
+            self.db.sql(f"\n\\set VERBOSITY verbose\nupdate public.user_data set user_id={literal(OTHER)} where key={literal(KEY)}", "authenticated", {"sub": OWNER})
+        self.assertIn("42501", str(error.exception))
+
     def test_revision_is_string_above_javascript_safe_range(self):
         self.save([change(KEY, "0", "[]")])
         self.db.sql(f"set local session_replication_role=replica; update public.user_data set revision=9007199254740993 where key={literal(KEY)}")
