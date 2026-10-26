@@ -1,0 +1,43 @@
+name: проверка версионной синхронизации
+
+on:
+  push:
+    branches: ['feature/hermes-dashboard-*']
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - 'scripts/test-dashboard-db.py'
+      - '.github/workflows/dashboard-write-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: supabase/postgres:17.6.1.127@sha256:be60aee15997daca475b710b734bc6bfe52cd544dcd7e9fd2ff58210b6747d83
+        env:
+          POSTGRES_PASSWORD: dashboard-test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U postgres'
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGPASSWORD: dashboard-test-only
+      DASHBOARD_TEST_DB_URL: postgresql://postgres:dashboard-test-only@127.0.0.1:5432/dashboard_write_test_ci
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: подготовить только синтетическую базу
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -d postgres -c 'create database dashboard_write_test_ci;'
+          psql -X -v ON_ERROR_STOP=1 -d dashboard_write_test_ci -c "create table public.dashboard_test_marker(value text primary key); insert into public.dashboard_test_marker values ('synthetic-dashboard-write-only');"
+      - name: проверить настоящий postgres 17 и pgTAP
+        run: python3 scripts/test-dashboard-db.py --ci --suite versions --require-pgtap
