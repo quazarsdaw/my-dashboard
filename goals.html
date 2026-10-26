@@ -13,6 +13,7 @@
 <title>Цели и Горизонты</title>
 <script src="gamification.js?v=401"></script>
 <script src="goals-core.js?v=2"></script>
+<script src="dashboard-tasks-core.js?v=1"></script>
 <script src="supabase-sync.js?v=408-eyes" defer></script>
 <script src="profile-theme.js?v=401"></script>
 <script src="eyes-reminder.js?v=1" defer></script>
@@ -380,11 +381,14 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   function setCollapsed(c){ G.storeSet('goals_collapsed_v1', c); }
 
   var draggingGoalId = null;
+  var draggingVersion = null;
   var moveGoalId = null;
+  var moveVersion = null;
   var moveDialogTrigger = null;
 
   function goalById(data, id){
-    return data.goals.find(function(goal){ return goal.id === id; }) || null;
+    var matches = data.goals.filter(function(goal){ return goal.id === id; });
+    return matches.length === 1 ? matches[0] : null;
   }
 
   function announceGoalMove(goal, periodKey){
@@ -413,8 +417,13 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     if (fallback && fallback.focus) fallback.focus();
   }
 
-  function applyGoalMove(command){
+  function applyGoalMove(command, version){
     var data = getData();
+    var current = goalDocumentVersion(data);
+    if (!Tasks.documentMatches(version, current.serialized, current.token)) {
+      document.getElementById('goalsLive').textContent = 'цели изменились. повтори перенос после просмотра актуального списка.';
+      return false;
+    }
     var sourceGoal = goalById(data, command.goalId);
     if (!sourceGoal || sourceGoal.done) return false;
     var result = Core.moveGoal(data, command);
@@ -423,6 +432,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     setData(result.data);
     announceGoalMove(sourceGoal, command.targetPeriodKey);
     draggingGoalId = null;
+    draggingVersion = null;
     render();
     return true;
   }
@@ -630,9 +640,11 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   };
 
   window.startGoalDrag = function(event, goalId){
-    var goal = goalById(getData(), goalId);
+    var data = getData();
+    var goal = goalById(data, goalId);
     if (!goal || goal.done) return false;
     draggingGoalId = goal.id;
+    draggingVersion = goalDocumentVersion(data);
     if (event && event.currentTarget && event.currentTarget.classList) event.currentTarget.classList.add('dragging');
     if (event && event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move';
@@ -654,7 +666,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       targetPeriodKey: target.periodKey,
       targetPriority: target.priority,
       beforeGoalId: target.id
-    });
+    }, draggingVersion);
   };
 
   window.allowAdjacentPeriodDrop = function(event, horizon){
@@ -681,7 +693,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       goalId: goal.id,
       targetPeriodKey: targetPeriod,
       targetPriority: goal.priority
-    });
+    }, draggingVersion);
   };
 
   function movePeriodInputFor(goal){
@@ -701,13 +713,16 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     if (dialog.open) dialog.close();
     if (restoreFocus && moveDialogTrigger && moveDialogTrigger.focus) moveDialogTrigger.focus();
     moveGoalId = null;
+    moveVersion = null;
     moveDialogTrigger = null;
   }
 
   window.openGoalMoveDialog = function(goalId, trigger){
-    var goal = goalById(getData(), goalId);
+    var data = getData();
+    var goal = goalById(data, goalId);
     if (!goal || goal.done) return false;
     moveGoalId = goal.id;
+    moveVersion = goalDocumentVersion(data);
     moveDialogTrigger = trigger || null;
     document.getElementById('moveGoalTitle').textContent = goal.title;
     document.getElementById('moveHorizonHint').textContent = goal.horizon === 'week'
@@ -745,12 +760,13 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       goalId: goal.id,
       targetPeriodKey: targetPeriod,
       targetPriority: document.getElementById('movePriority').value
-    });
+    }, moveVersion);
     if (!moved) return;
     var dialog = document.getElementById('moveDialog');
     if (dialog.open) dialog.close();
     focusGoalMoveResult(goal.id, goal.horizon, trigger);
     moveGoalId = null;
+    moveVersion = null;
     moveDialogTrigger = null;
   };
 
@@ -762,7 +778,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 
   window.toggleGoalStatus = function(id) {
     var data = getData();
-    var g = data.goals.find(it => it.id === id);
+    var g = goalById(data, id);
     if (g) {
       g.done = !g.done;
       g.current = g.done ? 1 : 0;
@@ -779,7 +795,19 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     render();
   };
 
-  var editingId = null;
+  var editingId = null, editingTarget = null, editingVersion = null;
+  var Tasks = window.DashboardTasksCore;
+  function goalDocumentVersion(data) {
+    return { serialized: JSON.stringify(data), token: window.DashboardSync && window.DashboardSync.getDocumentToken ? window.DashboardSync.getDocumentToken('horizons_goals_v2') : null };
+  }
+  function checkGoalEditor(data) {
+    var current = goalDocumentVersion(data);
+    if (Tasks.documentMatches(editingVersion, current.serialized, current.token)) return true;
+    var input = document.getElementById('editTitle');
+    input.setCustomValidity('цели изменились на другом устройстве. открой редактор заново; твой текст остаётся в форме.');
+    input.reportValidity();
+    return false;
+  }
   var MAX_TITLE_LENGTH = 200;
 
   function normalizeGoalTitle(value) {
@@ -792,6 +820,14 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   }
 
   function openEdit(g){
+    var data = getData();
+    var matches = data.goals.map(function(goal, index) { return { goal: goal, index: index }; }).filter(function(item) {
+      return g.id ? item.goal.id === g.id : JSON.stringify(item.goal) === JSON.stringify(g);
+    });
+    if (matches.length !== 1 || JSON.stringify(matches[0].goal) !== JSON.stringify(g)) return;
+    g = matches[0].goal;
+    editingTarget = g.id ? { id: g.id } : { index: matches[0].index };
+    editingVersion = goalDocumentVersion(data);
     editingId = g.id;
     var titleInput = document.getElementById('editTitle');
     titleInput.value = g.title;
@@ -828,7 +864,8 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     titleInput.setCustomValidity('');
 
     var data = getData();
-    var g = data.goals.find(it => it.id === editingId);
+    if (!checkGoalEditor(data)) return;
+    var g = data.goals[Tasks.indexFor(data.goals, editingTarget)];
     if(g){
         var requestedPriority = document.getElementById('editPriority').value;
         if (!g.done && requestedPriority !== g.priority) {
@@ -853,9 +890,13 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   };
 
   document.getElementById('delBtn').onclick = function(){
-    if(!confirm('Удалить эту цель?')) return;
     var data = getData();
-    data.goals = data.goals.filter(it => it.id !== editingId);
+    if (!checkGoalEditor(data)) return;
+    if(!confirm('Удалить эту цель?')) return;
+    data = getData();
+    if (!checkGoalEditor(data)) return;
+    var index = Tasks.indexFor(data.goals, editingTarget);
+    data.goals = data.goals.filter(function(_goal, i) { return i !== index; });
     setData(data);
     render();
     document.getElementById('editModal').classList.remove('show');
@@ -889,12 +930,21 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     var title = document.getElementById('addTitle').value.trim();
     if(!title) return;
     var data = getData();
+    var id;
+    try {
+      id = Tasks.newId(window.crypto && typeof window.crypto.randomUUID === 'function' ? window.crypto.randomUUID.bind(window.crypto) : null);
+    } catch (_error) {
+      var titleInput = document.getElementById('addTitle');
+      titleInput.setCustomValidity('не удалось безопасно создать id. открой страницу через https или localhost и обнови браузер.');
+      titleInput.reportValidity();
+      return;
+    }
     var horizon = document.getElementById('addHorizon').value;
     var selectedPeriod = document.getElementById('addPeriod').value;
     if (!Core.formatPeriodLabel(horizon, selectedPeriod)) selectedPeriod = selectedPeriodFor(horizon);
     var priority = document.getElementById('addPriority').value;
     data.goals.push({
-        id: 'hg_'+Date.now(),
+        id: id,
         title: title,
         horizon: horizon,
         periodKey: selectedPeriod,
@@ -913,6 +963,12 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 
   populateAddPeriodOptions();
   render();
+  if (window.addEventListener) {
+    window.addEventListener('dashboard-sync-applied', function(event) {
+      var keys = event.detail && event.detail.changedKeys || [];
+      if (!keys.length || keys.indexOf('horizons_goals_v2') !== -1) render();
+    });
+  }
 })();
 </script>
 </body>

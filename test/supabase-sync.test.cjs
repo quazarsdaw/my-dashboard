@@ -267,3 +267,17 @@ test('v2 точное совпадение всех документов пос�
   assert.equal(app.context.window.DashboardSync.getDocumentToken(protectedKey).baseRevision, '2');
   assert.equal(backend.documents.get(protectedKey).revision, '2');
 });
+
+test('offline uuid задачи не заменяется после reload и cas acknowledgement', async () => {
+  const backend = versionedBackend('[]');
+  const app = await loadSupabaseSync(backend.options);
+  const task = require('../dashboard-tasks-core.js').createTask({ text: 'новая' }, () => '00000000-0000-4000-8000-000000000001');
+  backend.options.save = () => ({ error: { code: 'offline' } });
+  app.localStorage.setItem(protectedKey, JSON.stringify([task]));
+  await app.context.window.DashboardSync.forceSync(protectedKey);
+  backend.options.save = null;
+  const restored = await loadSupabaseSync({ ...backend.options, initialStorage: Object.fromEntries(app.localStorage.data) });
+  await restored.context.window.DashboardSync.forceSync(protectedKey);
+  assert.equal(JSON.parse(backend.documents.get(protectedKey).valueText)[0].id, '00000000-0000-4000-8000-000000000001');
+  assert.equal(JSON.parse(restored.localStorage.getItem(protectedKey))[0].id, '00000000-0000-4000-8000-000000000001');
+});

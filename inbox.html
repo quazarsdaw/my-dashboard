@@ -13,6 +13,8 @@
 <title>Разгрузка (Inbox)</title>
 <script src="gamification.js?v=401"></script>
 <script src="supabase-sync.js?v=408-eyes" defer></script>
+<script src="goals-core.js?v=2"></script>
+<script src="dashboard-tasks-core.js?v=1"></script>
 <script src="profile-theme.js?v=401"></script>
 <script src="eyes-reminder.js?v=1" defer></script>
 <script src="topbar.js?v=405-path" defer></script><style>
@@ -135,6 +137,11 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 (function(){
   'use strict';
   var G = window.Gamification;
+  var Tasks = window.DashboardTasksCore;
+  function nextId() {
+    try { return Tasks.newId(window.crypto && typeof window.crypto.randomUUID === 'function' ? window.crypto.randomUUID.bind(window.crypto) : null); }
+    catch (_error) { alert('не удалось безопасно создать запись. нужен современный браузер и https или localhost.'); return null; }
+  }
 
   function getInbox(){ return G.storeGet('inbox_v1') || []; }
   function setInbox(data){ G.storeSet('inbox_v1', data); }
@@ -202,12 +209,24 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     var items = getInbox();
     var it = items.find(i => i.id === activeItemId);
     if(it){
+        var id = nextId();
+        if (!id) return;
         var goalsData = G.storeGet('horizons_goals_v2') || { goals: [] };
+        var periodKey = window.GoalsCore.currentPeriodKey(horizon, new Date());
+        if (!periodKey || !Array.isArray(goalsData.goals)) return;
+        var order = goalsData.goals.reduce(function(max, goal) {
+          return goal.horizon === horizon && goal.periodKey === periodKey && goal.priority === 'p3' ? Math.max(max, Number(goal.order) || 0) : max;
+        }, 0) + 100;
         goalsData.goals.push({
-            id: 'hg_'+Date.now(),
+            id: id,
             title: it.text,
             horizon: horizon,
+            periodKey: periodKey,
+            priority: 'p3',
+            order: order,
             type: 'check',
+            target: 1,
+            unit: '',
             current: 0,
             done: false
         });
@@ -221,17 +240,14 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     var items = getInbox();
     var it = items.find(i => i.id === activeItemId);
     if(it){
-        // Tasks logic placeholder (will be improved in Step 3)
-        var date = new Date();
-        if(time === 'tomorrow') date.setDate(date.getDate() + 1);
-        else if(time === 'next_week') date.setDate(date.getDate() + 7);
-        
-        var dateStr = date.toISOString().slice(0, 10);
+        var id = nextId();
+        if (!id) return;
+        var dateStr = Tasks.dateKey(new Date(), time === 'tomorrow' ? 1 : time === 'next_week' ? 7 : 0);
         var key = 'goals:' + dateStr; // Existing tasks key
         if(time === 'backlog') key = 'backlog_tasks_v1';
         
         var tasks = G.storeGet(key) || [];
-        tasks.push({ text: it.text, done: false, sphere: null, createdAt: new Date().toISOString() });
+        tasks.push({ id: id, text: it.text, done: false, sphere: null, createdAt: new Date().toISOString() });
         G.storeSet(key, tasks);
         
         window.deleteItem(activeItemId);

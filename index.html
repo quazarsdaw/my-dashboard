@@ -13,6 +13,7 @@
 <title>Dashboard</title>
 <script src="gamification_v405.js"></script>
 <script src="supabase-sync.js?v=408-eyes" defer></script>
+<script src="dashboard-tasks-core.js?v=1"></script>
 <script src="profile-theme.js?v=401"></script>
 <script src="eyes-reminder.js?v=1" defer></script>
 <script src="topbar.js?v=405-path" defer></script><style>
@@ -822,6 +823,7 @@ body::after {
 (function () {
   'use strict';
   var G = window.Gamification;
+  var Tasks = window.DashboardTasksCore;
   var DASHBOARD_TITLE_KEY = 'dashboard_title_v1';
   var SLEEP_SCHEDULE_KEY = 'sleep_schedule_v1';
   var DEFAULT_SLEEP_SCHEDULE = { wake: '08:00', bed: '00:00' };
@@ -1776,14 +1778,18 @@ body::after {
       if (undone.length > 0) {
         var current = storeGet('goals:' + today) || [];
         var exist = {}; current.forEach(function (g) { exist[g.text] = true; });
-        var added = false;
+        var added = false, copyFailed = false;
         undone.forEach(function (g) {
+          if (copyFailed) return;
           if (!exist[g.text]) {
-            current.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin });
+            var copied = createDashboardTask(g);
+            if (!copied) { copyFailed = true; return; }
+            current.push(copied);
             exist[g.text] = true;
             added = true;
           }
         });
+        if (copyFailed) continue;
         if (added) storeSet('goals:' + today, current);
       }
       rolled[dateStr] = true; changed = true;              // mark regardless of whether anything was added
@@ -1852,7 +1858,9 @@ body::after {
     var key = 'goals:' + getActiveDateString();
     var goals = storeGet(key) || [];
     if (goals.length === 0) return;
+    var version = captureTaskDocument(key);
     if (!confirm('удалить все задачи на сегодня?')) return;
+    if (!readTaskDocument(key, version)) return;
 
     storeSet(key, []);
     loadToday();
@@ -1870,7 +1878,8 @@ body::after {
     }
   }
 
-  function buildGoalRow(goal, idx, key, readOnly) {
+  function buildGoalRow(goal, idx, key, readOnly, documentVersion) {
+    var rowBinding = { target: typeof goal.id === 'string' && goal.id ? { id: goal.id } : { index: idx }, version: documentVersion || captureTaskDocument(key) };
     var li = document.createElement('li');
     li.className = 'goal-row' + (goal.done ? ' done' : '');
     li.draggable = !readOnly;
@@ -1886,6 +1895,7 @@ body::after {
     var text = document.createElement('span'); text.className = 'goal-text'; text.textContent = goal.text;
     if (!readOnly) {
       text.addEventListener('click', function () {
+        if (!readTaskBinding(key, rowBinding)) return;
         text.contentEditable = 'true'; text.focus();
         var range = document.createRange(); range.selectNodeContents(text); range.collapse(false);
         var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
@@ -1893,7 +1903,12 @@ body::after {
       text.addEventListener('blur', function () {
         text.contentEditable = 'false';
         var nt = text.textContent.trim();
-        if (nt && nt !== goal.text) { var goals = storeGet(key) || []; if (goals[idx]) { goals[idx].text = nt; storeSet(key, goals); } }
+        if (nt && nt !== goal.text) {
+          var current = readTaskBinding(key, rowBinding);
+          if (!current) return;
+          storeSet(key, Tasks.patchTask(current.tasks, rowBinding.target, { text: nt }));
+          loadToday();
+        }
         else text.textContent = goal.text;
       });
       text.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } if (e.key === 'Escape') { text.textContent = goal.text; text.blur(); } });
@@ -1920,7 +1935,15 @@ body::after {
     var sphere = getSphereById(goal.sphere);
     var badge = document.createElement('span'); badge.className = 'goal-sphere-badge' + (sphere ? '' : ' empty');
     badge.textContent = sphere ? sphere.icon : NO_SPHERE_ICON; badge.title = sphere ? sphere.name : NO_SPHERE_LABEL;
-    if (!readOnly) { badge.addEventListener('click', function () { openSpherePicker(function (ns) { var goals = storeGet(key) || []; if (goals[idx]) { goals[idx].sphere = ns; storeSet(key, goals); loadToday(); } }); }); }
+    if (!readOnly) { badge.addEventListener('click', function () {
+      if (!readTaskBinding(key, rowBinding)) return;
+      openSpherePicker(function (ns) {
+        var current = readTaskBinding(key, rowBinding);
+        if (!current) return;
+        storeSet(key, Tasks.patchTask(current.tasks, rowBinding.target, { sphere: ns }));
+        loadToday();
+      });
+    }); }
     badges.appendChild(badge);
     if (goal.estimatedMin) { var tb = document.createElement('span'); tb.className = 'goal-time-badge'; tb.textContent = goal.estimatedMin + ' мин'; badges.appendChild(tb); }
     if (goal.difficulty) { var db = document.createElement('span'); db.className = 'goal-diff-badge ' + goal.difficulty; db.textContent = G.DIFFICULTY_LABELS[goal.difficulty] || goal.difficulty; badges.appendChild(db); }
@@ -1932,24 +1955,24 @@ body::after {
       del.textContent = '×'; 
       del.addEventListener('click', function (e) {
         e.stopPropagation();
-        var goals = storeGet(key) || [];
-        removeGoalWithSync(goals, idx, key);
+        return removeGoalWithSync(rowBinding, key);
       });
       li.appendChild(del); 
     }
 
     if (!readOnly) {
       cb.addEventListener('change', function () {
-        var goals = storeGet(key) || [];
-        if (!goals[idx]) return;
-        if (cb.checked && !goals[idx].done) {
+        var current = readTaskBinding(key, rowBinding);
+        if (!current) { cb.checked = goal.done; return; }
+        var goals = current.tasks, taskIdx = current.index;
+        if (cb.checked && !goals[taskIdx].done) {
           var actualRow = li.querySelector('.goal-actual-row');
           if (!actualRow) {
             actualRow = document.createElement('div'); actualRow.className = 'goal-actual-row';
-            var est = goals[idx].estimatedMin || 15;
-            var mult = G.DIFFICULTY_COIN_MULT[goals[idx].difficulty || 'medium'] || 1;
+            var est = goals[taskIdx].estimatedMin || 15;
+            var mult = G.DIFFICULTY_COIN_MULT[goals[taskIdx].difficulty || 'medium'] || 1;
             var previewCoins = Math.max(1, Math.floor(est * mult));
-            var goalHasSphere = !!getSphereById(goals[idx].sphere);
+            var goalHasSphere = !!getSphereById(goals[taskIdx].sphere);
             var rewardPrefix = goalHasSphere ? ('+' + est + ' XP • ') : '';
             actualRow.innerHTML =
               '<span class="goal-actual-label">Факт. время:</span>' +
@@ -1976,14 +1999,16 @@ body::after {
             actualRow.querySelector('.goal-confirm-btn').addEventListener('click', async function (e) {
               e.stopPropagation();
               var actualMin = parseInt(inp.value, 10) || est;
-              var goalsUpdate = storeGet(key) || [];
-              if (goalsUpdate[idx]) {
-                goalsUpdate[idx].done = true;
-                goalsUpdate[idx].doneAt = Date.now();
-                goalsUpdate[idx].actualMin = actualMin;
+              var fresh = readTaskBinding(key, rowBinding);
+              if (!fresh) return;
+              var goalsUpdate = fresh.tasks, freshIdx = fresh.index;
+              if (goalsUpdate[freshIdx] && !goalsUpdate[freshIdx].done) {
+                goalsUpdate[freshIdx].done = true;
+                goalsUpdate[freshIdx].doneAt = Date.now();
+                goalsUpdate[freshIdx].actualMin = actualMin;
                 storeSet(key, goalsUpdate);
                 try {
-                  G.completeTask(goalsUpdate[idx].sphere, goalsUpdate[idx].difficulty, actualMin);
+                  G.completeTask(goalsUpdate[freshIdx].sphere, goalsUpdate[freshIdx].difficulty, actualMin);
                   loadToday(); renderRadar();
                 } catch(err) {
                   console.error('Complete failed:', err);
@@ -2000,22 +2025,30 @@ body::after {
             });
             inp.focus();
           }
-        } else if (!cb.checked && goals[idx].done) {
-          goals[idx].done = false; delete goals[idx].doneAt; delete goals[idx].actualMin;
+        } else if (!cb.checked && goals[taskIdx].done) {
+          goals[taskIdx].done = false; delete goals[taskIdx].doneAt; delete goals[taskIdx].actualMin;
           storeSet(key, goals); loadToday();
         }
       });
     }
 
     if (!readOnly) {
-      li.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', idx); li.style.opacity = '0.5'; });
+      li.addEventListener('dragstart', function (e) {
+        if (!readTaskBinding(key, rowBinding)) { e.preventDefault(); return; }
+        e.dataTransfer.setData('text/plain', JSON.stringify({ key: key, binding: rowBinding })); li.style.opacity = '0.5';
+      });
       li.addEventListener('dragend', function () { li.style.opacity = '1'; });
       li.addEventListener('dragover', function (e) { e.preventDefault(); li.style.borderTop = '2px solid rgba(255,255,255,0.3)'; });
       li.addEventListener('dragleave', function () { li.style.borderTop = ''; });
       li.addEventListener('drop', function (e) {
         e.preventDefault(); li.style.borderTop = '';
-        var fi = parseInt(e.dataTransfer.getData('text/plain'), 10);
-        var goals = storeGet(key) || []; var item = goals.splice(fi, 1)[0]; goals.splice(idx, 0, item);
+        var payload;
+        try { payload = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (_error) { return; }
+        if (!payload || payload.key !== key || !readTaskBinding(key, payload.binding)) return;
+        var target = readTaskBinding(key, rowBinding);
+        if (!target) return;
+        var goals = target.tasks, fromIndex = Tasks.indexFor(goals, payload.binding.target);
+        var item = goals.splice(fromIndex, 1)[0]; goals.splice(target.index, 0, item);
         storeSet(key, goals); loadToday();
       });
     }
@@ -2030,7 +2063,8 @@ body::after {
       list.innerHTML = '';
       if (goals.length === 0) { if (empty) empty.style.display = ''; } else {
         if (empty) empty.style.display = 'none';
-        goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, false)); });
+        var version = captureTaskDocument(key);
+        goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, false, version)); });
       }
     }
     renderTodayHeader(); renderStreak();
@@ -2075,7 +2109,9 @@ body::after {
       var text = input.value.trim(); if (!text) return;
       var mins = parseInt(timeInput.value, 10) || 15;
       var goals = storeGet(key) || [];
-      goals.push({ text: text, done: false, sphere: sphere.value, difficulty: diff.value, estimatedMin: mins });
+      var task = createDashboardTask({ text: text, sphere: sphere.value, difficulty: diff.value, estimatedMin: mins });
+      if (!task) return;
+      goals.push(task);
       storeSet(key, goals);
       input.value = ''; timeInput.value = '';
       reloadFn();
@@ -2096,9 +2132,15 @@ body::after {
       if (!confirm('Перенести все незавершённые задачи на завтра?')) return;
       var todayKey = 'goals:' + getActiveDateString(), tomorrowKey = 'goals:' + getTomorrowDateString();
       var today = storeGet(todayKey) || [], tomorrow = storeGet(tomorrowKey) || [];
-      var exist = {}; tomorrow.forEach(function (g) { exist[g.text] = true; });
-      var kept = [];
-      today.forEach(function (g) { if (g.done) kept.push(g); else if (!exist[g.text]) tomorrow.push({ text: g.text, done: false, sphere: g.sphere, difficulty: g.difficulty, estimatedMin: g.estimatedMin }); });
+      var kept = today.slice();
+      try {
+        today.forEach(function(g) {
+          if (g.done) return;
+          var target = typeof g.id === 'string' && g.id ? { id: g.id } : { index: kept.indexOf(g) };
+          var moved = Tasks.moveTask(kept, tomorrow, target);
+          kept = moved.source; tomorrow = moved.destination;
+        });
+      } catch (_error) { alert('не удалось однозначно перенести задачи. проверь дубли id; исходные списки не изменены.'); return; }
       storeSet(todayKey, kept); storeSet(tomorrowKey, tomorrow);
       loadToday(); loadTomorrow();
     });
@@ -2128,7 +2170,32 @@ body::after {
   });
 
   // --- Task Details Modal Logic ---
-  var currentModalGoal = null, currentModalIdx = null, currentModalKey = null;
+  function captureTaskDocument(key) {
+    return { serialized: JSON.stringify(storeGet(key) || []), token: window.DashboardSync && window.DashboardSync.getDocumentToken ? window.DashboardSync.getDocumentToken(key) : null };
+  }
+
+  function readTaskDocument(key, version) {
+    var tasks = storeGet(key) || [], token = window.DashboardSync && window.DashboardSync.getDocumentToken ? window.DashboardSync.getDocumentToken(key) : null;
+    if (!Tasks.documentMatches(version, JSON.stringify(tasks), token)) {
+      alert('список задач изменился. открой задачу заново — устаревшая правка не сохранена.');
+      return null;
+    }
+    return tasks;
+  }
+
+  function readTaskBinding(key, binding) {
+    var tasks = binding && readTaskDocument(key, binding.version);
+    if (!tasks) return null;
+    try { return { tasks: tasks, index: Tasks.indexFor(tasks, binding.target) }; }
+    catch (_error) { alert('не удалось однозначно определить задачу. обнови список.'); return null; }
+  }
+
+  function createDashboardTask(fields) {
+    try { return Tasks.createTask(fields, window.crypto && typeof window.crypto.randomUUID === 'function' ? window.crypto.randomUUID.bind(window.crypto) : null); }
+    catch (_error) { alert('не удалось безопасно создать задачу. нужен современный браузер и https или localhost.'); return null; }
+  }
+
+  var currentModalGoal = null, currentModalBinding = null, currentModalKey = null;
 
   function renderModalSubtasks() {
     var list = document.getElementById('modalSubtaskList');
@@ -2147,12 +2214,14 @@ body::after {
   }
 
   function saveModalChanges() {
-    var goals = storeGet(currentModalKey) || [];
-    if (goals[currentModalIdx]) {
+    var current = readTaskBinding(currentModalKey, currentModalBinding);
+    if (!current) return;
+    if (current.tasks[current.index]) {
       var descEl = document.getElementById('modalTaskDesc');
-      if (descEl) goals[currentModalIdx].description = descEl.value;
-      goals[currentModalIdx].subtasks = currentModalGoal.subtasks;
+      var goals = Tasks.patchTask(current.tasks, currentModalBinding.target, { description: descEl ? descEl.value : currentModalGoal.description, subtasks: currentModalGoal.subtasks || [] });
       storeSet(currentModalKey, goals);
+      currentModalGoal = JSON.parse(JSON.stringify(goals[current.index]));
+      currentModalBinding.version = captureTaskDocument(currentModalKey);
       renderModalSubtasks();
       if (currentModalKey.indexOf('goals:') === 0) {
         if (currentModalKey === 'goals:' + getActiveDateString()) loadToday();
@@ -2162,7 +2231,10 @@ body::after {
   }
 
   window.openTaskModal = function(goal, idx, key) {
-    currentModalGoal = goal; currentModalIdx = idx; currentModalKey = key;
+    currentModalBinding = { target: typeof goal.id === 'string' && goal.id ? { id: goal.id } : { index: idx }, version: captureTaskDocument(key) };
+    var current = readTaskBinding(key, currentModalBinding);
+    if (!current || JSON.stringify(current.tasks[current.index]) !== JSON.stringify(goal)) return;
+    currentModalGoal = JSON.parse(JSON.stringify(goal)); currentModalKey = key;
     var titleEl = document.getElementById('modalTaskTitle');
     var descEl = document.getElementById('modalTaskDesc');
     var modal = document.getElementById('taskDetailsModal');
@@ -2217,11 +2289,11 @@ body::after {
     if (savedSettings.model && orModelInput) orModelInput.value = savedSettings.model;
   } catch(e) {}
 
-  async function removeGoalWithSync(goals, idx, key) {
+  async function removeGoalWithSync(binding, key) {
     if (!confirm('Удалить задачу навсегда?')) return;
-    
-    var newGoals = JSON.parse(JSON.stringify(goals));
-    newGoals.splice(idx, 1);
+    var current = readTaskBinding(key, binding);
+    if (!current) return;
+    var newGoals = current.tasks.filter(function(_goal, index) { return index !== current.index; });
     G.storeSet(key, newGoals);
 
     if (window.DashboardSync && window.DashboardSync.forceSync) {
@@ -2393,8 +2465,9 @@ body::after {
       var rows = ssResults.querySelectorAll('.proposal-row');
       var todayKey = 'goals:' + getActiveDateString();
       var currentGoals = storeGet(todayKey) || [];
-      var addedCount = 0;
+      var addedCount = 0, creationFailed = false;
       rows.forEach(function(row) {
+        if (creationFailed) return;
         var cb = row.querySelector('.proposal-cb');
         if (!cb.checked) return;
         var text = row.querySelector('.proposal-text').value.trim();
@@ -2402,10 +2475,13 @@ body::after {
         var sphere = row.querySelector('.proposal-sphere').value || null;
         var diff = row.querySelector('.proposal-diff').value;
         if (text) {
-          currentGoals.push({ text: text, estimatedMin: mins, sphere: sphere, difficulty: diff, done: false, createdAt: new Date().toISOString() });
+          var task = createDashboardTask({ text: text, estimatedMin: mins, sphere: sphere, difficulty: diff, createdAt: new Date().toISOString() });
+          if (!task) { creationFailed = true; return; }
+          currentGoals.push(task);
           addedCount++;
         }
       });
+      if (creationFailed) return;
       if (addedCount > 0) {
         storeSet(todayKey, currentGoals);
         if (ssClose) ssClose.onclick();

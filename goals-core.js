@@ -216,10 +216,10 @@
       }
     });
 
-    return {
+    return Object.assign({}, source, {
       schemaVersion: 3,
       goals: goals
-    };
+    });
   }
 
   function priorityRank(priority) {
@@ -264,7 +264,9 @@
     var goals = Array.isArray(source.goals) ? source.goals.map(function(goal) {
       return Object.assign({}, goal);
     }) : [];
-    var moved = goals.find(function(goal) { return goal.id === command.goalId; });
+    var matches = goals.filter(function(goal) { return goal.id === command.goalId; });
+    if (matches.length > 1) return { ok: false, error: 'AMBIGUOUS_GOAL' };
+    var moved = matches[0];
     if (!moved) return { ok: false, error: 'GOAL_NOT_FOUND' };
     if (moved.done === true) return { ok: false, error: 'GOAL_COMPLETED' };
     if (!isValidPeriodKey(moved.horizon, command.targetPeriodKey)) {
@@ -279,7 +281,9 @@
     var targetKey = moved.horizon + '\u0000' + command.targetPeriodKey + '\u0000' + targetPriority;
     var beforeGoal = null;
     if (command.beforeGoalId !== undefined && command.beforeGoalId !== null) {
-      beforeGoal = goals.find(function(goal) { return goal.id === command.beforeGoalId; });
+      var beforeMatches = goals.filter(function(goal) { return goal.id === command.beforeGoalId; });
+      if (beforeMatches.length > 1) return { ok: false, error: 'AMBIGUOUS_GOAL' };
+      beforeGoal = beforeMatches[0];
       if (!beforeGoal || beforeGoal.id === moved.id || beforeGoal.done === true || groupKey(beforeGoal) !== targetKey) {
         return { ok: false, error: 'INVALID_TARGET' };
       }

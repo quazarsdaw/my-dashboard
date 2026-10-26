@@ -143,6 +143,7 @@ function loadGoalsPage(initialData, initialSelection = {}) {
   const dataWrites = [];
   const window = {
     GoalsCore,
+    DashboardTasksCore: require('../dashboard-tasks-core.js'),
     Gamification: {
       storeGet(key) {
         if (key === 'horizons_goals_v2') return clone(storedData);
@@ -196,6 +197,7 @@ function loadGoalsPage(initialData, initialSelection = {}) {
     dataWrites,
     window,
     getData() { return clone(storedData); },
+    remote(data) { storedData = clone(data); },
     getSelection() { return clone(storedSelection); },
     latestGoalCard() {
       return created.filter((element) => element.classList.contains('goal-card')).at(-1) || null;
@@ -205,6 +207,34 @@ function loadGoalsPage(initialData, initialSelection = {}) {
     }
   };
 }
+
+test('открытый перенос и drag не применяются после обновления документа', () => {
+  for (const action of ['dialog', 'drag']) {
+    const original = normalizedGoal({ id: 'moving' });
+    const page = loadGoalsPage({ schemaVersion: 3, goals: [original] });
+    if (action === 'dialog') page.window.openGoalMoveDialog('moving');
+    else page.window.startGoalDrag({ dataTransfer: { setData() {} } }, 'moving');
+    const fresh = { ...original, title: 'правка hermes' };
+    page.remote({ schemaVersion: 3, goals: [fresh] });
+    if (action === 'dialog') {
+      page.nodes.get('movePeriod').value = '2026-11';
+      page.nodes.get('confirmMoveBtn').onclick();
+    } else page.window.dropGoalInAdjacentPeriod({ preventDefault() {} }, 'month', 1);
+    assert.deepEqual(page.getData().goals[0], fresh);
+    assert.equal(page.dataWrites.length, 0);
+  }
+});
+
+test('дублирующийся goal id не выбирается первым для выполнения или переноса', () => {
+  const a = normalizedGoal({ id: 'duplicate', title: 'а' });
+  const b = normalizedGoal({ id: 'duplicate', title: 'б', order: 200 });
+  const page = loadGoalsPage({ schemaVersion: 3, goals: [a, b] });
+  page.window.toggleGoalStatus('duplicate');
+  assert.equal(page.dataWrites.length, 0);
+  assert.equal(page.window.startGoalDrag(null, 'duplicate'), false);
+  const result = GoalsCore.moveGoal({ schemaVersion: 3, goals: [a, b] }, { goalId: 'duplicate', targetPeriodKey: '2026-11' });
+  assert.equal(result.ok, false);
+});
 
 test('разметка содержит доступные действия навигатора периода', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'goals.html'), 'utf8');

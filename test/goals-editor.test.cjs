@@ -124,6 +124,8 @@ function loadGoalsPage(initialData, options = {}) {
   };
   const window = {
     GoalsCore,
+    DashboardTasksCore: require('../dashboard-tasks-core.js'),
+    crypto: options.noCrypto ? null : require('node:crypto'),
     Gamification: {
       storeGet(key) {
         if (key === 'horizons_goals_v2') return clone(storedData);
@@ -150,7 +152,7 @@ function loadGoalsPage(initialData, options = {}) {
     window,
     document,
     confirm() {
-      return true;
+      return options.confirm ? options.confirm() : true;
     },
     console,
     Date: options.Date || Date,
@@ -172,6 +174,7 @@ function loadGoalsPage(initialData, options = {}) {
     getData() {
       return clone(storedData);
     },
+    remote(data) { storedData = clone(data); },
     firstGoalCard() {
       return created.find((element) => element.classList.contains('goal-card')) || null;
     },
@@ -395,4 +398,48 @@ test('числовая цель сохраняет новое название �
     current: 65
   });
   assert.equal(page.writes.length, 1);
+});
+
+test('открытый редактор не сохраняет после remote update и не удаляет свежую цель', () => {
+  const goal = { id: 'existing', title: 'цель', horizon: 'month', periodKey: '2026-10', priority: 'p3', order: 100, type: 'check', target: 1, current: 0, unit: '', done: false };
+  const page = loadGoalsPage({ schemaVersion: 3, goals: [goal] });
+  page.firstGoalCard().onclick();
+  page.nodes.get('editTitle').value = 'старая правка';
+  page.remote({ schemaVersion: 3, goals: [{ ...goal, title: 'правка hermes' }] });
+  page.nodes.get('saveBtn').onclick();
+  assert.equal(page.getData().goals[0].title, 'правка hermes');
+  assert.equal(page.writes.length, 0);
+  page.nodes.get('delBtn').onclick();
+  assert.equal(page.getData().goals.length, 1);
+});
+
+test('новая цель использует uuid v4 и отсутствие crypto не создаёт timestamp id', () => {
+  for (const noCrypto of [false, true]) {
+    const page = loadGoalsPage({ schemaVersion: 3, goals: [] }, { noCrypto });
+    page.nodes.get('addTitle').value = 'новая';
+    page.nodes.get('addHorizon').value = 'month';
+    page.nodes.get('addPeriod').value = '2026-10';
+    page.nodes.get('addPriority').value = 'p3';
+    page.nodes.get('addType').value = 'check';
+    page.nodes.get('addBtn').onclick();
+    if (noCrypto) assert.equal(page.getData().goals.length, 0);
+    else assert.match(page.getData().goals[0].id, /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/);
+  }
+});
+
+test('нормализация browser goals не удаляет неизвестные поля документа', () => {
+  const source = { schemaVersion: 3, custom: { text: 'сохранить' }, goals: [] };
+  assert.deepEqual(GoalsCore.normalizeData(source), source);
+});
+
+test('удаление цели повторно проверяет документ после native confirm', () => {
+  const goal = { id: 'existing', title: 'цель', horizon: 'month', periodKey: '2026-10', priority: 'p3', order: 100, type: 'check', target: 1, current: 0, unit: '', done: false };
+  const options = {};
+  const page = loadGoalsPage({ schemaVersion: 3, goals: [goal] }, options);
+  page.firstGoalCard().onclick();
+  const fresh = { ...goal, title: 'правка во время диалога' };
+  options.confirm = () => { page.remote({ schemaVersion: 3, goals: [fresh] }); return true; };
+  page.nodes.get('delBtn').onclick();
+  assert.deepEqual(page.getData().goals, [fresh]);
+  assert.equal(page.writes.length, 0);
 });
