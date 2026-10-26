@@ -23,7 +23,7 @@ jobs:
           POSTGRES_PASSWORD: dashboard-test-only
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U postgres'
+          --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       PGHOST: 127.0.0.1
