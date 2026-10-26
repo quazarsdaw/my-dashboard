@@ -343,7 +343,7 @@ test('goals move dialog stays centered in the visible viewport after page scroll
 test('goals page uses explicit priority labels and a fresh core cache version', () => {
   const html = read('goals.html');
 
-  assert.ok(html.includes('<script src="goals-core.js?v=2"></script>'));
+  assert.ok(html.includes('<script src="goals-core.js?v=3"></script>'));
   ['P1', 'P2', 'P3', 'P4'].forEach((priority) => {
     assert.ok(html.includes(`>${priority}</option>`), priority);
   });

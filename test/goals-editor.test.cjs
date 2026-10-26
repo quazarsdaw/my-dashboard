@@ -184,6 +184,11 @@ function loadGoalsPage(initialData, options = {}) {
   };
 }
 
+test('пустое первое открытие не создаёт ложную локальную версию до pull', () => {
+  const app = loadGoalsPage(null);
+  assert.equal(app.writes.length, 0);
+});
+
 test('страница подключает календарное ядро до inline-контроллера', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'goals.html'), 'utf8');
   const coreIndex = html.indexOf('src="goals-core.js');

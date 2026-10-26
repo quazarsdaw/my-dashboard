@@ -40,7 +40,7 @@
   }
 
   /* ── State ── */
-  var SYNC_VERSION = '26-sb';
+  var SYNC_VERSION = '27-cas';
   var currentUser = null;
   var syncEnabled = false;
   var isSyncing = false; // true while applying cloud data to localStorage
@@ -141,6 +141,7 @@
       authGeneration += 1;
       casPreviousOwner = localStorage.getItem(CAS_DISPLAY_OWNER) || previousSyncUser;
       casMode = 0; casOwner = null; casStates = {}; casCapabilities = null; casHydrated = false;
+      window.dispatchEvent(new CustomEvent('dashboard-sync-owner-changed'));
     }
 
     if (currentUser && user && currentUser.id !== user.id) {
@@ -470,8 +471,54 @@
       return syncPendingChanges();
     },
     getDocumentToken: documentToken,
-    canApplyDocumentToken: function(token) { return !!token && JSON.stringify(token) === JSON.stringify(documentToken(token.key)); }
+    canApplyDocumentToken: function(token) { return !!token && JSON.stringify(token) === JSON.stringify(documentToken(token.key)); },
+    getConflict: conflictReview,
+    listConflicts: function() { return Object.keys(casStates).filter(function(key) { return !!casStates[key].conflict; }); },
+    resolveConflict: resolveConflict
   };
+
+  function conflictReview(key) {
+    if (casMode !== 2 || !currentUser || casOwner !== currentUser.id || !casStates[key] || !casStates[key].conflict) return null;
+    var keys = (casStates[key].conflictKeys || [key]).slice().sort();
+    if (keys.some(function(k) { return !protectedKey(k) || !casStates[k] || !casStates[k].conflict; })) return null;
+    keys.forEach(noteCasLocal);
+    return JSON.parse(JSON.stringify({ owner: casOwner, key: key,
+      token: { owner: casOwner, documents: keys.map(documentToken) },
+      documents: keys.map(function(k) {
+        var state = casStates[k];
+        return { key: k, base: state.conflict.base,
+          local: { valueText: state.dirty ? state.dirty.valueText : localStorage.getItem(k) }, remote: state.conflict.remote };
+      }) }));
+  }
+
+  function resolveConflict(key, choice, token) {
+    if (choice !== 'use_remote' && choice !== 'apply_reviewed_local') return Promise.resolve(syncOutcome('invalid_choice', 400));
+    var owner = currentUser && currentUser.id, generation = authGeneration;
+    function matches() {
+      var current = conflictReview(key);
+      return current && JSON.stringify(current.token) === JSON.stringify(token);
+    }
+    if (!owner || !matches()) return Promise.resolve(syncOutcome('conflict_changed'));
+    var queue = (casQueues[owner] || Promise.resolve()).catch(function() {}).then(async function() {
+      if (!currentUser || currentUser.id !== owner || generation !== authGeneration || !matches()) return syncOutcome('conflict_changed');
+      var loaded = await pullFromCloud();
+      if (!loaded || !loaded.ok || !currentUser || currentUser.id !== owner || generation !== authGeneration || !matches()) return syncOutcome('conflict_changed');
+      var keys = token.documents.map(function(item) { return item.key; }), changed = [];
+      keys.forEach(function(k) {
+        var state = getCasState(k);
+        var step = applyCasEvent(k, { type: 'resolve', choice: choice, remoteRevision: state.conflict.remote.revision, localEpoch: state.localEpoch });
+        delete step.state.conflictKeys;
+        if (step.changed) changed.push(k);
+        if (step.state.dirty) pendingKeys[k] = true; else delete pendingKeys[k];
+      });
+      persistCas();
+      if (changed.length) notifySyncedDataApplied(changed);
+      window.dispatchEvent(new CustomEvent('dashboard-sync-conflict', { detail: { keys: Object.keys(casStates).filter(function(k) { return !!casStates[k].conflict; }) } }));
+      return choice === 'use_remote' ? { ok: true } : pushCasChanges(owner, generation);
+    }).catch(function() { return syncOutcome('sync_unavailable', 502); });
+    casQueues[owner] = queue;
+    return queue;
+  }
 
   function syncOutcome(code, status) {
     return { ok: false, error: { code: code, status: status || 409 } };
@@ -766,7 +813,7 @@
     var userId = currentUser.id, generation = ++pullGeneration;
     return ensureSyncProtocol().then(function(mode) { return fetchAllUserData(supabase, userId, mode); })
       .then(function(rows) {
-        if (!currentUser || currentUser.id !== userId || generation !== pullGeneration) return;
+        if (!currentUser || currentUser.id !== userId || generation !== pullGeneration) return { ok: false };
         isSyncing = true;
         try {
           var changedKeys = [];
@@ -816,6 +863,11 @@
             casHydrated = true;
             persistCas();
             var conflicts = Object.keys(casStates).filter(function(key) { return !!casStates[key].conflict; });
+            var ungrouped = conflicts.filter(function(key) { return !casStates[key].conflictKeys; });
+            if (ungrouped.length) {
+              var group = Object.keys(casStates).filter(function(key) { return !casStates[key].conflictKeys && (casStates[key].dirty || casStates[key].conflict); });
+              blockCasGroup(group);
+            }
             if (conflicts.length) window.dispatchEvent(new CustomEvent('dashboard-sync-conflict', { detail: { keys: conflicts } }));
           }
           markMissingLocalKeysAfterSync(rows);
@@ -825,6 +877,7 @@
           }
         } finally { isSyncing = false; }
         showSyncIndicator('synced');
+        return { ok: true };
       })
       .catch(function(err) {
         if (!currentUser || currentUser.id !== userId || generation !== pullGeneration) return;
@@ -992,8 +1045,12 @@
         console.warn('Supabase: Невозможно удалить данные (нет сессии)');
         return Promise.resolve({ error: 'No session' });
       }
-      console.log('Supabase: Удаление облачных данных для', currentUser.id);
-      return supabase.from('user_data').delete().eq('user_id', currentUser.id);
+      var owner = currentUser.id, generation = authGeneration;
+      return ensureSyncProtocol().then(function(mode) {
+        if (mode === 2) return { error: { code: 'protected_reset', message: 'Сброс защищённых задач и целей требует отдельного контролируемого решения. Локальные данные сохранены.' } };
+        if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return { error: { code: 'owner_changed', message: 'Аккаунт изменился.' } };
+        return supabase.from('user_data').delete().eq('user_id', owner);
+      }).catch(function() { return { error: { code: 'sync_unavailable', message: 'Не удалось проверить защиту данных. Сброс отменён.' } }; });
     }
   };
 

@@ -12,7 +12,10 @@
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Профиль</title>
 <script src="gamification.js?v=401"></script>
-<script src="supabase-sync.js?v=408-eyes" defer></script>
+<link rel="stylesheet" href="dashboard-sync-conflicts.css?v=409-cas">
+<script src="dashboard-sync-core.js?v=409-cas" defer></script>
+<script src="dashboard-sync-conflicts.js?v=409-cas" defer></script>
+<script src="supabase-sync.js?v=409-cas" defer></script>
 <script src="profile-theme.js?v=401"></script>
 <script src="eyes-reminder.js?v=1" defer></script>
 <script src="topbar.js?v=405-path" defer></script><style>
@@ -923,14 +926,15 @@ body::after {
 
     // 1. Clear Cloud Data
     var sync = window.SupabaseSync;
-    var promise = (sync && sync.isSignedIn()) ? sync.clearCloudData() : Promise.resolve({ data: [] });
+    var protectedCache = false;
+    for (var cacheIndex = 0; cacheIndex < localStorage.length; cacheIndex++) if (localStorage.key(cacheIndex).indexOf('_sync_cas_') === 0) protectedCache = true;
+    // account-scoped pending must survive sign-out and failed cloud resets.
+    var promise = (sync && sync.isSignedIn()) ? sync.clearCloudData() : Promise.resolve(protectedCache ? { error: { message: 'Есть защищённые локальные правки. Сброс отменён.' } } : { data: [] });
 
     promise.then(function(res) {
         if (res.error) {
             console.error('Cloud delete error:', res.error);
-            if (!confirm('Не удалось удалить данные из облака (' + res.error.message + '). Очистить локальные данные всё равно?')) {
-                throw new Error('User cancelled');
-            }
+            throw new Error(res.error.message || 'Облачный сброс отклонён. Локальные данные сохранены.');
         }
         console.log('Cloud data cleared. Logging out...');
         // 2. Sign Out (to clear Supabase session)
@@ -938,8 +942,10 @@ body::after {
             return window.supabase.auth.signOut();
         }
     }).then(function() {
-        // 3. Clear EVERYTHING in localStorage
-        localStorage.clear();
+        // 3. only app values: never discard auth, pending or revision metadata.
+        var appKeys = [];
+        for (var i = 0; i < localStorage.length; i++) if (isAppStorageKey(localStorage.key(i))) appKeys.push(localStorage.key(i));
+        appKeys.forEach(function(key) { localStorage.removeItem(key); });
         alert('Все данные стерты. Приложение будет перезагружено.');
         window.location.reload();
     }).catch(function(err) {
@@ -1009,6 +1015,7 @@ body::after {
 
   function isAppStorageKey(key) {
     if (!key) return false;
+    if (key.indexOf('goals:') === 0) return /^goals:\d{4}-\d{2}-\d{2}$/.test(key);
     if (key.indexOf('eye_break_session_v1:') === 0) return /^eye_break_session_v1:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key);
     if (key.indexOf('openrouter_') === 0) return false;
     if (key.indexOf('sb-') === 0) return false;

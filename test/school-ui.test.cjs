@@ -23,7 +23,9 @@ function assertSchoolAssetContract(html) {
     'profile-theme.js?v=401',
     'eyes-reminder.js?v=1',
     'topbar.js?v=405-path',
-    'supabase-sync.js?v=408-eyes',
+    'dashboard-sync-core.js?v=409-cas',
+    'dashboard-sync-conflicts.js?v=409-cas',
+    'supabase-sync.js?v=409-cas',
     'school-core.js?v=6',
     'school-api.js',
     'school-teacher-config.js?v=3',
@@ -43,7 +45,7 @@ function assertSchoolAssetContract(html) {
     .filter(Boolean);
 
   assert.ok(html.includes('<body data-page="school">'));
-  assert.deepEqual(stylesheets, ['school.css?v=14']);
+  assert.deepEqual(stylesheets, ['school.css?v=14', 'dashboard-sync-conflicts.css?v=409-cas']);
   assert.deepEqual(scripts, expectedScripts);
   assert.ok(html.includes('id="schoolSettingsOpen"'));
   assert.ok(html.includes('aria-label="Настройки школы"'));

@@ -30,7 +30,7 @@
 
 ## ещё не выполнено
 
-задачи 5–11, независимое ревью, три pr, полный pgTAP ci, desktop/mobile synthetic acceptance. production schema/history/advisors и реальный telegram проверяются перед отдельным разрешённым deployment/activation, не подменяются локальными результатами.
+задачи 6–11, независимое ревью, три pr. production schema/history/advisors и реальный telegram проверяются перед отдельным разрешённым deployment/activation, не подменяются локальными результатами.
 
 ## задача 3: локальная база, dirty и отправленный снимок
 
@@ -56,3 +56,20 @@
 - run `40415574977`: cas 20/20 на pg17, затем pgTAP не нашёл функцию в закрытой extensions schema. тестовый bootstrap дополнен schema usage/legacy auth claim и отдельной проверкой 21/21 локально, коммит `aa931f7`;
 - run `40417079622`: cas 21/21 на pg17; старый `user_data_rls.sql` упал на вложенном data-modifying cte. полный ci пока не green; это не failure cas-транзакций и не доказательство production состояния.
 - issue #72: modifying cte вынесены на верхний уровень без изменения assertions. новый identity trigger сохраняет код отказа `42501`, как прежняя rls; regression сначала показал `22023`, затем локальные postgres tests прошли 22/22. повторный pg17/pgTAP ci обязателен.
+- run `40418259177`, head `e7a8656`: success, cas 22/22 на pg17 и существующие pgTAP проверки. следующий head должен повторно пройти ci перед открытием pr.
+
+## задача 5: видимый конфликт, безопасный импорт и synthetic ui
+
+- на всех 13 страницах единый набор `409-cas`: core и conflict ui загружаются раньше sync, отдельный goals-core `v=3`;
+- немодальное уведомление не мешает редактору; явный native dialog показывает полные исходные тексты обеих версий и общий base, безопасно через text nodes. длинный текст прокручивается без обрезания; мобильный dialog открывается с заголовка, а не автоматически внизу;
+- review token включает owner и версии/локальные эпохи всех документов группы. перед выбором повторный pull; новый remote/local/account отменяет старый выбор. группы переноса выбираются целиком; local choice проходит тот же atomic cas;
+- escape/отмена не пишут. смена аккаунта закрывает и выполняющийся dialog; late result не открывает его снова;
+- v2 массовый сброс блокируется; профиль после отказа не предлагает local clear, не удаляет pending/auth/metadata. backup импортирует только app values, а не revisions, sync state или tokens;
+- первое пустое открытие целей больше не пишет выдуманную локальную версию до pull: реальный browser fixture выявил проблему, regression показал лишнюю запись, затем исправление прошло green;
+- loopback fixture на двух портах использует только synthetic данные и sdk, закрытый набор rpc, csp `connect-src 'self'`. production html не имеет bypass-флагов; repo/config/test файлы сервер не отдаёт;
+- browser acceptance: desktop и 390×844 iframe viewport (не физическое мобильное устройство), два изолированных origin-клиента одного synthetic владельца, offline/reload, новый remote, stale editor с сохранённым текстом формы, escape, смена аккаунта/возврат, явный local choice;
+- frontend 596/596, reader 16/16 и school 108/108, обе edge check/lint pass. итоговый повтор с postgres/python записывается в execution ledger.
+
+![desktop synthetic conflict](2026-10-27-hermes-write-assets/conflict-desktop.png)
+![responsive mobile start](2026-10-27-hermes-write-assets/conflict-mobile-top.png)
+![responsive mobile actions](2026-10-27-hermes-write-assets/conflict-mobile.png)

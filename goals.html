@@ -12,9 +12,12 @@
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Цели и Горизонты</title>
 <script src="gamification.js?v=401"></script>
-<script src="goals-core.js?v=2"></script>
+<script src="goals-core.js?v=3"></script>
 <script src="dashboard-tasks-core.js?v=1"></script>
-<script src="supabase-sync.js?v=408-eyes" defer></script>
+<link rel="stylesheet" href="dashboard-sync-conflicts.css?v=409-cas">
+<script src="dashboard-sync-core.js?v=409-cas" defer></script>
+<script src="dashboard-sync-conflicts.js?v=409-cas" defer></script>
+<script src="supabase-sync.js?v=409-cas" defer></script>
 <script src="profile-theme.js?v=401"></script>
 <script src="eyes-reminder.js?v=1" defer></script>
 <script src="topbar.js?v=405-path" defer></script><style>
@@ -320,15 +323,18 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
 
   function getData(){
     var d = G.storeGet('horizons_goals_v2');
+    var hasSource = !!d;
     if(!d) {
         // Initial migration from old yearly goals
-        var old = G.storeGet('yearly_goals_v1') || { goals: [] };
+        var old = G.storeGet('yearly_goals_v1');
+        hasSource = !!old;
+        old = old || { goals: [] };
         d = { goals: (old.goals || []).map(function(g){
           return Object.assign({}, g, { horizon: 'year' });
         }) };
     }
     var normalized = Core.normalizeData(d, new Date());
-    if (JSON.stringify(normalized) !== JSON.stringify(d)) setData(normalized);
+    if (hasSource && JSON.stringify(normalized) !== JSON.stringify(d)) setData(normalized);
     return normalized;
   }
   function setData(d){ G.storeSet('horizons_goals_v2', d); }

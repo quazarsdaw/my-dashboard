@@ -281,3 +281,71 @@ test('offline uuid задачи не заменяется после reload и c
   assert.equal(JSON.parse(backend.documents.get(protectedKey).valueText)[0].id, '00000000-0000-4000-8000-000000000001');
   assert.equal(JSON.parse(restored.localStorage.getItem(protectedKey))[0].id, '00000000-0000-4000-8000-000000000001');
 });
+
+async function conflicted() {
+  const backend = versionedBackend();
+  const app = await loadSupabaseSync(backend.options);
+  app.localStorage.setItem(protectedKey, 'local');
+  backend.documents.set(protectedKey, { ...backend.documents.get(protectedKey), valueText: 'remote', revision: '2' });
+  await app.context.window.SupabaseSync.pullNow();
+  return { backend, app, api: app.context.window.DashboardSync };
+}
+test('conflict предоставляет полный снимок и отмена/reload не теряют pending', async () => {
+  const { backend, app, api } = await conflicted();
+  const review = api.getConflict(protectedKey);
+  assert.equal(review.documents[0].local.valueText, 'local');
+  assert.equal(review.documents[0].remote.valueText, 'remote');
+  assert.equal(review.documents[0].base.valueText, 'a');
+  const restored = await loadSupabaseSync({ ...backend.options, initialStorage: Object.fromEntries(app.localStorage.data) });
+  assert.equal(restored.context.window.DashboardSync.getConflict(protectedKey).documents[0].local.valueText, 'local');
+  assert.equal(app.rpcs.some(r => r.name === 'dashboard_save_documents'), false);
+});
+test('review token устаревает при новой серверной или локальной правке, чужом owner', async () => {
+  const { backend, app, api } = await conflicted();
+  const token = api.getConflict(protectedKey).token;
+  backend.documents.set(protectedKey, { ...backend.documents.get(protectedKey), valueText: 'third', revision: '3' });
+  assert.equal((await api.resolveConflict(protectedKey, 'apply_reviewed_local', token)).error.code, 'conflict_changed');
+  assert.equal(backend.documents.get(protectedKey).valueText, 'third');
+  const next = api.getConflict(protectedKey).token;
+  app.localStorage.setItem(protectedKey, 'local2');
+  assert.equal((await api.resolveConflict(protectedKey, 'use_remote', next)).error.code, 'conflict_changed');
+  const own = api.getConflict(protectedKey).token;
+  app.changeUser({id:'u2'}); await flushPromises();
+  assert.equal((await api.resolveConflict(protectedKey, 'use_remote', own)).ok, false);
+  assert.equal(app.rpcs.some(r => r.name === 'dashboard_save_documents'), false);
+});
+test('явный review сохраняет локальную версию через cas, remote choice не пишет', async () => {
+  const one = await conflicted();
+  assert.equal((await one.api.resolveConflict(protectedKey, 'apply_reviewed_local', one.api.getConflict(protectedKey).token)).ok, true);
+  assert.equal(one.backend.documents.get(protectedKey).valueText, 'local');
+  assert.equal(one.backend.documents.get(protectedKey).revision, '3');
+  assert.equal(one.api.getConflict(protectedKey), null);
+  const two = await conflicted();
+  assert.equal((await two.api.resolveConflict(protectedKey, 'use_remote', two.api.getConflict(protectedKey).token)).ok, true);
+  assert.equal(two.app.localStorage.getItem(protectedKey), 'remote');
+  assert.equal(two.app.rpcs.some(r => r.name === 'dashboard_save_documents'), false);
+});
+test('review разрешает все документы переноса одной атомарной группой', async () => {
+  const backend = versionedBackend();
+  const app = await loadSupabaseSync(backend.options), api = app.context.window.DashboardSync;
+  const other = 'goals:2026-10-28';
+  app.localStorage.setItem(protectedKey, 'local');
+  app.localStorage.setItem(other, 'destination');
+  backend.documents.set(protectedKey, { ...backend.documents.get(protectedKey), valueText: 'remote', revision: '2' });
+  await api.forceSync();
+  const review = api.getConflict(protectedKey);
+  assert.deepEqual(Array.from(review.documents, d => d.key).sort(), [protectedKey, other].sort());
+  assert.equal((await api.resolveConflict(protectedKey, 'apply_reviewed_local', review.token)).ok, true);
+  const save = app.rpcs.filter(r => r.name === 'dashboard_save_documents').at(-1);
+  assert.equal(save.args.p_changes.length, 2);
+  assert.equal(backend.documents.get(other).valueText, 'destination');
+});
+test('protected_reset_failure_keeps_local_data: v2 не выполняет массовое удаление', async () => {
+  const { app } = await conflicted();
+  const cache = app.localStorage.getItem('_sync_cas_v2:u1');
+  const result = await app.context.window.SupabaseSync.clearCloudData();
+  assert.equal(result.error.code, 'protected_reset');
+  assert.equal(app.writes.deletes.length, 0);
+  assert.equal(app.localStorage.getItem('_sync_cas_v2:u1'), cache);
+  assert.equal(app.localStorage.getItem(protectedKey), 'local');
+});
