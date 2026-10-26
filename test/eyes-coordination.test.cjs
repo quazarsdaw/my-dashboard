@@ -79,3 +79,26 @@ test('исключение освобождает mutex и недоступны�
   );
   assert.equal(ran, false);
 });
+test('pagehide синхронно отзывает только своё владение и reload не ждёт ttl', async () => {
+  const s = storage(), locks = mutex();
+  const make = () => E.create({ locks, storage: s, now: () => 1000,
+    uuid: require('node:crypto').randomUUID, tabId: 'copied-tab' });
+  const old = make(), duplicate = make();
+  const first = await old.claimSession({ id: 'same', owner: 'user' });
+  assert.equal((await duplicate.claimSession({ id: 'same', owner: 'user' })).ok, false);
+  assert.equal(typeof old.retireSession, 'function');
+  assert.equal(duplicate.retireSession(first.token), false);
+  assert.equal(old.retireSession(first.token), true, 'не promise и не callback mutex');
+  assert.equal(old.active(), null);
+  const restored = make();
+  const next = await restored.claimSession({ id: 'same', owner: 'user' });
+  assert.equal(next.ok, true);
+  assert.notEqual(next.token, first.token);
+  assert.equal(old.retireSession(first.token), false);
+  assert.equal(await old.releaseSession(first.token), false);
+  assert.equal(await restored.renewSession(next.token), true);
+  assert.equal((await duplicate.claimSession({ id: 'same', owner: 'user' })).ok, false);
+  assert.equal(await restored.releaseSession(next.token), true);
+  assert.equal(s.getItem('_eye_break_session_retired_v1:' + first.token), null,
+    'новое владение убирает служебную отметку прошлого lease');
+});

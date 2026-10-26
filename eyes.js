@@ -248,11 +248,13 @@
       );
       return true;
     }
-    function release() {
+    function release(onPageHide) {
       if (heartbeat !== null) w.clearInterval(heartbeat);
       heartbeat = null;
       if (token) {
-        coord.releaseSession(token).catch(function () {});
+        if (onPageHide) {
+          try { coord.retireSession(token); } catch (_) {}
+        } else coord.releaseSession(token).catch(function () {});
         token = null;
       }
     }
@@ -739,7 +741,7 @@
       w.addEventListener('pagehide', function () {
         pause();
         stopFrames();
-        release();
+        release(true);
       });
       w.addEventListener('pageshow', function (e) {
         if (e.persisted) {

@@ -160,6 +160,25 @@ const server = http.createServer((req, res) => {
     assert.match(await b.locator('#eyeError').innerText(), /другой вкладке/);
     await fallback.close();
     console.log('indexeddb fallback: два окна не запускают две разминки');
+    for (const withoutWebLocks of [false, true]) {
+      const reloadContext = await context();
+      if (withoutWebLocks) await reloadContext.addInitScript(() =>
+        Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true }));
+      const reloadPage = await reloadContext.newPage();
+      await reloadPage.goto(base + 'eyes.html');
+      await reloadPage.locator('#startEye').click();
+      await reloadPage.locator('#eyePlayer').waitFor({ state: 'visible' });
+      const beforeReload = await reloadPage.evaluate(() =>
+        JSON.parse(localStorage.getItem('_eye_break_session_lease_v1')).token);
+      await reloadPage.reload();
+      await reloadPage.locator('#resumeEye').click();
+      await reloadPage.locator('#eyePlayer').waitFor({ state: 'visible', timeout: 2500 });
+      assert.notEqual(await reloadPage.evaluate(() =>
+        JSON.parse(localStorage.getItem('_eye_break_session_lease_v1')).token), beforeReload);
+      assert.equal(await reloadPage.locator('#statsSessions').innerText(), '0');
+      await reloadContext.close();
+    }
+    console.log('reload: немедленное восстановление без ожидания lease, web locks и indexeddb');
     async function checkExercisePolish(viewport, isMobile) {
       const c = await context({ viewport, isMobile, hasTouch: isMobile }),
         p = await c.newPage(),

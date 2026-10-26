@@ -31,12 +31,13 @@ function setup(options = {}) {
     uuid: () => h.window.crypto.randomUUID(),
     now: () => new Date().toISOString(),
   });
-  const coordination = {
+  const coordination = Object.assign({
     claimSession: async () => ({ ok: true, token: 't' }),
     renewSession: async () => true,
     releaseSession: async () => true,
+    retireSession: () => true,
     close() {},
-  };
+  }, options.coordination);
   const app = UI.create({
     window: h.window,
     document: h.document,
@@ -171,6 +172,18 @@ test('после bfcache и продолжения снова работает h
   await h.emit('pageshow', { persisted: true });
   await h.ids.pauseEye.fire('click');
   assert.equal(timers.size, 1);
+  h.app.destroy();
+});
+test('pagehide отзывает lease синхронно без незавершённого async release', async () => {
+  let retired = 0, released = 0;
+  const h = setup({ coordination: {
+    retireSession: () => { retired++; return true; },
+    releaseSession: async () => { released++; return true; },
+  } });
+  await h.app.start();
+  await h.emit('pagehide', { persisted: false });
+  assert.equal(retired, 1);
+  assert.equal(released, 0);
   h.app.destroy();
 });
 test('инструкция вдаль даёт однократный сигнал окончания', async () => {
