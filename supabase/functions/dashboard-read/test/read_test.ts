@@ -449,3 +449,44 @@ Deno.test("oversized domain response не обрезается до успешн
   assert.equal(result.status, 502);
   assert.deepEqual(await result.json(), { error: "RESPONSE_TOO_LARGE" });
 });
+
+Deno.test("подписанные числовые цели из редактора не блокируют другие периоды и summary", () => {
+  const signed = {
+    ...goals[0],
+    id: "signed",
+    current: -5,
+    target: -1,
+    done: false,
+    periodKey: "2026-09",
+  };
+  const rows = [row("horizons_goals_v2", { goals: [...goals, signed] })];
+  const previous = page({
+    operation: "get_goals",
+    horizon: "month",
+    periodKey: "2026-09",
+  }, rows);
+  assert.equal(previous.data.items[0].current, -5);
+  assert.equal(previous.data.items[0].target, -1);
+  assert.equal(
+    page(
+      { operation: "get_goals", horizon: "month", periodKey: "2026-10" },
+      rows,
+    ).data.total,
+    2,
+  );
+  assert.deepEqual(summary(rows).data.goals, { total: 2, done: 1 });
+  for (
+    const bad of [
+      row("horizons_goals_v2", { goals: [{ ...goals[0], order: -1 }] }),
+      row("goals:2026-10-25", [{ text: "а", done: false, estimatedMin: -1 }]),
+    ]
+  ) {
+    const operation = bad.key === "horizons_goals_v2"
+      ? "get_goals"
+      : "get_today_tasks";
+    assert.throws(
+      () => project({ operation }, [bad]),
+      /INVALID_DASHBOARD_DATA/,
+    );
+  }
+});

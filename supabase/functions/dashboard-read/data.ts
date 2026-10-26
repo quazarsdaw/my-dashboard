@@ -186,12 +186,19 @@ function flag(value: unknown): boolean {
 function optionalText(value: unknown): string | null {
   return value === undefined || value === null ? null : text(value);
 }
-function optionalNumber(value: unknown): number | null {
+function optionalSignedNumber(value: unknown): number | null {
   if (value === undefined || value === null) return null;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new ReadError("INVALID_DASHBOARD_DATA", 502);
   }
   return value;
+}
+function optionalNumber(value: unknown): number | null {
+  const number = optionalSignedNumber(value);
+  if (number !== null && number < 0) {
+    throw new ReadError("INVALID_DASHBOARD_DATA", 502);
+  }
+  return number;
 }
 function records(value: unknown): RecordValue[] {
   if (!Array.isArray(value) || value.length > 10000) {
@@ -282,8 +289,8 @@ export function readDashboard(
         order: optionalNumber(g.order),
         type: g.type,
         done: flag(g.done),
-        current: optionalNumber(g.current),
-        target: optionalNumber(g.target),
+        current: optionalSignedNumber(g.current),
+        target: optionalSignedNumber(g.target),
         unit: optionalText(g.unit),
       };
     });
