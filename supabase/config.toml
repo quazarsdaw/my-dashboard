@@ -423,3 +423,9 @@ entrypoint = "./functions/school-notion/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/school-notion/*.html" ]
+
+[functions.dashboard-read]
+enabled = true
+verify_jwt = true
+import_map = "./functions/dashboard-read/deno.json"
+entrypoint = "./functions/dashboard-read/index.ts"
