@@ -20,6 +20,14 @@
 - guard/write по умолчанию false; capability rpc не даёт браузеру права включить flags;
 - shared-memory startup требовал разрешения вне sandbox; использовались только временный cluster, unix socket и synthetic данные, не production.
 
+## задача 2: версии и устойчивые ссылки в reader
+
+- добавлены source revision и entity expectedRevision без javascript number, id задачи и snapshot-bound reference legacy цели;
+- пять read tools, root envelope и auth scope не менялись; python reader не изменён;
+- edge читает фиксированный `dashboard_read_agent_documents`, проверяет полноту массива, версии, missing/tombstone и возвращает только прежнюю проекцию с новой metadata;
+- red: 11 pass / 5 fail на недостающих полях и старом transport; green: reader 16/16, check/lint pass, python reader 10/10;
+- обновлённый reader не опубликован: production продолжает использовать прежний код до отдельного согласованного deployment после миграции.
+
 ## ещё не выполнено
 
-задачи 2–11, независимое ревью, три pr, фактические pg17/pgTAP ci, desktop/mobile synthetic acceptance. production schema/history/advisors и реальный telegram проверяются перед отдельным разрешённым deployment/activation, не подменяются локальными результатами.
+задачи 3–11, независимое ревью, три pr, фактические pg17/pgTAP ci, desktop/mobile synthetic acceptance. production schema/history/advisors и реальный telegram проверяются перед отдельным разрешённым deployment/activation, не подменяются локальными результатами.

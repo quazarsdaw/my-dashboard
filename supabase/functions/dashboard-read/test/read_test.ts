@@ -6,8 +6,17 @@ const now = new Date("2026-10-26T00:59:59Z"); // 05:59:59 екатеринбур
 const updated = "2026-10-25T19:00:00Z";
 const token = "a".repeat(43);
 const owner = "11111111-1111-4111-8111-111111111111";
-function row<T>(key: string, value: T) {
-  return { key, value, updated_at: updated };
+function row<T>(key: string, value: T, revision?: string) {
+  return { key, value, updated_at: updated, ...(revision ? { revision } : {}) };
+}
+function snapshot<T>(key: string, value: T, revision = "1") {
+  return {
+    key,
+    exists: true,
+    valueText: typeof value === "string" ? value : JSON.stringify(value),
+    revision,
+    updatedAt: updated,
+  };
 }
 function project(raw: unknown, rows: ReturnType<typeof row>[], at = now) {
   return readDashboard(parseCommand(raw, at), rows, at);
@@ -86,6 +95,8 @@ Deno.test("задачи читаются из text/json без raw полей и
   )];
   const result = page({ operation: "get_today_tasks" }, input);
   assert.deepEqual(result.data.items, [{
+    id: null,
+    expectedRevision: null,
     reference: "2026-10-25:0",
     date: "2026-10-25",
     title: "разобрать документы",
@@ -344,30 +355,33 @@ Deno.test("auth/expiry/config fail closed до database fetch и ошибки н
   }
   assert.equal(fetched, false);
 });
-Deno.test("api делает только bounded get с фиксированными owner/keys и не прокидывает token", async () => {
+Deno.test("api вызывает только read rpc с фиксированными owner/keys и не прокидывает token", async () => {
   const result = await handleRead(request(), {
     env: await env(),
     now: () => now,
     fetch: (url, options) => {
       const query = new URL(String(url));
       assert.equal(query.origin, "https://abcdefghijklmnopqrst.supabase.co");
-      assert.equal(query.pathname, "/rest/v1/user_data");
-      assert.equal(query.searchParams.get("user_id"), "eq." + owner);
-      assert.equal(query.searchParams.get("key"), 'in.("goals:2026-10-25")');
-      assert.equal(query.searchParams.get("select"), "key,value,updated_at");
-      assert.equal(options?.method, "GET");
+      assert.equal(
+        query.pathname,
+        "/rest/v1/rpc/dashboard_read_agent_documents",
+      );
+      assert.equal(query.search, "");
+      assert.deepEqual(JSON.parse(String(options?.body)), {
+        p_owner: owner,
+        p_keys: ["goals:2026-10-25"],
+      });
+      assert.equal(options?.method, "POST");
       assert.equal(options?.redirect, "error");
       const headers = new Headers(options?.headers);
       assert.equal(headers.get("x-dashboard-token"), null);
-      assert.equal(headers.get("prefer"), "count=exact");
+      assert.equal(headers.get("content-type"), "application/json");
       assert.equal(
         headers.get("authorization"),
         "Bearer service-secret-not-for-client",
       );
       return Promise.resolve(
-        Response.json([row("goals:2026-10-25", [])], {
-          headers: { "content-range": "0-0/1" },
-        }),
+        Response.json([snapshot("goals:2026-10-25", [])]),
       );
     },
   });
@@ -416,9 +430,7 @@ Deno.test("серверный лимит строк не превращает у
       now: () => now,
       fetch: () =>
         Promise.resolve(
-          Response.json([row("goals:2026-10-25", [])], {
-            headers: { "content-range": "0-0/2" },
-          }),
+          Response.json([snapshot("goals:2026-10-25", [])]),
         ),
     },
   );
@@ -442,7 +454,7 @@ Deno.test("oversized domain response не обрезается до успешн
       now: () => now,
       fetch: () =>
         Promise.resolve(
-          Response.json(rows, { headers: { "content-range": "0-0/1" } }),
+          Response.json(rows.map((r) => snapshot(r.key, r.value))),
         ),
     },
   );
@@ -488,5 +500,79 @@ Deno.test("подписанные числовые цели из редакто�
       () => project({ operation }, [bad]),
       /INVALID_DASHBOARD_DATA/,
     );
+  }
+});
+
+Deno.test("revision выше safe integer остаётся строкой и связывает legacy reference", () => {
+  const result = page({ operation: "get_today_tasks" }, [
+    row("goals:2026-10-25", [
+      { text: "старая", done: false },
+      { id: "stable-task", text: "новая", done: false },
+    ], "9007199254740993"),
+  ]);
+  assert.equal(Reflect.get(result.sources[0], "revision"), "9007199254740993");
+  assert.equal(result.data.items[0].id, null);
+  assert.equal(result.data.items[0].reference, "2026-10-25:0");
+  assert.equal(result.data.items[0].expectedRevision, "9007199254740993");
+  assert.equal(result.data.items[1].id, "stable-task");
+  const legacy = page({ operation: "get_goals" }, [
+    row("horizons_goals_v2", { goals: [{ ...goals[0], id: undefined }] }, "7"),
+  ]);
+  assert.equal(legacy.data.items[0].id, null);
+  assert.equal(legacy.data.items[0].reference, "goal:0");
+  assert.equal(legacy.data.items[0].expectedRevision, "7");
+  assert.ok(legacy.warnings.includes("legacy_goal_id"));
+});
+
+Deno.test("rpc сохраняет версии missing/tombstone и не принимает неизвестную версию", async () => {
+  const environment = await env();
+  for (
+    const [exists, revision, updatedAt] of [[false, "0", null], [
+      true,
+      "3",
+      updated,
+    ]] as const
+  ) {
+    const result = await handleRead(request(), {
+      env: environment,
+      now: () => now,
+      fetch: () =>
+        Promise.resolve(
+          Response.json([{
+            key: "goals:2026-10-25",
+            exists,
+            revision,
+            updatedAt,
+            valueText: null,
+          }]),
+        ),
+    });
+    assert.equal(result.status, 200);
+    const body = await result.json();
+    assert.equal(body.sources[0].revision, revision);
+    assert.equal(body.sources[0].state, "missing");
+    assert.equal(
+      body.sources[0].updatedAt,
+      updatedAt ? "2026-10-25T19:00:00.000Z" : null,
+    );
+  }
+  for (
+    const revision of [
+      9007199254740992,
+      "01",
+      "-1",
+      "9223372036854775808",
+      undefined,
+    ]
+  ) {
+    const result = await handleRead(request(), {
+      env: environment,
+      now: () => now,
+      fetch: () =>
+        Promise.resolve(
+          Response.json([{ ...snapshot("goals:2026-10-25", []), revision }]),
+        ),
+    });
+    assert.equal(result.status, 502);
   }
 });

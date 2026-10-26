@@ -1,4 +1,9 @@
-import { parseCommand, readDashboard, ReadError, type Row } from "./data.ts";
+import {
+  parseCommand,
+  readDashboard,
+  ReadError,
+  snapshotRows,
+} from "./data.ts";
 export type Environment = {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
@@ -110,42 +115,36 @@ export async function handleRead(
       413,
     );
     const command = parseCommand(raw, now);
-    const url = new URL(env.SUPABASE_URL + "/rest/v1/user_data");
-    url.searchParams.set("select", "key,value,updated_at");
-    url.searchParams.set("user_id", "eq." + env.DASHBOARD_AGENT_USER_ID);
-    url.searchParams.set(
-      "key",
-      "in.(" + command.keys.map((k) => '"' + k + '"').join(",") + ")",
+    const url = new URL(
+      env.SUPABASE_URL + "/rest/v1/rpc/dashboard_read_agent_documents",
     );
-    url.searchParams.set("limit", String(command.keys.length + 1));
     const upstream = await (deps.fetch ?? fetch)(url, {
-      method: "GET",
+      method: "POST",
+      body: JSON.stringify({
+        p_owner: env.DASHBOARD_AGENT_USER_ID,
+        p_keys: command.keys,
+      }),
       redirect: "error",
       signal: AbortSignal.timeout(10000),
       headers: {
         apikey: env.SUPABASE_SERVICE_ROLE_KEY,
         authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE_KEY,
         accept: "application/json",
-        prefer: "count=exact",
+        "content-type": "application/json",
       },
     });
     if (!upstream.ok) {
       await upstream.body?.cancel();
       throw new ReadError("DASHBOARD_UNAVAILABLE", 502);
     }
-    const rows = await boundedJson(
+    const rawRows = await boundedJson(
       upstream.body,
       4 * 1024 * 1024,
       "DASHBOARD_UNAVAILABLE",
       502,
     );
-    const range = /^(?:\d+-\d+|\*)\/(\d+)$/.exec(
-      upstream.headers.get("content-range") ?? "",
-    );
-    if (!Array.isArray(rows) || !range || Number(range[1]) !== rows.length) {
-      throw new ReadError("DASHBOARD_UNAVAILABLE", 502);
-    }
-    const result = readDashboard(command, rows as Row[], now),
+    const rows = snapshotRows(rawRows, command.keys);
+    const result = readDashboard(command, rows, now),
       output = JSON.stringify(result);
     if (new TextEncoder().encode(output).length > 1024 * 1024) {
       throw new ReadError("RESPONSE_TOO_LARGE", 502);
