@@ -349,3 +349,67 @@ test('protected_reset_failure_keeps_local_data: v2 не выполняет ма�
   assert.equal(app.localStorage.getItem('_sync_cas_v2:u1'), cache);
   assert.equal(app.localStorage.getItem(protectedKey), 'local');
 });
+
+test('перенос после существующего конфликта не сохраняет только destination', async () => {
+  const {backend, app, api}=await conflicted(), other='goals:2026-10-28';
+  app.localStorage.setItem(protectedKey,'[]');app.localStorage.setItem(other,'destination');
+  const result=await app.context.window.SupabaseSync.pushNow();
+  assert.equal(result.error.code,'conflict');
+  assert.equal(app.rpcs.filter(r=>r.name==='dashboard_save_documents').length,0);
+  const review=api.getConflict(protectedKey);
+  assert.deepEqual(Array.from(review.documents,d=>d.key).sort(),[protectedKey,other].sort());
+  assert.equal((await api.resolveConflict(protectedKey,'apply_reviewed_local',review.token)).ok,true);
+  assert.equal(app.rpcs.filter(r=>r.name==='dashboard_save_documents').at(-1).args.p_changes.length,2);
+  assert.equal(backend.documents.get(other).valueText,'destination');
+});
+test('поздний storage event source не превращает перенос в частичную запись', async () => {
+  const {app}=await conflicted(), other='goals:2026-10-28';
+  app.localStorage.data.set(protectedKey,'[]');app.localStorage.setItem(other,'destination');
+  await app.context.window.DashboardSync.forceSync(other);
+  assert.equal(app.rpcs.some(r=>r.name==='dashboard_save_documents'),false);
+});
+test('независимый новый документ по-прежнему сохраняется отдельно от старого конфликта', async () => {
+  const {backend,app,api}=await conflicted(), other='goals:2026-10-28';
+  app.localStorage.setItem(other,'independent');await api.forceSync(other);
+  assert.equal(backend.documents.get(other).valueText,'independent');
+  assert.ok(api.getConflict(protectedKey));
+});
+test('logout/offline → другой owner → прежний owner не теряет локальную правку', async () => {
+  const backend=versionedBackend('old'),app=await loadSupabaseSync(backend.options);
+  app.changeUser(null);await flushPromises();app.localStorage.setItem(protectedKey,'edited while logged out');
+  app.changeUser({id:'u2'});await flushPromises();
+  assert.equal(app.localStorage.getItem(protectedKey),null);
+  assert.ok(app.localStorage.getItem('_sync_cas_v2:u1').includes('edited while logged out'));
+  app.changeUser({id:'u1'});await flushPromises();
+  assert.equal(app.localStorage.getItem(protectedKey),'edited while logged out');
+  await app.context.window.DashboardSync.forceSync(protectedKey);
+  assert.equal(backend.documents.get(protectedKey).valueText,'edited while logged out');
+});
+test('после неизвестного сетевого исхода local choice остаётся доступен свежий review', async () => {
+  const {backend,app,api}=await conflicted(),review=api.getConflict(protectedKey);
+  backend.options.save=()=>({error:{code:'network'}});
+  assert.equal((await api.resolveConflict(protectedKey,'apply_reviewed_local',review.token)).error.code,'save_unavailable');
+  const retry=api.getConflict(protectedKey);assert.ok(retry);
+  assert.equal(retry.documents[0].local.valueText,'local');
+  backend.options.save=null;
+  assert.equal((await api.resolveConflict(protectedKey,'apply_reviewed_local',retry.token)).ok,true);
+  assert.equal(backend.documents.get(protectedKey).valueText,'local');
+});
+test('совпавший destination остаётся cas предусловием связанного переноса', async () => {
+  const backend=versionedBackend('source'),other='goals:2026-10-28';
+  backend.documents.set(other,{key:other,exists:true,valueText:'old-destination',revision:'1',updatedAt:null});
+  const app=await loadSupabaseSync(backend.options),api=app.context.window.DashboardSync;
+  app.localStorage.setItem(protectedKey,'[]');app.localStorage.setItem(other,'destination');
+  backend.documents.set(protectedKey,{...backend.documents.get(protectedKey),valueText:'remote-source',revision:'2'});
+  backend.documents.set(other,{...backend.documents.get(other),valueText:'destination',revision:'2'});
+  await app.context.window.SupabaseSync.pullNow();const review=api.getConflict(protectedKey);
+  assert.equal(review.documents.length,2);
+  backend.options.save=args=>{
+    backend.documents.set(other,{...backend.documents.get(other),valueText:'newer-destination',revision:'3'});
+    return backend.save(args);
+  };
+  assert.equal((await api.resolveConflict(protectedKey,'apply_reviewed_local',review.token)).ok,false);
+  const save=app.rpcs.filter(r=>r.name==='dashboard_save_documents').at(-1);
+  assert.equal(save.args.p_changes.length,2);
+  assert.equal(backend.documents.get(protectedKey).valueText,'remote-source');
+});

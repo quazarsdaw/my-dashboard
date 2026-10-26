@@ -30,7 +30,7 @@
 
 ## ещё не выполнено
 
-задачи 6–11, независимое ревью, три pr. production schema/history/advisors и реальный telegram проверяются перед отдельным разрешённым deployment/activation, не подменяются локальными результатами.
+задачи 6–11 и три pr. независимое ревью pr 1 завершено; после fix pass требуется финальный повтор browser acceptance перед открытием первого pr. production schema/history/advisors и реальный telegram проверяются перед отдельным разрешённым deployment/activation, не подменяются локальными результатами.
 
 ## задача 3: локальная база, dirty и отправленный снимок
 
@@ -73,3 +73,16 @@
 ![desktop synthetic conflict](2026-10-27-hermes-write-assets/conflict-desktop.png)
 ![responsive mobile start](2026-10-27-hermes-write-assets/conflict-mobile-top.png)
 ![responsive mobile actions](2026-10-27-hermes-write-assets/conflict-mobile.png)
+
+## независимое ревью pr 1 и одна fix pass
+
+ревью exact `11b6d8b` нашло четыре important, critical не подтверждены. все приняты; воспроизведения записаны в [issue #71](https://github.com/quazarsdaw/my-dashboard/issues/71#issuecomment-6429955014) до исправлений.
+
+1. перенос из уже конфликтующего source больше не отправляет destination отдельно. touched conflict объединяет сохранённую группу с новым pending batch; late storage event не объявляет source независимым. действительно независимый новый документ по-прежнему сохраняется отдельно.
+2. правки после logout перед сменой аккаунта сохраняются в cache прежнего отображаемого владельца. новый аккаунт их не получает; возврат восстанавливает pending.
+3. неизвестный сетевой исход local choice возвращает группу в доступный review. ui предлагает актуальные версии и новый явный click, без автоматического retry. совпавший destination остаётся cas предусловием и не выпадает из переноса.
+4. inline-текст не пропадает при sync rerender: отдельный owner/document/target-bound draft показывает полный текст для копирования, без автоматического применения к обновлённой записи. повторный rerender и возврат владельца покрыты отдельно. это in-memory draft формы, не гарантия пережить закрытие вкладки.
+
+все пути сначала подтверждены red, затем green; полный frontend 604/604. новые файлы отформатированы без переписывания существующих html. reader 16/16, school 108/108, обе edge check/lint, python reader 10/10 и local postgres 22/22 повторно прошли. дополнительно моделируется настоящий blur при удалении dom: автоматический rerender сохраняет draft без блокирующего alert и повторной записи. final head должен повторить ci.
+
+скриншоты выше — выполненная проверка `11b6d8b`. повтор браузерного acceptance fix pass пока не завершён: временная вкладка перестала принимать ввод, затем ни semantic, ни native/coordinate click в чистой вкладке не раскрыли обычный fixture `<details>`. readonly dom/screenshot продолжают отвечать. requested user recovery ограничен закрытием synthetic вкладок `127.0.0.1:63591/63592`; production или исходная вкладка пользователя не затрагиваются. это не объявляется успешной ui-проверкой последнего head.

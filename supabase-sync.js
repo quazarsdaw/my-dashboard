@@ -400,6 +400,7 @@
           (state.conflict !== null && (!state.conflict || !window.DashboardSyncCore.validSnapshot(state.conflict.remote, key)))) throw new Error('INVALID_SYNC_CACHE');
       state.inFlight = null;
     });
+    if (casPreviousOwner && casPreviousOwner !== owner) stashDisplayedOwner();
     casOwner = owner; casStates = stored.documents; casMode = 2;
     var changedKeys = [], differentOwner = casPreviousOwner && casPreviousOwner !== owner;
     if (differentOwner) {
@@ -418,6 +419,25 @@
     rawSetItem(CAS_DISPLAY_OWNER, owner);
     persistCas();
     if (changedKeys.length) notifySyncedDataApplied(changedKeys);
+  }
+
+  // preserve guest-time edits in their displayed owner's cache before switching.
+  // this never sends a request and never assigns those values to the next owner.
+  function stashDisplayedOwner() {
+    var owner = localStorage.getItem(CAS_DISPLAY_OWNER);
+    if (!owner || !window.DashboardSyncCore) return;
+    var raw = localStorage.getItem(CAS_PREFIX + owner);
+    var stored = raw ? JSON.parse(raw) : { version: 2, owner: owner, documents: {} };
+    if (!stored || stored.version !== 2 || stored.owner !== owner || !stored.documents || typeof stored.documents !== 'object' || Array.isArray(stored.documents)) throw new Error('INVALID_SYNC_CACHE');
+    var keys = Object.keys(stored.documents);
+    getAllSyncKeys().filter(protectedKey).forEach(function(key) { if (keys.indexOf(key) === -1) keys.push(key); });
+    keys.forEach(function(key) {
+      var state = stored.documents[key] || window.DashboardSyncCore.create(owner, key);
+      if (!protectedKey(key) || state.owner !== owner || state.key !== key || !Number.isSafeInteger(state.localEpoch)) throw new Error('INVALID_SYNC_CACHE');
+      state = window.DashboardSyncCore.reduce(state, { type: 'account_changed' }).state;
+      stored.documents[key] = window.DashboardSyncCore.reduce(state, { type: 'local_edit', valueText: localStorage.getItem(key) }).state;
+    });
+    rawSetItem(CAS_PREFIX + owner, JSON.stringify(stored));
   }
 
   function ensureSyncProtocol() {
@@ -508,13 +528,23 @@
         var state = getCasState(k);
         var step = applyCasEvent(k, { type: 'resolve', choice: choice, remoteRevision: state.conflict.remote.revision, localEpoch: state.localEpoch });
         delete step.state.conflictKeys;
+        // unchanged peers still guard the atomic operation against a new remote
+        // update between review and commit (not only the documents with diffs).
+        if (choice === 'apply_reviewed_local' && !step.state.dirty) step.state.dirty = { valueText: step.state.base.valueText, epoch: step.state.localEpoch };
         if (step.changed) changed.push(k);
         if (step.state.dirty) pendingKeys[k] = true; else delete pendingKeys[k];
       });
       persistCas();
       if (changed.length) notifySyncedDataApplied(changed);
       window.dispatchEvent(new CustomEvent('dashboard-sync-conflict', { detail: { keys: Object.keys(casStates).filter(function(k) { return !!casStates[k].conflict; }) } }));
-      return choice === 'use_remote' ? { ok: true } : pushCasChanges(owner, generation);
+      if (choice === 'use_remote') return { ok: true };
+      var result = await pushCasChanges(owner, generation);
+      if (!result.ok && result.error.code === 'save_unavailable' && currentUser && currentUser.id === owner && generation === authGeneration) {
+        var retryKeys = keys.slice();
+        Object.keys(pendingKeys).filter(protectedKey).forEach(function(k) { if (!getCasState(k).conflict && retryKeys.indexOf(k) === -1) retryKeys.push(k); });
+        blockCasGroup(retryKeys);
+      }
+      return result;
     }).catch(function() { return syncOutcome('sync_unavailable', 502); });
     casQueues[owner] = queue;
     return queue;
@@ -540,13 +570,20 @@
 
   async function pushCasChanges(owner, generation) {
     if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return syncOutcome('owner_changed', 403);
+    // another tab can change a conflicted source before its storage event arrives.
+    Object.keys(casStates).filter(function(key) { return !!casStates[key].conflict; }).forEach(function(key) {
+      var state = casStates[key], displayed = state.dirty ? state.dirty.valueText : state.base && state.base.valueText;
+      if (localStorage.getItem(key) !== displayed) { pendingKeys[key] = true; noteCasLocal(key); }
+    });
     var keys = Object.keys(pendingKeys).filter(protectedKey), active = [];
     keys.forEach(function(key) { noteCasLocal(key); });
     var fresh = keys.filter(function(key) { return !getCasState(key).conflictKeys; });
     var blocked = keys.some(function(key) { return !!getCasState(key).conflict; });
-    var newConflict = fresh.some(function(key) { return !!getCasState(key).conflict; });
+    var newConflict = blocked;
     if (newConflict) {
-      blockCasGroup(fresh);
+      var joined = keys.slice();
+      keys.forEach(function(key) { (getCasState(key).conflictKeys || []).forEach(function(k) { if (joined.indexOf(k) === -1) joined.push(k); }); });
+      blockCasGroup(joined);
       fresh = [];
     }
     var needsBase = fresh.some(function(key) { return getCasState(key).dirty && !getCasState(key).base; });
@@ -582,7 +619,7 @@
               return matches.length === 1 && window.DashboardSyncCore.validSnapshot(matches[0], effect.change.key) && matches[0].valueText === effect.change.valueText &&
                 window.DashboardSyncCore.compareRevision(matches[0].revision, effect.change.expectedRevision) > 0;
             });
-            if (!identical) return blockCasGroup(active.map(function(effect) { return effect.change.key; }), current);
+            if (!identical) return blockCasGroup(fresh, current);
             result = { data: { ok: true, data: current }, error: null };
           } else throw new Error('SAVE_REJECTED');
         }
@@ -865,7 +902,7 @@
             var conflicts = Object.keys(casStates).filter(function(key) { return !!casStates[key].conflict; });
             var ungrouped = conflicts.filter(function(key) { return !casStates[key].conflictKeys; });
             if (ungrouped.length) {
-              var group = Object.keys(casStates).filter(function(key) { return !casStates[key].conflictKeys && (casStates[key].dirty || casStates[key].conflict); });
+              var group = Object.keys(casStates).filter(function(key) { return !casStates[key].conflictKeys && (casStates[key].dirty || casStates[key].conflict || pendingKeys[key]); });
               blockCasGroup(group);
             }
             if (conflicts.length) window.dispatchEvent(new CustomEvent('dashboard-sync-conflict', { detail: { keys: conflicts } }));

@@ -10,6 +10,7 @@ class Element {
     this.classList = { add: n => { if (!this.className.split(' ').includes(n)) this.className += ' ' + n; }, remove: n => { this.className = this.className.split(' ').filter(x => x !== n).join(' '); } };
   }
   set innerHTML(html) {
+    if (this.fireBlurOnRemoval) this.children.forEach(child => { const input=child.querySelector('.goal-text'); if(input && input.contentEditable==='true') input.fire('blur'); });
     this.children = []; this._html = html;
     for (const m of String(html).matchAll(/<([a-z]+)\b[^>]*class="([^"]+)"[^>]*>/g)) {
       const el = new Element(m[1]); el.className = m[2]; el.value = /value="([^"]*)"/.exec(m[0])?.[1] || ''; this.appendChild(el);
@@ -24,6 +25,7 @@ class Element {
     return null;
   }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
+  setAttribute(name, value) { (this.attributes ||= {})[name] = String(value); }
   async fire(type, props = {}) { for (const fn of this.listeners[type] || []) await fn.call(this, { target: this, stopPropagation() {}, preventDefault() {}, ...props }); }
   focus() {}
   blur() { return this.fire('blur'); }
@@ -86,6 +88,31 @@ test('task modal после remote insert не сохраняет description в
     assert.equal(app.writes.length, 0);
     assert.ok(app.warnings.length);
   }
+});
+
+test('настоящий sync rerender сохраняет inline draft отдельно от нового документа и owner', async () => {
+  const app=page([{id:'a',text:'original',done:false}]);
+  const html=fs.readFileSync(require('node:path').join(__dirname,'../index.html'),'utf8');
+  app.context.renderTodayHeader=()=>{};app.context.renderStreak=()=>{};app.context.formatDate=x=>x;
+  app.nodes.get('todayLabel').setAttribute=()=>{};
+  vm.runInContext(html.slice(html.indexOf('  function loadToday()'),html.indexOf('  function loadTomorrow()')),app.context);
+  app.context.loadToday();
+  const input=app.nodes.get('goalList').children[0].querySelector('.goal-text');input.textContent='draft not saved';input.contentEditable='true';
+  app.nodes.get('goalList').fireBlurOnRemoval=true;
+  app.remote([{id:'b',text:'other task',done:false},{id:'a',text:'original',done:false}]);
+  app.context.loadToday();
+  assert.equal(app.warnings.length,0);
+  const panel=app.nodes.get('taskInlineDrafts');
+  function walk(n){return [n,...n.children.flatMap(walk)];}
+  assert.ok(panel);assert.equal(panel.hidden,false);assert.ok(walk(panel).some(n=>n.value==='draft not saved'));
+  app.context.loadToday();assert.equal(panel.hidden,false);assert.ok(walk(panel).some(n=>n.value==='draft not saved'));
+  assert.equal(app.data().some(t=>t.text==='draft not saved'),false);
+  await walk(panel).find(n=>n.tagName==='BUTTON').fire('click');assert.equal(panel.hidden,true);
+  const another=app.nodes.get('goalList').children[1].querySelector('.goal-text');another.textContent='second draft';
+  app.context.loadToday();assert.equal(panel.hidden,false);
+  app.window.DashboardSync={getDocumentToken:k=>({owner:'different-owner',key:k,localEpoch:0,baseRevision:'1',remoteRevision:null})};
+  app.context.loadToday();assert.equal(panel.hidden,true);
+  delete app.window.DashboardSync;app.context.loadToday();assert.equal(panel.hidden,false);assert.ok(walk(panel).some(n=>n.value==='second draft'));
 });
 
 test('inline title и отложенный sphere picker привязаны к снимку и id', async () => {

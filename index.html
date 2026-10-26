@@ -704,6 +704,7 @@ body::after {
     </div>
     <div class="gm-bar" id="gmBar"></div>
     <ul class="goal-list" id="goalList"></ul>
+    <section id="taskInlineDrafts" class="task-inline-drafts" hidden aria-label="Несохранённый текст задач"></section>
     <div class="empty-state" id="emptyState">Задач на сегодня нет — добавь первую.</div>
     <button class="gm-push-btn" id="gmPushBtn" style="display:none">Перенести незавершённые на завтра ▸</button>
     <div class="gm-input-wrap" style="display: flex !important; align-items: center !important; gap: 8px !important; position: relative !important; z-index: 10000 !important; pointer-events: auto !important;">
@@ -1896,6 +1897,7 @@ body::after {
     cbWrap.appendChild(cb); cbWrap.appendChild(cbVis); li.appendChild(cbWrap);
 
     var text = document.createElement('span'); text.className = 'goal-text'; text.textContent = goal.text;
+    text._taskOriginalText = goal.text; text._taskBinding = rowBinding; text._taskOwner = inlineTaskOwner(key);
     if (!readOnly) {
       text.addEventListener('click', function () {
         if (!readTaskBinding(key, rowBinding)) return;
@@ -1905,16 +1907,20 @@ body::after {
       });
       text.addEventListener('blur', function () {
         text.contentEditable = 'false';
+        if (text._taskRerendering) { rememberInlineTaskText(text, key, true); renderInlineTaskDrafts(); return; }
         var nt = text.textContent.trim();
         if (nt && nt !== goal.text) {
           var current = readTaskBinding(key, rowBinding);
-          if (!current) return;
+          if (!current) { rememberInlineTaskText(text, key, true); renderInlineTaskDrafts(); return; }
+          forgetInlineTaskText(text, key);
+          text._taskOriginalText = nt;
           storeSet(key, Tasks.patchTask(current.tasks, rowBinding.target, { text: nt }));
           loadToday();
         }
-        else text.textContent = goal.text;
+        else { text.textContent = goal.text; forgetInlineTaskText(text, key); renderInlineTaskDrafts(); }
       });
-      text.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } if (e.key === 'Escape') { text.textContent = goal.text; text.blur(); } });
+      text.addEventListener('input', function() { rememberInlineTaskText(text, key, false); });
+      text.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); text.blur(); } if (e.key === 'Escape') { text.textContent = goal.text; forgetInlineTaskText(text, key); text.blur(); loadToday(); } });
     }
     li.appendChild(text);
 
@@ -2063,6 +2069,10 @@ body::after {
     var goals = storeGet(key) || [];
     var list = document.getElementById('goalList'), empty = document.getElementById('emptyState');
     if (list) {
+      Array.prototype.forEach.call(list.children, function(row) {
+        var input = row.querySelector('.goal-text');
+        if (input) { rememberInlineTaskText(input, key, true); input._taskRerendering = true; }
+      });
       list.innerHTML = '';
       if (goals.length === 0) { if (empty) empty.style.display = ''; } else {
         if (empty) empty.style.display = 'none';
@@ -2070,6 +2080,7 @@ body::after {
         goals.forEach(function (g, i) { list.appendChild(buildGoalRow(g, i, key, false, version)); });
       }
     }
+    renderInlineTaskDrafts();
     renderTodayHeader(); renderStreak();
     var dateStr = getActiveDateString();
     var todayLabel = document.getElementById('todayLabel');
@@ -2173,6 +2184,45 @@ body::after {
   });
 
   // --- Task Details Modal Logic ---
+  var inlineTaskDrafts, inlineTaskDraftSequence;
+  function inlineTaskOwner(key) {
+    var api = window.DashboardSync, token = api && api.getDocumentToken ? api.getDocumentToken(key) : null;
+    return token && token.owner || localStorage.getItem('_sync_cas_display_owner_v2') || 'local';
+  }
+  function inlineTaskDraftId(node, key) {
+    if (!node._taskDraftId) { inlineTaskDraftSequence = (inlineTaskDraftSequence || 0) + 1; node._taskDraftId = inlineTaskDraftSequence; }
+    return JSON.stringify([node._taskOwner, key, node._taskBinding && node._taskBinding.target, node._taskDraftId]);
+  }
+  function forgetInlineTaskText(node, key) {
+    if (inlineTaskDrafts) delete inlineTaskDrafts[inlineTaskDraftId(node, key)];
+  }
+  function rememberInlineTaskText(node, key, stale) {
+    if (!node._taskBinding || typeof node._taskOriginalText !== 'string') return;
+    if (node.textContent === node._taskOriginalText) { forgetInlineTaskText(node, key); return; }
+    if (!inlineTaskDrafts) inlineTaskDrafts = {};
+    var id = inlineTaskDraftId(node, key), previous = inlineTaskDrafts[id];
+    inlineTaskDrafts[id] = { owner: node._taskOwner, key: key, target: node._taskBinding.target, original: node._taskOriginalText,
+      text: node.textContent, stale: !!stale || !!(previous && previous.stale) };
+  }
+  function renderInlineTaskDrafts() {
+    var panel = document.getElementById('taskInlineDrafts');
+    if (!panel) return;
+    var owner = inlineTaskOwner('goals:' + getActiveDateString());
+    var ids = Object.keys(inlineTaskDrafts || {}).filter(function(id) { return inlineTaskDrafts[id].owner === owner && inlineTaskDrafts[id].stale; });
+    panel.innerHTML = ''; panel.hidden = !ids.length;
+    if (!ids.length) return;
+    var heading = document.createElement('h3'); heading.textContent = 'ваш несохранённый текст'; panel.appendChild(heading);
+    var hint = document.createElement('p'); hint.textContent = 'список обновился во время редактирования. текст ниже не применён автоматически: скопируйте его и откройте нужную задачу заново.'; panel.appendChild(hint);
+    ids.forEach(function(id) {
+      var draft = inlineTaskDrafts[id], group = document.createElement('div');
+      var label = document.createElement('p'); label.textContent = draft.key.replace('goals:', '') + ' · ' + draft.original; group.appendChild(label);
+      var value = document.createElement('textarea'); value.value = draft.text; value.readOnly = true; value.rows = 3;
+      value.setAttribute('aria-label', 'несохранённый текст задачи: ' + draft.original); group.appendChild(value);
+      var discard = document.createElement('button'); discard.type = 'button'; discard.textContent = 'убрать этот черновик';
+      discard.addEventListener('click', function() { delete inlineTaskDrafts[id]; renderInlineTaskDrafts(); }); group.appendChild(discard);
+      panel.appendChild(group);
+    });
+  }
   function captureTaskDocument(key) {
     return { serialized: JSON.stringify(storeGet(key) || []), token: window.DashboardSync && window.DashboardSync.getDocumentToken ? window.DashboardSync.getDocumentToken(key) : null };
   }
