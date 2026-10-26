@@ -12,8 +12,9 @@
 <link rel="icon" type="image/svg+xml" href="app-icon.svg">
 <title>Dashboard</title>
 <script src="gamification_v405.js"></script>
-<script src="supabase-sync.js?v=406-sb" defer></script>
+<script src="supabase-sync.js?v=408-eyes" defer></script>
 <script src="profile-theme.js?v=401"></script>
+<script src="eyes-reminder.js?v=1" defer></script>
 <script src="topbar.js?v=405-path" defer></script><style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -539,6 +540,10 @@ body::after {
 </style>
 
 <!-- Day-skip penalty notice (injected by JS if needed) -->
+<a class="eye-entry" href="eyes.html"><span class="eye-entry-icon" aria-hidden="true">◉</span><span><strong>Разминка для глаз</strong><small>Небольшой перерыв между делами · 30 секунд — 3 минуты</small></span><span class="eye-entry-arrow" aria-hidden="true">→</span></a>
+<style>
+.eye-entry{display:flex;align-items:center;gap:16px;margin:0 0 22px;padding:19px 22px;background:rgba(242,192,99,.045);border:1px solid rgba(242,192,99,.27);border-radius:14px;color:var(--text-primary);text-decoration:none}.eye-entry strong{display:block;font-size:18px;font-weight:700}.eye-entry small{display:block;margin-top:4px;color:#b8b8bd;font-size:13px}.eye-entry-icon{font-size:30px;color:#f2c063}.eye-entry-arrow{margin-left:auto;font-size:24px}.eye-entry:hover{background:rgba(242,192,99,.09)}.eye-entry:focus-visible{outline:2px solid #7dd3fc;outline-offset:4px}@media(max-width:480px){.eye-entry{padding:16px;gap:12px}.eye-entry strong{font-size:16px}.eye-entry small{font-size:12px}}
+</style>
 <div id="dayskipNotice" style="display:none"></div>
 
 <!-- Manual penalty -->

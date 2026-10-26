@@ -45,6 +45,8 @@ async function loadSupabaseSync(options = {}) {
     },
   };
   let postgresChangeHandler = null;
+  let authChangeHandler = null;
+  const reads = [];
 
   function setTimer(fn) {
     const timer = { fn, active: true };
@@ -72,9 +74,13 @@ async function loadSupabaseSync(options = {}) {
   }
 
   function makeBuilder() {
+    const query = { after: null, limit: Infinity, user: null };
     const builder = {
       select() { return builder; },
-      eq() { return builder; },
+      eq(column, value) { if (column === 'user_id') query.user = value; return builder; },
+      order() { return builder; },
+      gt(_column,value) { query.after = value; return builder; },
+      limit(value) { query.limit=value; return builder; },
       upsert(rows) {
         writes.upserts.push(rows);
         return Promise.resolve({ data: rows, error: null });
@@ -83,12 +89,15 @@ async function loadSupabaseSync(options = {}) {
         builder.isDelete = true;
         return builder;
       },
-      then(resolve) {
+      then(resolve,reject) {
         if (builder.isDelete) {
           writes.deletes.push(true);
           return Promise.resolve(resolve({ data: null, error: null }));
         }
-        return Promise.resolve(resolve({ data: options.cloudRows || [], error: null }));
+        reads.push({...query});
+        if (options.read) return Promise.resolve().then(()=>options.read({...query})).then(resolve,reject);
+        const rows=(options.cloudRows || []).filter(row=>!query.after||row.key>query.after).sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0).slice(0,Math.min(query.limit, options.serverLimit || Infinity));
+        return Promise.resolve({ data: rows, error: null }).then(resolve,reject);
       },
       catch() { return builder; },
     };
@@ -126,7 +135,7 @@ async function loadSupabaseSync(options = {}) {
               getSession() {
                 return Promise.resolve({ data: { session: { user: { id: 'u1', email: 'u@test' } } } });
               },
-              onAuthStateChange() {},
+              onAuthStateChange(cb) { authChangeHandler=cb; },
             },
             from() {
               return makeBuilder();
@@ -175,6 +184,8 @@ async function loadSupabaseSync(options = {}) {
     context,
     localStorage,
     writes,
+    reads,
+    changeUser(user) { authChangeHandler('SIGNED_IN', user ? {user}:null); },
     runTimers: async function runTimers() {
       while (timers.length) {
         const timer = timers.shift();
@@ -206,6 +217,36 @@ test('initial push does not sync sensitive OpenRouter settings', async () => {
   assert.ok(pushedKeys.includes('nutrition_kitchen_profile_v1'));
   assert.ok(pushedKeys.includes('nutrition_cooking_plans_v1'));
   assert.ok(!pushedKeys.includes('openrouter_settings_v1'));
+});
+
+test('полная загрузка проходит несколько серверных страниц даже при меньшем лимите сервера', async()=>{
+  const rows=Array.from({length:1201},(_,i)=>({key:'eye_break_session_v1:'+String(i).padStart(4,'0'),value:{i},updated_at:new Date().toISOString()}));
+  const app=await loadSupabaseSync({cloudRows:rows,serverLimit:100});
+  await app.context.window.SupabaseSync.pullNow();
+  assert.deepEqual(JSON.parse(app.localStorage.getItem('eye_break_session_v1:1200')),{i:1200});
+  assert.ok(app.reads.some(q=>q.after==='eye_break_session_v1:1199'));
+  assert.ok(app.reads.every(q=>q.user==='u1'));
+});
+test('ошибка промежуточной страницы не применяет неполный снимок',async()=>{
+ const options={cloudRows:[]};const app=await loadSupabaseSync(options);
+ options.read=q=>q.after?{data:null,error:{message:'page failed'}}:{data:[{key:'eye_break_settings_v1',value:{speed:'fast'},updated_at:new Date().toISOString()}],error:null};
+ await assert.rejects(app.context.window.SupabaseSync.pullNow());
+ assert.equal(app.localStorage.getItem('eye_break_settings_v1'),null);
+});
+test('поздний снимок предыдущего аккаунта или поколения не применяется',async()=>{
+ const options={cloudRows:[]};const app=await loadSupabaseSync(options);let resolve;
+ options.read=()=>new Promise(r=>resolve=r);
+ const old=app.context.window.SupabaseSync.pullNow();await flushPromises();
+ options.read=()=>({data:[],error:null});app.changeUser({id:'u2',email:'u2@test'});
+ resolve({data:[{key:'eye_break_settings_v1',value:{speed:'fast'},updated_at:new Date().toISOString()}],error:null});await old;
+ assert.equal(app.localStorage.getItem('eye_break_settings_v1'),null);
+ assert.equal(app.context.window.SupabaseSync.getUser().id,'u2');
+});
+test('служебные состояния глаз и монет не попадают в облако',async()=>{
+ const ledger={balance:2,earned:2,spent:0,history:[],habitRewardsV1:{mark:{paid:2}},habitRewardOperationsV1:{accepted:['local','h','2026-10-24',0,1]}};
+ const app=await loadSupabaseSync({initialStorage:{_eye_break_active_v1:'{}',_eye_break_runtime_v1:'{}','_habit_reward_tx_v1:user-a':'{}',eye_break_settings_v1:'{}',coins_v1:JSON.stringify(ledger)}});await app.runTimers();
+ const keys=app.writes.upserts.flat().map(r=>r.key);assert.ok(keys.includes('eye_break_settings_v1'));assert.ok(!keys.some(k=>k.startsWith('_eye_break_')||k.startsWith('_habit_reward_')));
+ assert.deepEqual(JSON.parse(JSON.stringify(app.writes.upserts.flat().find(r=>r.key==='coins_v1').value)),ledger);
 });
 
 test('путь синхронизируется существующим каналом аккаунта и применяет обновление из облака', async () => {
