@@ -141,7 +141,8 @@ class PgHarness:
 
     def pgtap(self):
         for name in ("user_data_rls.sql", "school_mutation_locks.sql"):
-            output = self.sql((ROOT / "supabase/tests" / name).read_text())
+            output = self._command([self.psql, "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", *self.connection],
+                                   (ROOT / "supabase/tests" / name).read_text())
             if re.search(r"^(?:not ok|Bail out!)", output, re.MULTILINE):
                 raise AssertionError(output)
             print(f"pgtap {name}: ok")

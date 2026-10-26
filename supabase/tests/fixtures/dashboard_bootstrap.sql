@@ -8,9 +8,10 @@ create schema if not exists auth;
 create schema if not exists extensions;
 create table if not exists auth.users (id uuid primary key);
 create or replace function auth.uid() returns uuid language sql stable as $$
-  select (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')::uuid;
+  select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''),
+    nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')::uuid;
 $$;
-grant usage on schema public, auth to anon, authenticated, service_role;
+grant usage on schema public, auth, extensions to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated, service_role;
 create table if not exists public.dashboard_test_marker (value text primary key);
 insert into public.dashboard_test_marker values ('synthetic-dashboard-write-only') on conflict do nothing;

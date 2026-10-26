@@ -160,6 +160,10 @@ class DocumentVersions(unittest.TestCase):
 
 
 class HarnessSafety(unittest.TestCase):
+    def test_auth_stub_accepts_legacy_claim_used_by_existing_pgtap(self):
+        result = pg_harness.DB.sql(f"set local \"request.jwt.claim.sub\"={literal(OWNER)}; select auth.uid()")
+        self.assertEqual(result, OWNER)
+
     def test_ci_refuses_remote_or_ambiguous_connection_before_io(self):
         for url in ["postgresql://u:p@db.live.supabase.co/dashboard_write_test_a", "postgresql://u:p@localhost/postgres", "postgresql://u:p@localhost/dashboard_write_test_a?host=remote", "postgresql://u:p@localhost/dashboard_write_test_a#x", ""]:
             with self.subTest(url=url), self.assertRaises(ValueError):
