@@ -64,6 +64,18 @@ class DocumentVersions(unittest.TestCase):
         rows = self.db.rpc("dashboard_read_user_data", {"p_after_key": None, "p_limit": 500}, OTHER)
         self.assertEqual([r["valueText"] for r in rows], ["[2]"])
 
+    def test_expected_owner_mismatch_never_creates_document_in_new_account(self):
+        result = self.db.rpc("dashboard_save_documents", {"p_changes": [change(KEY, "0", "[1]")], "p_expected_owner": OWNER}, OTHER)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"]["code"], "owner_changed")
+        self.assertFalse(self.db.read(OTHER, KEY)["exists"])
+        self.assertFalse(self.db.read(OWNER, KEY)["exists"])
+
+    def test_expected_owner_mismatch_cannot_bind_read_to_another_account(self):
+        for name, args in [("dashboard_sync_capabilities", {}), ("dashboard_read_user_data", {"p_after_key": None, "p_limit": 500})]:
+            with self.subTest(name=name), self.assertRaisesRegex(RuntimeError, "owner_changed"):
+                self.db.rpc(name, {**args, "p_expected_owner": OWNER}, OTHER)
+
     def test_anon_cannot_execute_browser_or_service_rpc(self):
         for name, arguments in [("dashboard_sync_capabilities", {}), ("dashboard_save_documents", {"p_changes": [change(KEY, "0", "[]")]}),
                                 ("dashboard_read_agent_documents", {"p_owner": OWNER, "p_keys": [KEY]})]:

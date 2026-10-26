@@ -100,6 +100,8 @@ class PgHarness:
     def rpc(self, name, args, owner=OWNER, role="authenticated"):
         if not re.fullmatch(r"dashboard_[a-z_]+", name):
             raise ValueError("некорректное имя test rpc")
+        if name in ("dashboard_save_documents", "dashboard_read_user_data", "dashboard_sync_capabilities"):
+            args = {"p_expected_owner": owner, **args}
         arguments = []
         for key, value in args.items():
             if not re.fullmatch(r"p_[a-z_]+", key):

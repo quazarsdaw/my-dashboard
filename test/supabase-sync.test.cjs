@@ -1,204 +1,6 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const test = require('node:test');
-const vm = require('node:vm');
-
-function makeStorage(initial = {}) {
-  function Storage() {
-    this.data = new Map(Object.entries(initial).map(([k, v]) => [k, String(v)]));
-  }
-  Storage.prototype.key = function key(index) {
-    return Array.from(this.data.keys())[index] || null;
-  };
-  Storage.prototype.getItem = function getItem(key) {
-    return this.data.has(key) ? this.data.get(key) : null;
-  };
-  Storage.prototype.setItem = function setItem(key, value) {
-    this.data.set(key, String(value));
-  };
-  Storage.prototype.removeItem = function removeItem(key) {
-    this.data.delete(key);
-  };
-  Object.defineProperty(Storage.prototype, 'length', {
-    get() { return this.data.size; },
-  });
-  return { Storage, localStorage: new Storage() };
-}
-
-async function flushPromises() {
-  for (let i = 0; i < 5; i++) await Promise.resolve();
-  await new Promise((resolve) => setImmediate(resolve));
-}
-
-async function loadSupabaseSync(options = {}) {
-  const { Storage, localStorage } = makeStorage(options.initialStorage || {});
-  const timers = [];
-  const listeners = {};
-  const writes = { upserts: [], deletes: [] };
-  const elements = {};
-  const topbar = {
-    firstChild: null,
-    insertBefore(child) {
-      this.firstChild = child;
-      if (child.id) elements[child.id] = child;
-    },
-  };
-  let postgresChangeHandler = null;
-  let authChangeHandler = null;
-  const reads = [];
-
-  function setTimer(fn) {
-    const timer = { fn, active: true };
-    timers.push(timer);
-    return timer;
-  }
-
-  function clearTimer(timer) {
-    if (timer) timer.active = false;
-  }
-
-  function makeElement() {
-    return {
-      style: {},
-      set id(value) {
-        this._id = value;
-        elements[value] = this;
-      },
-      get id() {
-        return this._id;
-      },
-      setAttribute() {},
-      addEventListener() {},
-    };
-  }
-
-  function makeBuilder() {
-    const query = { after: null, limit: Infinity, user: null };
-    const builder = {
-      select() { return builder; },
-      eq(column, value) { if (column === 'user_id') query.user = value; return builder; },
-      order() { return builder; },
-      gt(_column,value) { query.after = value; return builder; },
-      limit(value) { query.limit=value; return builder; },
-      upsert(rows) {
-        writes.upserts.push(rows);
-        return Promise.resolve({ data: rows, error: null });
-      },
-      delete() {
-        builder.isDelete = true;
-        return builder;
-      },
-      then(resolve,reject) {
-        if (builder.isDelete) {
-          writes.deletes.push(true);
-          return Promise.resolve(resolve({ data: null, error: null }));
-        }
-        reads.push({...query});
-        if (options.read) return Promise.resolve().then(()=>options.read({...query})).then(resolve,reject);
-        const rows=(options.cloudRows || []).filter(row=>!query.after||row.key>query.after).sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0).slice(0,Math.min(query.limit, options.serverLimit || Infinity));
-        return Promise.resolve({ data: rows, error: null }).then(resolve,reject);
-      },
-      catch() { return builder; },
-    };
-    return builder;
-  }
-
-  const context = {
-    console: { log() {}, warn() {}, error() {}, info() {}, debug() {} },
-    CustomEvent: function CustomEvent(type, init) {
-      this.type = type;
-      this.detail = init && init.detail;
-    },
-    Date,
-    Promise,
-    localStorage,
-    setTimeout(fn) {
-      return setTimer(fn);
-    },
-    clearTimeout: clearTimer,
-    window: {
-      Storage,
-      localStorage,
-      location: { origin: 'https://example.test', pathname: '/index.html' },
-      addEventListener(type, cb) {
-        if (!listeners[type]) listeners[type] = [];
-        listeners[type].push(cb);
-      },
-      dispatchEvent(event) {
-        (listeners[event.type] || []).forEach((cb) => cb(event));
-      },
-      supabase: {
-        createClient() {
-          return {
-            auth: {
-              getSession() {
-                return Promise.resolve({ data: { session: { user: { id: 'u1', email: 'u@test' } } } });
-              },
-              onAuthStateChange(cb) { authChangeHandler=cb; },
-            },
-            from() {
-              return makeBuilder();
-            },
-            channel() {
-              return {
-                on(_event, _filter, cb) {
-                  postgresChangeHandler = cb;
-                  return this;
-                },
-                subscribe() { return this; },
-              };
-            },
-            removeChannel() {},
-          };
-        },
-      },
-    },
-    document: {
-      readyState: 'complete',
-      head: {
-        appendChild(script) {
-          script.onload();
-        },
-      },
-      createElement() {
-        return makeElement();
-      },
-      getElementById(id) {
-        if (id === 'topbar') return topbar;
-        return elements[id] || null;
-      },
-      addEventListener() {},
-    },
-  };
-  context.window.CustomEvent = context.CustomEvent;
-  context.window.setTimeout = context.setTimeout;
-  context.window.clearTimeout = context.clearTimeout;
-
-  vm.createContext(context);
-  const source = fs.readFileSync(path.join(__dirname, '..', 'supabase-sync.js'), 'utf8');
-  vm.runInContext(source, context);
-  await flushPromises();
-
-  return {
-    context,
-    localStorage,
-    writes,
-    reads,
-    changeUser(user) { authChangeHandler('SIGNED_IN', user ? {user}:null); },
-    runTimers: async function runTimers() {
-      while (timers.length) {
-        const timer = timers.shift();
-        if (timer.active) timer.fn();
-      }
-      await flushPromises();
-    },
-    emitCloudChange(payload) {
-      assert.ok(postgresChangeHandler, 'postgres change handler should be installed');
-      postgresChangeHandler(payload);
-    },
-  };
-}
+const { loadSupabaseSync, flushPromises } = require('./helpers/supabase-sync.cjs');
 
 test('initial push does not sync sensitive OpenRouter settings', async () => {
   const app = await loadSupabaseSync({
@@ -320,4 +122,148 @@ test('cloud delete events remove local keys and notify listeners', async () => {
 
   assert.equal(app.localStorage.getItem('store_v2'), null);
   assert.equal(JSON.stringify(applied), JSON.stringify([['store_v2']]));
+});
+
+const protectedKey = 'goals:2026-10-27';
+function versionedBackend(initial = 'a') {
+  const documents = new Map([[protectedKey, { key: protectedKey, exists: true, valueText: initial, revision: '1', updatedAt: '2026-10-26T00:00:00Z' }]]);
+  const spaces = new Map([['u1', documents]]);
+  const options = {};
+  options.rpc = async (name, args, owner) => {
+    if (name === 'dashboard_sync_capabilities') return { data: { protocol: 2, guardEnabled: false, writeEnabled: false }, error: null };
+    const space = spaces.get(owner) || new Map();
+    if (name === 'dashboard_read_user_data') return { data: [...space.values()].filter(row => !args.p_after_key || row.key > args.p_after_key).sort((a,b) => a.key.localeCompare(b.key)).slice(0, options.pageSize || args.p_limit), error: null };
+    if (name !== 'dashboard_save_documents') throw Error('неизвестный rpc');
+    if (args.p_expected_owner !== owner) return { data: { ok: false, error: { code: 'owner_changed', status: 403 } }, error: null };
+    if (options.save) return options.save(args, owner);
+    return save(args, owner);
+  };
+  function save(args, owner = 'u1') {
+    const space = spaces.get(owner) || new Map();
+    const current = args.p_changes.map(c => space.get(c.key) || { key: c.key, exists: false, valueText: null, revision: '0', updatedAt: null });
+    if (current.some((r,i) => r.revision !== args.p_changes[i].expectedRevision)) return { data: { ok: false, error: { code: 'conflict', status: 409 }, current }, error: null };
+    const data = args.p_changes.map((c,i) => ({ key: c.key, exists: true, valueText: c.valueText, revision: String(BigInt(current[i].revision) + 1n), updatedAt: '2026-10-27T00:00:00Z' }));
+    data.forEach(r => space.set(r.key, r)); spaces.set(owner, space);
+    return { data: { ok: true, data }, error: null };
+  }
+  return { options, documents, spaces, save };
+}
+
+test('v2 отправляет защищённый ключ только через cas с ожидаемыми owner/revision', async () => {
+  const backend = versionedBackend('[]');
+  const app = await loadSupabaseSync(backend.options);
+  app.localStorage.setItem(protectedKey, '[1]');
+  const result = await app.context.window.DashboardSync.forceSync(protectedKey);
+  assert.equal(result.ok, true);
+  assert.equal(backend.documents.get(protectedKey).valueText, '[1]');
+  const call = app.rpcs.find(r => r.name === 'dashboard_save_documents');
+  assert.equal(call.args.p_expected_owner, 'u1');
+  assert.equal(call.args.p_changes[0].expectedRevision, '1');
+  assert.equal(app.writes.upserts.flat().some(r => r.key === protectedKey), false);
+  assert.equal(app.context.window.DashboardSync.getDocumentToken(protectedKey).baseRevision, '2');
+});
+
+test('v2 неизвестная локальная база остаётся для явного решения, не first-push', async () => {
+  const backend = versionedBackend('remote');
+  const app = await loadSupabaseSync({ ...backend.options, initialStorage: { [protectedKey]: 'offline' } });
+  assert.equal(app.localStorage.getItem(protectedKey), 'offline');
+  const result = await app.context.window.DashboardSync.forceSync(protectedKey);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'conflict');
+  assert.equal(backend.documents.get(protectedKey).valueText, 'remote');
+  assert.equal(app.rpcs.some(r => r.name === 'dashboard_save_documents'), false);
+});
+
+test('v2 сериализует pushes и поздний ack не теряет следующую правку', async () => {
+  const backend = versionedBackend();
+  const app = await loadSupabaseSync(backend.options);
+  let release, firstArgs;
+  backend.options.save = args => new Promise(resolve => { firstArgs = args; release = () => resolve(backend.save(args)); });
+  app.localStorage.setItem(protectedKey, 'b');
+  const first = app.context.window.DashboardSync.forceSync(protectedKey);
+  await flushPromises();
+  app.localStorage.setItem(protectedKey, 'c');
+  const second = app.context.window.DashboardSync.forceSync(protectedKey);
+  assert.equal(firstArgs.p_changes[0].valueText, 'b');
+  backend.options.save = null;
+  release();
+  await first; await second;
+  assert.equal(app.localStorage.getItem(protectedKey), 'c');
+  assert.equal(backend.documents.get(protectedKey).valueText, 'c');
+  assert.equal(backend.documents.get(protectedKey).revision, '3');
+});
+
+test('v2 dirty переживает reload после ошибки, служебный cache не отправляется', async () => {
+  const backend = versionedBackend();
+  const app = await loadSupabaseSync(backend.options);
+  backend.options.save = () => ({ data: null, error: { code: 'network' } });
+  app.localStorage.setItem(protectedKey, 'offline');
+  assert.equal((await app.context.window.DashboardSync.forceSync(protectedKey)).ok, false);
+  const initialStorage = Object.fromEntries(app.localStorage.data);
+  backend.options.save = null;
+  const restored = await loadSupabaseSync({ ...backend.options, initialStorage });
+  assert.equal(restored.localStorage.getItem(protectedKey), 'offline');
+  assert.equal((await restored.context.window.DashboardSync.forceSync(protectedKey)).ok, true);
+  assert.equal(backend.documents.get(protectedKey).valueText, 'offline');
+  assert.equal(restored.writes.upserts.flat().some(r => r.key.startsWith('_sync_cas_')), false);
+});
+
+test('v2 смена аккаунта не применяет старый ack и не отправляет ему чужой pending', async () => {
+  const backend = versionedBackend();
+  const app = await loadSupabaseSync(backend.options);
+  let release;
+  backend.options.save = args => new Promise(resolve => { release = () => resolve(backend.save(args)); });
+  app.localStorage.setItem(protectedKey, 'pending-a');
+  const pending = app.context.window.DashboardSync.forceSync(protectedKey);
+  await flushPromises();
+  app.changeUser({ id: 'u2' });
+  await flushPromises();
+  release(); await pending;
+  assert.equal(app.localStorage.getItem(protectedKey), null);
+  assert.equal(backend.spaces.get('u2')?.has(protectedKey) || false, false);
+  assert.ok(app.localStorage.getItem('_sync_cas_v2:u1').includes('pending-a'));
+});
+
+test('v2 auth/network capability error не включает fallback к неверсированному upsert', async () => {
+  const backend = versionedBackend();
+  const app = await loadSupabaseSync({ initialStorage: { [protectedKey]: 'local' }, rpc: () => ({ data: null, error: { code: '401', message: 'auth error' } }) });
+  await assert.rejects(app.context.window.SupabaseSync.pullNow());
+  await app.context.window.DashboardSync.forceSync(protectedKey);
+  assert.equal(app.writes.upserts.length, 0);
+  assert.equal(backend.documents.get(protectedKey).valueText, 'a');
+});
+
+test('v2 realtime не игнорируется три секунды и не затирает dirty', async () => {
+  const backend = versionedBackend();
+  const app = await loadSupabaseSync(backend.options);
+  const token = app.context.window.DashboardSync.getDocumentToken(protectedKey);
+  app.localStorage.setItem(protectedKey, 'local');
+  const newer = { key: protectedKey, exists: true, valueText: 'remote', revision: '2', updatedAt: '2000-01-01T00:00:00Z' };
+  backend.documents.set(protectedKey, newer);
+  app.emitCloudChange({ eventType: 'UPDATE', new: { user_id: 'u1', key: protectedKey, value: 'remote', revision: 2, updated_at: newer.updatedAt } });
+  await flushPromises();
+  assert.equal(app.localStorage.getItem(protectedKey), 'local');
+  assert.equal((await app.context.window.DashboardSync.forceSync(protectedKey)).error.code, 'conflict');
+  assert.equal(app.context.window.DashboardSync.canApplyDocumentToken(token), false);
+});
+
+test('v2 замечает правку другой вкладки до её storage event и не затирает её pull', async () => {
+  const backend = versionedBackend();
+  const app = await loadSupabaseSync(backend.options);
+  app.localStorage.data.set(protectedKey, 'другая вкладка');
+  backend.documents.set(protectedKey, { ...backend.documents.get(protectedKey), valueText: 'сервер', revision: '2' });
+  await app.context.window.SupabaseSync.pullNow();
+  assert.equal(app.localStorage.getItem(protectedKey), 'другая вкладка');
+  assert.equal((await app.context.window.DashboardSync.forceSync(protectedKey)).error.code, 'conflict');
+});
+
+test('v2 точное совпадение всех документов после потерянного ack не создаёт ложный conflict', async () => {
+  const backend = versionedBackend();
+  const app = await loadSupabaseSync(backend.options);
+  app.localStorage.setItem(protectedKey, 'b');
+  backend.documents.set(protectedKey, { ...backend.documents.get(protectedKey), valueText: 'b', revision: '2' });
+  const result = await app.context.window.DashboardSync.forceSync(protectedKey);
+  assert.equal(result.ok, true);
+  assert.equal(app.context.window.DashboardSync.getDocumentToken(protectedKey).baseRevision, '2');
+  assert.equal(backend.documents.get(protectedKey).revision, '2');
 });

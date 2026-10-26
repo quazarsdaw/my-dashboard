@@ -81,9 +81,9 @@ type MutationEffect = { changes: Change[]; dependencies: { key: string; expected
 
 фиксированные rpc:
 
-- `dashboard_sync_capabilities()` → `{protocol:2,guardEnabled,writeEnabled}`; owner из `auth.uid()`.
-- `dashboard_read_user_data(p_after_key text,p_limit integer)` → строки с `revision::text`, owner из `auth.uid()`, limit 1–500, pagination по key.
-- `dashboard_save_documents(p_changes jsonb)` → `RpcOutcome<Snapshot[]>`; только защищённые ключи текущего authenticated owner.
+- `dashboard_sync_capabilities(p_expected_owner uuid)` → `{protocol:2,guardEnabled,writeEnabled}`; owner из `auth.uid()`.
+- `dashboard_read_user_data(p_after_key text,p_limit integer,p_expected_owner uuid)` → строки с `revision::text`, owner из `auth.uid()`, limit 1–500, pagination по key.
+- `dashboard_save_documents(p_changes jsonb,p_expected_owner uuid)` → `RpcOutcome<Snapshot[]>`; только защищённые ключи текущего authenticated owner.
 - `dashboard_read_agent_documents(p_owner uuid,p_keys text[])` → `Snapshot[]`; service-only, whitelist daily/goals/tracker/sector definitions; edge всегда фиксирует owner/keys.
 - `dashboard_agent_prepare(p_owner uuid,p_credential text,p_request uuid,p_command_hash text,p_payload jsonb)` → `RpcOutcome<PrepareOutcome>`; повтор уже завершённого запроса возвращает receipt, не повторное подтверждение.
 - `dashboard_agent_load(p_owner uuid,p_credential text,p_request uuid,p_draft uuid)` → immutable draft для восстановления commit; service-only, payload не возвращается модели.
@@ -93,6 +93,8 @@ type MutationEffect = { changes: Change[]; dependencies: { key: string; expected
 все rpc `security invoker`; owner policies сохраняются. accounts хранит только owner/flags, без credentials: authenticated получает только owner-filtered select нужных flags в private schema для capability rpc, без update/insert/delete. остальные private таблицы — только service role. trigger читает флаг через узкий helper с пустым search_path и без прямого execute для внешних ролей. ни одна private schema не добавляется в exposed schemas.
 
 обычный conflict/domain outcome возвращается как `ok:false`, не исключением после изменения draft: исключение откатило бы и состояние `conflicted`. техническое исключение откатывает всю транзакцию. edge не передаёт наружу postgres messages.
+
+уточнение выполнения задачи 3: `p_expected_owner` у browser rpc — только предусловие против смены jwt-сессии во время отправки, не источник ownership. несовпадение с `auth.uid()` отклоняется до доступа к данным; модель hermes этот аргумент не получает. причина/цена уточнения записаны в execution ledger и report по issue #71.
 
 ## pr 1 — версии и синхронизация
 

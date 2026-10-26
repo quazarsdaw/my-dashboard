@@ -73,19 +73,25 @@ revoke all on function private.dashboard_version_user_data() from public, anon, 
 create trigger user_data_document_version before insert or update or delete on public.user_data
   for each row execute function private.dashboard_version_user_data();
 
-create function public.dashboard_sync_capabilities()
-returns jsonb language sql stable security invoker set search_path = '' as $$
-  select jsonb_build_object('protocol', 2,
+create function public.dashboard_sync_capabilities(p_expected_owner uuid)
+returns jsonb language plpgsql stable security invoker set search_path = '' as $$
+begin
+  if auth.uid() is null or p_expected_owner is distinct from auth.uid() then
+    raise exception 'owner_changed' using errcode = '42501';
+  end if;
+  return jsonb_build_object('protocol', 2,
     'guardEnabled', coalesce((select a.guard_enabled from private.dashboard_write_accounts a where a.owner_id = auth.uid()), false),
     'writeEnabled', coalesce((select a.write_enabled from private.dashboard_write_accounts a where a.owner_id = auth.uid()), false));
+end;
 $$;
-revoke all on function public.dashboard_sync_capabilities() from public, anon, service_role;
-grant execute on function public.dashboard_sync_capabilities() to authenticated;
+revoke all on function public.dashboard_sync_capabilities(uuid) from public, anon, service_role;
+grant execute on function public.dashboard_sync_capabilities(uuid) to authenticated;
 
-create function public.dashboard_read_user_data(p_after_key text, p_limit integer)
+create function public.dashboard_read_user_data(p_after_key text, p_limit integer, p_expected_owner uuid)
 returns jsonb language plpgsql stable security invoker set search_path = '' as $$
 begin
   if auth.uid() is null then raise exception 'unauthorized' using errcode = '42501'; end if;
+  if p_expected_owner is distinct from auth.uid() then raise exception 'owner_changed' using errcode = '42501'; end if;
   if p_limit is null or p_limit < 1 or p_limit > 500 then
     raise exception 'invalid_limit' using errcode = '22023';
   end if;
@@ -98,10 +104,10 @@ begin
   ) d);
 end;
 $$;
-revoke all on function public.dashboard_read_user_data(text, integer) from public, anon, service_role;
-grant execute on function public.dashboard_read_user_data(text, integer) to authenticated;
+revoke all on function public.dashboard_read_user_data(text, integer, uuid) from public, anon, service_role;
+grant execute on function public.dashboard_read_user_data(text, integer, uuid) to authenticated;
 
-create function public.dashboard_save_documents(p_changes jsonb)
+create function public.dashboard_save_documents(p_changes jsonb, p_expected_owner uuid)
 returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare
   v_owner uuid := auth.uid();
@@ -114,6 +120,10 @@ declare
 begin
   if v_owner is null then
     return jsonb_build_object('ok', false, 'error', jsonb_build_object('code','unauthorized','status',401));
+  end if;
+  -- только предусловие против смены сессии; owner по-прежнему из auth.uid().
+  if p_expected_owner is distinct from v_owner then
+    return jsonb_build_object('ok', false, 'error', jsonb_build_object('code','owner_changed','status',403));
   end if;
   if p_changes is null or jsonb_typeof(p_changes) <> 'array' then
     return jsonb_build_object('ok', false, 'error', jsonb_build_object('code','invalid_change','status',422));
@@ -172,8 +182,8 @@ begin
   return jsonb_build_object('ok', true, 'data', v_saved);
 end;
 $$;
-revoke all on function public.dashboard_save_documents(jsonb) from public, anon, service_role;
-grant execute on function public.dashboard_save_documents(jsonb) to authenticated;
+revoke all on function public.dashboard_save_documents(jsonb, uuid) from public, anon, service_role;
+grant execute on function public.dashboard_save_documents(jsonb, uuid) to authenticated;
 
 create function public.dashboard_read_agent_documents(p_owner uuid, p_keys text[])
 returns jsonb language plpgsql stable security invoker set search_path = '' as $$
