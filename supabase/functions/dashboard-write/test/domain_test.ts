@@ -63,6 +63,19 @@ function missing(key: string) {
   };
 }
 const taskTarget = { id: "task-a", date, expectedRevision: "1" };
+
+Deno.test("перестановка полей draft в jsonb не меняет ожидаемый хеш документа", async () => {
+  const rows = [snap(key, [{ id: "task-a", text: "задача", done: false }])];
+  const first = await effect("update_task", {
+    target: taskTarget,
+    patch: { description: "описание", estimatedMin: 25 },
+  }, rows);
+  const loaded = await effect("update_task", {
+    target: taskTarget,
+    patch: { estimatedMin: 25, description: "описание" },
+  }, rows);
+  assert.deepEqual(first.afterHashes, loaded.afterHashes);
+});
 const goalTarget = { id: "goal-a", expectedRevision: "1" };
 const inboxTarget = { id: "in_1", expectedRevision: "1" };
 const source = snap(inbox, [{

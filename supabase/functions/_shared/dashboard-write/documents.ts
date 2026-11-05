@@ -188,7 +188,7 @@ export async function applyMutation(
     return fromText(row.valueText, fallback);
   };
   const write = (key: string, value: unknown) => {
-    const valueText = JSON.stringify(value);
+    const valueText = canonical(value);
     if (encoder.encode(valueText).length > MAX_DOCUMENT_BYTES) invalid();
     changes.push({
       key,
