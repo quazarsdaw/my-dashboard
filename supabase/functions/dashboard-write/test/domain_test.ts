@@ -78,6 +78,42 @@ Deno.test("перестановка полей draft в jsonb не меняет 
 });
 const goalTarget = { id: "goal-a", expectedRevision: "1" };
 const inboxTarget = { id: "in_1", expectedRevision: "1" };
+
+Deno.test("preview редактирования отличает одинаковые названия по дате, периоду и id", async () => {
+  const first = await effect("update_task", {
+    target: taskTarget,
+    patch: { estimatedMin: 30 },
+  }, [snap(key, [task])]);
+  const otherDate = "2026-10-29";
+  const second = await effect("update_task", {
+    target: { ...taskTarget, date: otherDate },
+    patch: { estimatedMin: 30 },
+  }, [
+    snap("goals:" + otherDate, [task]),
+  ]);
+  const renamed = await effect("update_goal", {
+    target: goalTarget,
+    patch: { title: "другая" },
+  }, [storeGoals()]);
+  assert.match(renderPreview(first), /2026-10-27/);
+  assert.match(renderPreview(first), /task-a/);
+  assert.match(renderPreview(second), /2026-10-29/);
+  assert.match(renderPreview(renamed), /2026-10/);
+  assert.match(renderPreview(renamed), /goal-a/);
+});
+
+Deno.test("невидимые format-символы видны в preview, исходный текст сохраняется", async () => {
+  const original = "пере\u200bвод\u2060";
+  const result = await effect("create_task", { text: original }, [
+    missing(key),
+  ]);
+  assert.equal(JSON.parse(result.changes[0].valueText!)[0].text, original);
+  const preview = renderPreview(result);
+  assert.equal(preview.includes("\u200b"), false);
+  assert.equal(preview.includes("\u2060"), false);
+  assert.ok(preview.includes("\\u200b"));
+  assert.ok(preview.includes("\\u2060"));
+});
 const source = snap(inbox, [{
   ...inboxTarget,
   text: "разобрать письма",

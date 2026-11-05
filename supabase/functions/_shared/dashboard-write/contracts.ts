@@ -75,6 +75,7 @@ export type MutationEffect = {
   changes: Change[];
   dependencies: Dependency[];
   targetId: string;
+  sourceRef: string | null;
   before: DataRecord | null;
   after: DataRecord;
   warnings: string[];

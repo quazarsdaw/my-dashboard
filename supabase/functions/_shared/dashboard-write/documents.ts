@@ -395,6 +395,12 @@ export async function applyMutation(
       ) => [change.key, await sha256(change.valueText)]),
     ),
   );
+  const target = "target" in command.arguments
+    ? command.arguments.target
+    : null;
+  const sourceRef = target && typeof target === "object"
+    ? ("id" in target ? target.id : target.reference)
+    : null;
   return {
     operation: command.operation,
     changes,
@@ -402,6 +408,7 @@ export async function applyMutation(
     before,
     after,
     targetId,
+    sourceRef,
     warnings,
     afterHashes,
     changedFields,

@@ -39,9 +39,12 @@ const fields: Record<string, string> = {
 };
 function safe(value: unknown): string {
   return (JSON.stringify(value) ?? "—").replace(
-    /[\p{Cc}\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/gu,
-    (character) =>
-      "\\u" + character.charCodeAt(0).toString(16).padStart(4, "0"),
+    /[\p{Cc}\p{Cf}\u2028\u2029]/gu,
+    (character) => {
+      const point = character.codePointAt(0)!;
+      const hex = point.toString(16);
+      return point > 0xffff ? "\\u{" + hex + "}" : "\\u" + hex.padStart(4, "0");
+    },
   );
 }
 function lines(value: DataRecord, keys: string[]) {
@@ -55,25 +58,34 @@ export function renderPreview(effect: MutationEffect): string {
   const title = effect.after.text ?? effect.after.title;
   const route = effect.operation.startsWith("route_inbox_");
   const preview = [
-    "Подтвердить: " + labels[effect.operation],
-    "Запись: " + safe(title),
+    "подтвердить: " + labels[effect.operation],
+    "запись: " + safe(title),
   ];
+  if (effect.sourceRef !== null) {
+    preview.push("идентификатор исходной записи: " + safe(effect.sourceRef));
+  }
+  if (effect.before && !route) {
+    const scope = ["date", "horizon", "periodKey"].filter((key) =>
+      Object.hasOwn(effect.after, key) && !effect.changedFields.includes(key)
+    );
+    preview.push(...lines(effect.after, scope));
+  }
   if (effect.before) {
     const keys = route ? Object.keys(effect.before) : effect.changedFields;
-    preview.push("Было:", ...lines(effect.before, keys));
+    preview.push("было:", ...lines(effect.before, keys));
   }
   const keys = !effect.before || route
     ? Object.keys(effect.after)
     : effect.changedFields;
-  preview.push("Будет:", ...lines(effect.after, keys));
+  preview.push("будет:", ...lines(effect.after, keys));
   if (route) {
     preview.push(
-      "Исходная запись уйдёт из входящих только при успешном переносе.",
+      "исходная запись уйдёт из входящих только при успешном переносе.",
     );
   }
   if (effect.warnings.includes("duplicate_creation")) {
     preview.push(
-      "Внимание: похожая запись уже есть. Подтверждение создаст ещё одну.",
+      "внимание: похожая запись уже есть. подтверждение создаст ещё одну.",
     );
   }
   return boundedPreview(preview.join("\n"));
