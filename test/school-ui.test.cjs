@@ -25,7 +25,7 @@ function assertSchoolAssetContract(html) {
     'topbar.js?v=405-path',
     'dashboard-sync-core.js?v=409-cas',
     'dashboard-sync-conflicts.js?v=409-cas',
-    'supabase-sync.js?v=409-cas',
+    'supabase-sync.js?v=410-inbox',
     'school-core.js?v=6',
     'school-api.js',
     'school-teacher-config.js?v=3',

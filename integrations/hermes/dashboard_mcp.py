@@ -14,7 +14,7 @@ import sys
 import urllib.error
 import urllib.request
 
-OPERATIONS = ("get_today_tasks", "list_tasks", "get_goals", "get_tracker", "get_dashboard_summary")
+OPERATIONS = ("get_today_tasks", "list_tasks", "get_goals", "get_tracker", "get_dashboard_summary", "get_inbox")
 PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 MAX_FRAME = 65536
 MAX_RESPONSE = 1024 * 1024
@@ -68,6 +68,7 @@ def tool_catalog():
         "get_goals": "цели по горизонту и периоду, p1–p4 и прогресс; выполненные остаются в своём периоде.",
         "get_tracker": "привычки и отметки за интервал до 31 дня: null — отметки нет, 0.5 — половина, 1 — полная отметка.",
         "get_dashboard_summary": "сводка задач активного дня, целей текущих периодов и привычек календарного дня. не финансовый отчёт.",
+        "get_inbox": "входящие в порядке списка на сайте; возвращает id и версию источника. доступ включается отдельно на сервере.",
     }
     result = []
     for name in OPERATIONS:

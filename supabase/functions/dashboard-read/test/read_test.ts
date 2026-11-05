@@ -322,6 +322,65 @@ function request(
     body: options.method === "GET" ? undefined : JSON.stringify(body),
   });
 }
+Deno.test("входящие выключены по умолчанию и читают только разрешённый документ", async () => {
+  const environment = await env();
+  const command = { operation: "get_inbox", limit: 1 };
+  let calls = 0;
+  const upstream: typeof fetch = (_url, options) => {
+    calls++;
+    assert.deepEqual(JSON.parse(String(options?.body)), {
+      p_owner: owner,
+      p_keys: ["inbox_v1"],
+    });
+    return Promise.resolve(Response.json([
+      snapshot("inbox_v1", [
+        {
+          id: "in_12",
+          text: "первая запись",
+          date: updated,
+          privateField: "не выдавать",
+        },
+        { id: "in_11", text: "вторая запись", date: updated },
+      ], "7"),
+    ]));
+  };
+  const disabled = await handleRead(request(command), {
+    env: environment,
+    now: () => now,
+    fetch: upstream,
+  });
+  assert.equal(disabled.status, 403);
+  assert.equal(calls, 0);
+  const enabledEnv = {
+    ...environment,
+    DASHBOARD_AGENT_INBOX_READ_ENABLED: "true",
+  };
+  const enabled = await handleRead(request(command), {
+    env: enabledEnv,
+    now: () => now,
+    fetch: upstream,
+  });
+  assert.equal(enabled.status, 200);
+  assert.equal(calls, 1);
+  assert.deepEqual((await enabled.json()).data, {
+    items: [{
+      id: "in_12",
+      text: "первая запись",
+      date: "2026-10-25T19:00:00.000Z",
+      expectedRevision: "7",
+    }],
+    total: 2,
+    nextCursor: 1,
+  });
+});
+
+Deno.test("дубли входящих не выдаются как однозначные цели записи", () => {
+  const item = { id: "in_1", text: "текст", date: updated };
+  assert.throws(() =>
+    page({ operation: "get_inbox" }, [
+      row("inbox_v1", [item, item], "1"),
+    ]), { message: "INVALID_DASHBOARD_DATA" });
+});
 Deno.test("auth/expiry/config fail closed до database fetch и ошибки не раскрывают секреты", async () => {
   const environment = await env();
   let fetched = false;

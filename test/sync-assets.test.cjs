@@ -27,7 +27,7 @@ test("all_pages_load_core_before_sync с одной cache version", () => {
       s.indexOf("dashboard-sync-conflicts.js") < s.indexOf("supabase-sync.js"),
       page,
     );
-    assert.ok(s.includes("supabase-sync.js?v=409-cas"), page);
+    assert.ok(s.includes("supabase-sync.js?v=410-inbox"), page);
   }
 });
 test("import_cannot_supply_sync_metadata_or_revision", () => {

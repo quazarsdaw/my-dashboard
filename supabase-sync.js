@@ -348,7 +348,8 @@
   }
 
   function protectedKey(key) {
-    return key === 'horizons_goals_v2' || /^goals:\d{4}-\d{2}-\d{2}$/.test(key);
+    return key === 'horizons_goals_v2' || key === 'inbox_v1' || key === 'backlog_tasks_v1' ||
+      /^goals:\d{4}-\d{2}-\d{2}$/.test(key);
   }
 
   function missingSnapshot(key) {
@@ -857,13 +858,15 @@
           var localMeta = readLocalMeta();
           var hasMetaUpdates = false;
           var protectedSeen = {};
+          var initialVersionedPull = casMode === 2 && !casHydrated;
           rows.forEach(function(row) {
             if (shouldSkipStorageKey(row.key)) return;
             if (casMode === 2 && protectedKey(row.key)) {
               protectedSeen[row.key] = true;
               var known = casStates[row.key];
               if ((known && (known.base || known.dirty)) || localStorage.getItem(row.key) !== null) noteCasLocal(row.key);
-              if (applyCasEvent(row.key, { type: 'remote', snapshot: row }).changed) changedKeys.push(row.key);
+              // A pre-auth editor may have rendered the same bytes with a different owner/token.
+              if (applyCasEvent(row.key, { type: 'remote', snapshot: row }).changed || initialVersionedPull) changedKeys.push(row.key);
               return;
             }
             var cloudTime = new Date(row.updated_at).getTime();
@@ -894,7 +897,7 @@
               if (!protectedSeen[key]) {
                 var known = casStates[key];
                 if (known.base || known.dirty || localStorage.getItem(key) !== null) noteCasLocal(key);
-                if (applyCasEvent(key, { type: 'remote', snapshot: missingSnapshot(key) }).changed) changedKeys.push(key);
+                if (applyCasEvent(key, { type: 'remote', snapshot: missingSnapshot(key) }).changed || initialVersionedPull) changedKeys.push(key);
               }
             });
             casHydrated = true;

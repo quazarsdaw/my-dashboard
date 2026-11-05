@@ -26,6 +26,24 @@ class DocumentVersions(unittest.TestCase):
         self.assertEqual(stale["error"]["code"], "conflict")
         self.assertEqual(self.db.read(OWNER, KEY)["valueText"], "[]")
 
+    def test_guard_blocks_legacy_overwrite_of_inbox_and_backlog(self):
+        self.guard()
+        for key in ("inbox_v1", "backlog_tasks_v1"):
+            with self.subTest(key=key):
+                self.assertTrue(self.save([change(key, "0", "[1]")])["ok"])
+                with self.assertRaisesRegex(RuntimeError, "version_required"):
+                    self.db.sql(f"update public.user_data set value='[]' where key={literal(key)}", "authenticated", {"sub": OWNER})
+                self.assertEqual(self.db.read(OWNER, key)["valueText"], "[1]")
+
+    def test_inbox_transfer_conflict_keeps_source_and_destination(self):
+        inbox, backlog = "inbox_v1", "backlog_tasks_v1"
+        self.assertTrue(self.save([change(inbox, "0", "[1]"), change(backlog, "0", "[2]")])["ok"])
+        self.assertTrue(self.save([change(backlog, "1", "[2,3]")])["ok"])
+        outcome = self.save([change(inbox, "1", "[]"), change(backlog, "1", "[2,1]")])
+        self.assertEqual(outcome["error"]["code"], "conflict")
+        self.assertEqual(self.db.read(OWNER, inbox)["valueText"], "[1]")
+        self.assertEqual(self.db.read(OWNER, backlog)["valueText"], "[2,3]")
+
     def test_two_first_inserts_have_one_winner(self):
         values = ["[1]", "[2]"]
         results = self.db.parallel([lambda value=v: self.save([change(KEY, "0", value)]) for v in values])

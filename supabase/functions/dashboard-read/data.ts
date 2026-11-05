@@ -16,6 +16,7 @@ const operations = [
   "get_goals",
   "get_tracker",
   "get_dashboard_summary",
+  "get_inbox",
 ] as const;
 const horizons = ["week", "month", "quarter", "year", "5year", "life"];
 export type Command = {
@@ -166,6 +167,8 @@ export function parseCommand(raw: unknown, now: Date): Command {
     ? ["tracker_v1"]
     : op === "get_dashboard_summary"
     ? [...taskKeys, "horizons_goals_v2", "tracker_v1"]
+    : op === "get_inbox"
+    ? ["inbox_v1"]
     : taskKeys;
   return {
     operation: op as Command["operation"],
@@ -284,6 +287,26 @@ export function readDashboard(
         ? new Date(sourceRow.updated_at).toISOString()
         : null,
       revision: sourceRow ? sourceRow.revision ?? null : "0",
+    });
+  }
+  function inbox(): RecordValue[] {
+    const value = values.get("inbox_v1");
+    if (value == null) return [];
+    const revision = sources.find((source) => source.key === "inbox_v1")
+      ?.revision ?? null;
+    const ids = new Set<string>();
+    return records(value).map((item) => {
+      const id = text(item.id), received = text(item.date);
+      if (!id || ids.has(id) || !Number.isFinite(Date.parse(received))) {
+        throw new ReadError("INVALID_DASHBOARD_DATA", 502);
+      }
+      ids.add(id);
+      return {
+        id,
+        text: text(item.text),
+        date: new Date(received).toISOString(),
+        expectedRevision: revision,
+      };
     });
   }
   function tasks(): RecordValue[] {
@@ -432,6 +455,8 @@ export function readDashboard(
       ? goals()
       : command.operation === "get_tracker"
       ? tracker(command.dates)
+      : command.operation === "get_inbox"
+      ? inbox()
       : tasks();
     data = {
       items: items.slice(command.cursor, command.cursor + command.limit),

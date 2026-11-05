@@ -149,6 +149,47 @@ function versionedBackend(initial = 'a') {
   return { options, documents, spaces, save };
 }
 
+test('перенос из входящих в бэклог отправляет обе версии одним cas', async () => {
+  const inbox = 'inbox_v1', backlog = 'backlog_tasks_v1';
+  const backend = versionedBackend('[]');
+  backend.documents.set(inbox, { key: inbox, exists: true, valueText: '[1]', revision: '1', updatedAt: null });
+  const app = await loadSupabaseSync(backend.options);
+  app.localStorage.setItem(backlog, '[1]');
+  app.localStorage.setItem(inbox, '[]');
+  await app.context.window.SupabaseSync.pushNow();
+  const calls = app.rpcs.filter(r => r.name === 'dashboard_save_documents');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0].args.p_changes)).sort((a, b) => a.key.localeCompare(b.key)), [
+    { key: backlog, expectedRevision: '0', valueText: '[1]' },
+    { key: inbox, expectedRevision: '1', valueText: '[]' }
+  ]);
+});
+
+test('первое чтение с неизменным кешем обновляет привязку редактора к аккаунту', async () => {
+  const backend = versionedBackend('[1]');
+  const app = await loadSupabaseSync({
+    ...backend.options, user: null, initialStorage: { [protectedKey]: '[1]' }
+  });
+  const { DashboardSync } = app.context.window;
+  let displayedToken = DashboardSync.getDocumentToken(protectedKey);
+  let refreshes = 0;
+  app.context.window.addEventListener('dashboard-sync-applied', event => {
+    if (event.detail.changedKeys.includes(protectedKey)) {
+      refreshes++;
+      displayedToken = DashboardSync.getDocumentToken(protectedKey);
+    }
+  });
+  assert.equal(displayedToken.owner, null);
+  app.changeUser({ id: 'u1' });
+  await flushPromises();
+  assert.equal(app.localStorage.getItem(protectedKey), '[1]');
+  assert.equal(displayedToken.owner, 'u1');
+  assert.equal(displayedToken.baseRevision, '1');
+  await app.context.window.SupabaseSync.pullNow();
+  assert.equal(refreshes, 1);
+  assert.equal(app.rpcs.some(r => r.name === 'dashboard_save_documents'), false);
+});
+
 test('v2 отправляет защищённый ключ только через cas с ожидаемыми owner/revision', async () => {
   const backend = versionedBackend('[]');
   const app = await loadSupabaseSync(backend.options);

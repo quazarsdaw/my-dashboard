@@ -10,6 +10,7 @@ export type Environment = {
   DASHBOARD_AGENT_USER_ID: string;
   DASHBOARD_AGENT_TOKEN_SHA256: string;
   DASHBOARD_AGENT_EXPIRES_AT: string;
+  DASHBOARD_AGENT_INBOX_READ_ENABLED?: string;
 };
 type Dependencies = {
   env: Environment;
@@ -115,6 +116,10 @@ export async function handleRead(
       413,
     );
     const command = parseCommand(raw, now);
+    if (
+      command.operation === "get_inbox" &&
+      env.DASHBOARD_AGENT_INBOX_READ_ENABLED !== "true"
+    ) throw new ReadError("INBOX_READ_DISABLED", 403);
     const url = new URL(
       env.SUPABASE_URL + "/rest/v1/rpc/dashboard_read_agent_documents",
     );

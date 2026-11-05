@@ -227,7 +227,7 @@ function inboxPage(noCrypto = false) {
   const source = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).filter(s => s.trim()).at(-1);
   vm.runInContext(source, context);
   context.closeModals = () => window.closeModals();
-  return { window, stored };
+  return { window, stored, nodes };
 }
 
 test('входящие создают задачи/цели с uuid, явным периодом и активным днём 06:00', () => {
@@ -241,4 +241,25 @@ test('входящие создают задачи/цели с uuid, явным 
   const unavailable = inboxPage(true); unavailable.window.prepareMove('item', 'task'); unavailable.window.moveToTask('today');
   assert.equal(unavailable.stored.get('inbox_v1').length, 1);
   assert.equal([...unavailable.stored.keys()].some(k => k.startsWith('goals:')), false);
+});
+
+test('новые входящие получают uuid вместо коллизий на одном timestamp', () => {
+  const app = inboxPage();
+  const input = app.nodes.get('inboxInput');
+  for (const title of ['одна запись', 'другая запись']) {
+    input.value = title;
+    input.onkeydown({ key: 'Enter' });
+  }
+  const [one, two] = app.stored.get('inbox_v1');
+  assert.notEqual(one.id, two.id);
+  assert.match(one.id, /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/);
+});
+
+test('перенос из открытой формы отклоняется после обновления входящего', () => {
+  const app = inboxPage();
+  app.window.prepareMove('item', 'task');
+  app.stored.set('inbox_v1', [{ id: 'item', text: 'новая версия текста' }]);
+  app.window.moveToTask('today');
+  assert.deepEqual(app.stored.get('inbox_v1'), [{ id: 'item', text: 'новая версия текста' }]);
+  assert.equal(app.stored.has('goals:2026-10-26'), false);
 });

@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="dashboard-sync-conflicts.css?v=409-cas">
 <script src="dashboard-sync-core.js?v=409-cas" defer></script>
 <script src="dashboard-sync-conflicts.js?v=409-cas" defer></script>
-<script src="supabase-sync.js?v=409-cas" defer></script>
+<script src="supabase-sync.js?v=410-inbox" defer></script>
 <script src="goals-core.js?v=3"></script>
 <script src="dashboard-tasks-core.js?v=1"></script>
 <script src="profile-theme.js?v=401"></script>
@@ -149,7 +149,26 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   function getInbox(){ return G.storeGet('inbox_v1') || []; }
   function setInbox(data){ G.storeSet('inbox_v1', data); }
 
-  var activeItemId = null;
+  var activeMove = null;
+
+  function findItem(id) {
+    var matches = getInbox().filter(function(item) { return item.id === id; });
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function selectedItem(type) {
+    if (!activeMove || activeMove.type !== type) return null;
+    var sync = window.DashboardSync;
+    var item = findItem(activeMove.id);
+    if (!item || JSON.stringify(item) !== activeMove.snapshot ||
+        (sync && !sync.canApplyDocumentToken(activeMove.token))) {
+      window.closeModals();
+      render();
+      alert('входящие изменились. выбери запись заново.');
+      return null;
+    }
+    return item;
+  }
 
   function render(){
     var items = getInbox();
@@ -184,8 +203,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
     if(e.key === 'Enter'){
         var val = this.value.trim();
         if(!val) return;
+        var id = nextId();
+        if (!id) return;
         var data = getInbox();
-        data.unshift({ id: 'in_'+Date.now(), text: val, date: new Date().toISOString() });
+        data.unshift({ id: id, text: val, date: new Date().toISOString() });
         setInbox(data);
         this.value = '';
         render();
@@ -199,18 +220,26 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   };
 
   window.prepareMove = function(id, type){
-    activeItemId = id;
+    var item = findItem(id);
+    if (!item) return;
+    var sync = window.DashboardSync;
+    activeMove = {
+      id: id,
+      type: type,
+      snapshot: JSON.stringify(item),
+      token: sync ? sync.getDocumentToken('inbox_v1') : null
+    };
     if(type === 'task') document.getElementById('taskModal').classList.add('show');
     else document.getElementById('goalModal').classList.add('show');
   };
 
   window.closeModals = function(){
+    activeMove = null;
     document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('show'));
   };
 
   window.moveToGoal = function(horizon){
-    var items = getInbox();
-    var it = items.find(i => i.id === activeItemId);
+    var it = selectedItem('goal');
     if(it){
         var id = nextId();
         if (!id) return;
@@ -234,14 +263,13 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
             done: false
         });
         G.storeSet('horizons_goals_v2', goalsData);
-        window.deleteItem(activeItemId);
+        window.deleteItem(it.id);
     }
     closeModals();
   };
 
   window.moveToTask = function(time){
-    var items = getInbox();
-    var it = items.find(i => i.id === activeItemId);
+    var it = selectedItem('task');
     if(it){
         var id = nextId();
         if (!id) return;
@@ -253,12 +281,18 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
         tasks.push({ id: id, text: it.text, done: false, sphere: null, createdAt: new Date().toISOString() });
         G.storeSet(key, tasks);
         
-        window.deleteItem(activeItemId);
+        window.deleteItem(it.id);
     }
     closeModals();
   };
 
   render();
+  if (window.addEventListener) {
+    window.addEventListener('dashboard-sync-applied', function(event) {
+      var keys = event.detail && event.detail.changedKeys || [];
+      if (!keys.length || keys.indexOf('inbox_v1') !== -1) render();
+    });
+  }
 })();
 </script>
 </body>
