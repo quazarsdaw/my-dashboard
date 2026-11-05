@@ -40,4 +40,4 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -d postgres -c 'create database dashboard_write_test_ci;'
           psql -X -v ON_ERROR_STOP=1 -d dashboard_write_test_ci -c "create table public.dashboard_test_marker(value text primary key); insert into public.dashboard_test_marker values ('synthetic-dashboard-write-only');"
       - name: проверить настоящий postgres 17 и pgTAP
-        run: python3 scripts/test-dashboard-db.py --ci --suite versions --require-pgtap
+        run: python3 scripts/test-dashboard-db.py --ci --suite all --require-pgtap

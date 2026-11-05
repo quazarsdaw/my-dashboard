@@ -126,6 +126,8 @@ class PgHarness:
         self.sql("truncate public.user_data")
         if self.sql("select to_regclass('private.dashboard_write_accounts') is not null") == "t":
             self.sql("truncate private.dashboard_write_accounts cascade")
+        if self.sql("select to_regclass('private.dashboard_write_requests') is not null") == "t":
+            self.sql("truncate private.dashboard_write_requests cascade")
 
     @staticmethod
     def parallel(calls):
