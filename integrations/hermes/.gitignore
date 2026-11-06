@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+dashboard-read.json
+dashboard-read.env
+hermes-dashboard.yaml

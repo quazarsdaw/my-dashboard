@@ -1,0 +1,7 @@
+{
+  "tasks": {
+    "test": "deno test test",
+    "check": "deno check index.ts test/*.ts",
+    "lint": "deno lint"
+  }
+}
