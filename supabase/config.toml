@@ -429,3 +429,9 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/dashboard-read/deno.json"
 entrypoint = "./functions/dashboard-read/index.ts"
+
+[functions.dashboard-write]
+enabled = true
+verify_jwt = true
+import_map = "./functions/dashboard-write/deno.json"
+entrypoint = "./functions/dashboard-write/index.ts"
