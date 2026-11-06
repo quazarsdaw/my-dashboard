@@ -28,13 +28,13 @@
 
 - `dashboard-read.json` — endpoint, публичный anon key и случайный connector token; хранить только на windows, не отправлять в чат/github;
 - `dashboard-read.env` — только owner uuid, hash token и срок действия (90 дней); для secrets edge;
-- `hermes-dashboard.yaml` — готовый блок с абсолютными путями и пятью разрешёнными инструментами, без самих credentials.
+- `hermes-dashboard.yaml` — готовый блок с абсолютными путями и разрешёнными инструментами, без самих credentials.
 
 credential-каталог должен быть вне любого git checkout. на windows унаследованные ntfs acl могут разрешать чтение другим пользователям: проверь свойства папки → безопасность или `icacls 'C:\Users\serv\.hermes\dashboard-credentials'`; оставь доступ только необходимым учёткам владельца/system/администраторов. posix mode 0600 не заменяет windows acl. передача token в url, командной строке или telegram запрещена.
 
 ## 2. deployment edge — отдельное действие администратора
 
-функция: `supabase/functions/dashboard-read`. новых таблиц и миграций нет. `verify_jwt = true` нельзя выключать для устранения 401.
+функция: `supabase/functions/dashboard-read`. для версии с входящими сначала нужны миграции версионной синхронизации и защиты `inbox_v1`/`backlog_tasks_v1`. `verify_jwt = true` нельзя выключать для устранения 401.
 
 администратор проверяет команды установленного cli через `supabase --help`, `supabase secrets set --help` и `supabase functions deploy --help`, затем после отдельного разрешения:
 
@@ -53,7 +53,7 @@ supabase functions deploy dashboard-read --project-ref <project-ref>
 
 найди активный `config.yaml`: обычно это `C:\Users\serv\.hermes\config.yaml`; если задан `HERMES_HOME`, используй его. сделай резервную копию и **объедини** блок из `hermes-dashboard.yaml` с существующим `mcp_servers`. не заменяй весь файл и не создавай второй корневой `mcp_servers`.
 
-блок содержит command на python твоего venv, args на скрипт и credential-файл, `tools.include` ровно из пяти имён, `resources: false`, `prompts: false`. секреты не нужно вставлять в yaml или сообщения агенту.
+блок содержит command на python твоего venv, args на скрипт и credential-файл, `tools.include` из разрешённых имён, `resources: false`, `prompts: false`. секреты не нужно вставлять в yaml или сообщения агенту.
 
 после изменения безопасно перезапусти свой gateway привычным способом либо используй поддерживаемый `/reload-mcp`, затем новую telegram-сессию при необходимости. способ запуска gateway здесь не угадывается: systemd/docker к этому windows-компьютеру не относятся.
 
@@ -73,6 +73,9 @@ supabase functions deploy dashboard-read --project-ref <project-ref>
 | `get_goals` | horizon, periodKey (только с horizon), includeDone, limit/cursor |
 | `get_tracker` | from/to, до 31 календарного дня; страницы привычек limit/cursor |
 | `get_dashboard_summary` | без аргументов |
+| `get_inbox` | limit/cursor; только если отдельно разрешено на сервере |
+
+чтение входящих требует совместимой миграции версий и `DASHBOARD_AGENT_INBOX_READ_ENABLED=true` в secrets edge. без флага функция отклоняет чтение до обращения к базе. после проверки и отдельного включения достаточно обновить скрипт и добавить `get_inbox` в существующий `tools.include`; менять рабочий read token не нужно. выдаются id, текст, дата добавления и строковая версия источника, без других полей.
 
 страница — 50 записей по умолчанию, максимум 100. при `nextCursor` запроси следующую страницу с теми же фильтрами; concurrent sync может изменить состав страниц, это не frozen snapshot. периоды: пн YYYY-MM-DD; месяц YYYY-MM; квартал YYYY-Q1…Q4; год YYYY; пятилетки 2021/2026/2031; life. выполненные цели не удаляются. legacy period выдаётся как null с warning, а не назначается на текущий месяц.
 

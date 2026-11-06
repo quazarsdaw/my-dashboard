@@ -41,9 +41,9 @@ class ConnectorTests(unittest.TestCase):
                     {**config(), "owner": OWNER}]:
             with self.assertRaises(m.ConnectorError): m.validate_config(bad)
 
-    def test_tool_catalog_is_only_five_read_operations(self):
+    def test_tool_catalog_is_only_six_read_operations(self):
         tools = m.tool_catalog()
-        self.assertEqual([t["name"] for t in tools], ["get_today_tasks", "list_tasks", "get_goals", "get_tracker", "get_dashboard_summary"])
+        self.assertEqual([t["name"] for t in tools], ["get_today_tasks", "list_tasks", "get_goals", "get_tracker", "get_dashboard_summary", "get_inbox"])
         for tool in tools:
             self.assertTrue(tool["annotations"]["readOnlyHint"])
             self.assertFalse(tool["inputSchema"]["additionalProperties"])
@@ -52,6 +52,12 @@ class ConnectorTests(unittest.TestCase):
                            ("get_tracker", {"from": "2026-10-01", "to": "2026-11-01"}),
                            ("get_goals", {"cursor": True}), ("get_goals", {"horizon": "week", "periodKey": "2026-10-06"})]:
             with self.subTest(name=name, args=args), self.assertRaises(m.ConnectorError): m.validate_arguments(name, args)
+
+    def test_inbox_is_paginated_and_cannot_select_owner_or_key(self):
+        self.assertEqual(m.validate_arguments("get_inbox", {"limit": 10, "cursor": 1}), {"limit": 10, "cursor": 1})
+        for args in ({"owner": OWNER}, {"key": "coins_v1"}, {"cursor": -1}):
+            with self.assertRaises(m.ConnectorError):
+                m.validate_arguments("get_inbox", args)
 
     def test_http_client_sends_scoped_post_and_keeps_credentials_out_of_result(self):
         client = m.DashboardClient(config())
@@ -122,7 +128,7 @@ class ConnectorTests(unittest.TestCase):
             responses = list(map(json.loads, result.stdout.splitlines()))
             self.assertEqual(len(responses), 6)
             self.assertEqual(responses[0]["result"]["protocolVersion"], "2025-06-18")
-            self.assertEqual(len(responses[1]["result"]["tools"]), 5)
+            self.assertEqual(len(responses[1]["result"]["tools"]), 6)
             self.assertTrue(responses[2]["result"]["isError"])
             self.assertTrue(responses[3]["result"]["isError"])
             self.assertEqual(responses[4], {"jsonrpc": "2.0", "id": 5, "result": {}})

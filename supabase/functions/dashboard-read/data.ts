@@ -3,13 +3,20 @@ export class ReadError extends Error {
     super(code);
   }
 }
-export type Row = { key: string; value: unknown; updated_at: string };
+export type Row = {
+  key: string;
+  value: unknown;
+  updated_at: string | null;
+  exists?: boolean;
+  revision?: string;
+};
 const operations = [
   "get_today_tasks",
   "list_tasks",
   "get_goals",
   "get_tracker",
   "get_dashboard_summary",
+  "get_inbox",
 ] as const;
 const horizons = ["week", "month", "quarter", "year", "5year", "life"];
 export type Command = {
@@ -27,6 +34,7 @@ type Source = {
   key: string;
   state: "missing" | "available";
   updatedAt: string | null;
+  revision: string | null;
 };
 export type Page = {
   items: RecordValue[];
@@ -159,6 +167,8 @@ export function parseCommand(raw: unknown, now: Date): Command {
     ? ["tracker_v1"]
     : op === "get_dashboard_summary"
     ? [...taskKeys, "horizons_goals_v2", "tracker_v1"]
+    : op === "get_inbox"
+    ? ["inbox_v1"]
     : taskKeys;
   return {
     operation: op as Command["operation"],
@@ -206,6 +216,38 @@ function records(value: unknown): RecordValue[] {
   }
   return value.map((v) => object(v));
 }
+function validRevision(value: unknown): value is string {
+  return typeof value === "string" && /^(0|[1-9][0-9]{0,18})$/.test(value) &&
+    BigInt(value) <= 9223372036854775807n;
+}
+export function snapshotRows(raw: unknown, keys: string[]): Row[] {
+  if (!Array.isArray(raw) || raw.length !== keys.length) {
+    throw new ReadError("DASHBOARD_UNAVAILABLE", 502);
+  }
+  const seen = new Set<string>();
+  return raw.map((item) => {
+    const r = object(item);
+    if (
+      typeof r.key !== "string" || !keys.includes(r.key) || seen.has(r.key) ||
+      typeof r.exists !== "boolean" || !validRevision(r.revision) ||
+      (r.valueText !== null && typeof r.valueText !== "string") ||
+      (r.updatedAt !== null &&
+        (typeof r.updatedAt !== "string" ||
+          !Number.isFinite(Date.parse(r.updatedAt)))) ||
+      (r.exists
+        ? r.revision === "0"
+        : r.revision !== "0" || r.valueText !== null || r.updatedAt !== null)
+    ) throw new ReadError("DASHBOARD_UNAVAILABLE", 502);
+    seen.add(r.key);
+    return {
+      key: r.key,
+      value: r.valueText,
+      updated_at: r.updatedAt as string | null,
+      exists: r.exists,
+      revision: r.revision,
+    };
+  });
+}
 export function readDashboard(
   command: Command,
   rows: Row[],
@@ -220,7 +262,9 @@ export function readDashboard(
   for (const row of rows) {
     if (
       !row || !command.keys.includes(row.key) || values.has(row.key) ||
-      !Number.isFinite(Date.parse(row.updated_at))
+      (row.updated_at !== null &&
+        !Number.isFinite(Date.parse(row.updated_at))) ||
+      (row.revision !== undefined && !validRevision(row.revision))
     ) {
       throw new ReadError("INVALID_DASHBOARD_DATA", 502);
     }
@@ -239,40 +283,80 @@ export function readDashboard(
     sources.push({
       key,
       state: values.get(key) == null ? "missing" : "available",
-      updatedAt: sourceRow
+      updatedAt: sourceRow?.updated_at
         ? new Date(sourceRow.updated_at).toISOString()
         : null,
+      revision: sourceRow ? sourceRow.revision ?? null : "0",
+    });
+  }
+  function inbox(): RecordValue[] {
+    const value = values.get("inbox_v1");
+    if (value == null) return [];
+    const revision = sources.find((source) => source.key === "inbox_v1")
+      ?.revision ?? null;
+    const ids = new Set<string>();
+    return records(value).map((item) => {
+      const id = text(item.id), received = text(item.date);
+      if (!id || ids.has(id) || !Number.isFinite(Date.parse(received))) {
+        throw new ReadError("INVALID_DASHBOARD_DATA", 502);
+      }
+      ids.add(id);
+      return {
+        id,
+        text: text(item.text),
+        date: new Date(received).toISOString(),
+        expectedRevision: revision,
+      };
     });
   }
   function tasks(): RecordValue[] {
     return command.dates.flatMap((day) => {
       const value = values.get("goals:" + day);
-      return value == null ? [] : records(value).map((r, index) => ({
-        reference: `${day}:${index}`,
-        date: day,
-        title: text(r.text),
-        done: flag(r.done),
-        estimatedMin: optionalNumber(r.estimatedMin),
-        sphere: optionalText(r.sphere),
-        difficulty: optionalText(r.difficulty),
-        subtasks: r.subtasks == null ? [] : records(r.subtasks).map((s) => ({
-          title: text(s.text),
-          done: flag(s.done),
-        })),
-      }));
+      const revision = rows.find((r) => r.key === "goals:" + day)?.revision ??
+        null;
+      const ids = new Set<string>();
+      return value == null ? [] : records(value).map((r, index) => {
+        const id = optionalText(r.id);
+        if (id !== null) {
+          if (!id || ids.has(id)) {
+            throw new ReadError("INVALID_DASHBOARD_DATA", 502);
+          }
+          ids.add(id);
+        }
+        return {
+          id,
+          expectedRevision: revision,
+          reference: `${day}:${index}`,
+          date: day,
+          title: text(r.text),
+          done: flag(r.done),
+          estimatedMin: optionalNumber(r.estimatedMin),
+          sphere: optionalText(r.sphere),
+          difficulty: optionalText(r.difficulty),
+          subtasks: r.subtasks == null ? [] : records(r.subtasks).map((s) => ({
+            title: text(s.text),
+            done: flag(s.done),
+          })),
+        };
+      });
     });
   }
   function goals(): RecordValue[] {
     const value = values.get("horizons_goals_v2");
     if (value == null) return [];
     const ids = new Set<string>();
-    const result = records(object(value).goals).map((g) => {
-      const id = text(g.id), horizon = text(g.horizon);
+    const revision =
+      rows.find((r) => r.key === "horizons_goals_v2")?.revision ?? null;
+    const result = records(object(value).goals).map((g, index) => {
+      const id = optionalText(g.id), horizon = text(g.horizon);
       if (
-        !id || ids.has(id) || !horizons.includes(horizon) ||
+        (id !== null && (!id || ids.has(id))) || !horizons.includes(horizon) ||
         !["check", "number"].includes(String(g.type))
       ) throw new ReadError("INVALID_DASHBOARD_DATA", 502);
-      ids.add(id);
+      if (id !== null) ids.add(id);
+      else if (!warnings.includes("legacy_goal_id")) {
+        warnings.push("legacy_goal_id");
+      }
       const validPeriod = period(horizon, g.periodKey);
       if (!validPeriod && !warnings.includes("legacy_goal_period")) {
         warnings.push("legacy_goal_period");
@@ -282,6 +366,8 @@ export function readDashboard(
         : null;
       return {
         id,
+        reference: `goal:${index}`,
+        expectedRevision: revision,
         title: text(g.title),
         horizon,
         periodKey: validPeriod ? g.periodKey : null,
@@ -303,7 +389,8 @@ export function readDashboard(
         Number(a.done) - Number(b.done) ||
         ["p1", "p2", "p3", "p4", null].indexOf(a.priority as string | null) -
           ["p1", "p2", "p3", "p4", null].indexOf(b.priority as string | null) ||
-        Number(a.order ?? 0) - Number(b.order ?? 0) || a.id.localeCompare(b.id)
+        Number(a.order ?? 0) - Number(b.order ?? 0) ||
+        (a.id ?? a.reference).localeCompare(b.id ?? b.reference)
       );
   }
   function tracker(days: string[]): RecordValue[] {
@@ -368,6 +455,8 @@ export function readDashboard(
       ? goals()
       : command.operation === "get_tracker"
       ? tracker(command.dates)
+      : command.operation === "get_inbox"
+      ? inbox()
       : tasks();
     data = {
       items: items.slice(command.cursor, command.cursor + command.limit),

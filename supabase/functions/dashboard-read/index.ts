@@ -8,6 +8,8 @@ function environment(): Environment {
       Deno.env.get("DASHBOARD_AGENT_TOKEN_SHA256") ?? "",
     DASHBOARD_AGENT_EXPIRES_AT: Deno.env.get("DASHBOARD_AGENT_EXPIRES_AT") ??
       "",
+    DASHBOARD_AGENT_INBOX_READ_ENABLED:
+      Deno.env.get("DASHBOARD_AGENT_INBOX_READ_ENABLED") ?? "",
   };
 }
 export default {

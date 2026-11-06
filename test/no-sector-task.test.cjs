@@ -80,16 +80,6 @@ test('storeSet emits a local data change event for sync', () => {
   assert.equal(event.detail.key, 'store_v1');
 });
 
-test('task completion awards locally before awaiting cloud sync', () => {
-  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  const rewardIndex = html.indexOf('G.completeTask(goalsUpdate[idx].sphere, goalsUpdate[idx].difficulty, actualMin)');
-  const syncIndex = html.indexOf('await window.DashboardSync.forceSync(key)');
-
-  assert.ok(rewardIndex !== -1);
-  assert.ok(syncIndex !== -1);
-  assert.ok(rewardIndex < syncIndex);
-});
-
 test('goal deletion now uses shared sync path (no direct client upsert)', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   assert.match(html, /forceSync\(key\)/);

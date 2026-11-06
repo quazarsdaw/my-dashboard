@@ -40,7 +40,7 @@
   }
 
   /* ── State ── */
-  var SYNC_VERSION = '26-sb';
+  var SYNC_VERSION = '27-cas';
   var currentUser = null;
   var syncEnabled = false;
   var isSyncing = false; // true while applying cloud data to localStorage
@@ -51,6 +51,11 @@
   var subscription = null;
   var syncPollTimer = null;
   var pageSyncListenersInstalled = false;
+  var authGeneration = 0;
+  var casMode = 0, casOwner = null, casStates = {}, casHydrated = false;
+  var casCapabilities = null, casPreviousOwner = null, casQueues = {};
+  var CAS_PREFIX = '_sync_cas_v2:';
+  var CAS_DISPLAY_OWNER = '_sync_cas_display_owner_v2';
 
   var SYNC_META_KEY = '_sync_meta_v1';
   var DELETE_META_KEY = '_sync_deleted_v1';
@@ -80,6 +85,7 @@
     if (key.indexOf('firebase:') === 0) return true;
     if (key.indexOf('openrouter_') === 0) return true;
     if (key.indexOf('_eye_break_') === 0 || key.indexOf('_habit_reward_') === 0) return true;
+    if (key.indexOf('_sync_cas_') === 0) return true;
     return false;
   }
 
@@ -127,6 +133,16 @@
     var userChanged = (!currentUser && user) || (currentUser && !user) || (currentUser && user && currentUser.id !== user.id);
     if (userChanged) pullGeneration += 1;
     var previousSyncUser = readSyncUserId();
+    if (userChanged) {
+      if (casMode === 2 && casOwner) {
+        Object.keys(casStates).forEach(function(key) { casStates[key] = window.DashboardSyncCore.reduce(casStates[key], { type: 'account_changed' }).state; });
+        persistCas();
+      }
+      authGeneration += 1;
+      casPreviousOwner = localStorage.getItem(CAS_DISPLAY_OWNER) || previousSyncUser;
+      casMode = 0; casOwner = null; casStates = {}; casCapabilities = null; casHydrated = false;
+      window.dispatchEvent(new CustomEvent('dashboard-sync-owner-changed'));
+    }
 
     if (currentUser && user && currentUser.id !== user.id) {
       resetSyncState();
@@ -278,9 +294,10 @@
     
     if (key) {
       pendingKeys[key] = true;
+      noteCasLocal(key);
     } else {
       // If no key provided, mark all for sync (full sync)
-      getAllSyncKeys().forEach(function(k) { pendingKeys[k] = true; });
+      getAllSyncKeys().forEach(function(k) { pendingKeys[k] = true; noteCasLocal(k); });
     }
 
     clearTimeout(syncDebounceTimer);
@@ -330,6 +347,132 @@
     writeLocalMeta(meta);
   }
 
+  function protectedKey(key) {
+    return key === 'horizons_goals_v2' || key === 'inbox_v1' || key === 'backlog_tasks_v1' ||
+      /^goals:\d{4}-\d{2}-\d{2}$/.test(key);
+  }
+
+  function missingSnapshot(key) {
+    return { key: key, exists: false, valueText: null, revision: '0', updatedAt: null };
+  }
+
+  function persistCas() {
+    if (casMode !== 2 || !casOwner) return;
+    rawSetItem(CAS_PREFIX + casOwner, JSON.stringify({ version: 2, owner: casOwner, documents: casStates }));
+  }
+
+  function getCasState(key) {
+    if (!casStates[key]) {
+      casStates[key] = window.DashboardSyncCore.create(casOwner, key);
+      if (casHydrated) casStates[key].base = missingSnapshot(key);
+    }
+    return casStates[key];
+  }
+
+  function applyCasEvent(key, event) {
+    var outcome = window.DashboardSyncCore.reduce(getCasState(key), event);
+    casStates[key] = outcome.state;
+    var changed = false;
+    outcome.effects.forEach(function(effect) {
+      if (effect.type !== 'apply' || localStorage.getItem(key) === effect.valueText) return;
+      if (effect.valueText === null) rawRemoveItem(key); else rawSetItem(key, effect.valueText);
+      changed = true;
+    });
+    return { state: outcome.state, effects: outcome.effects, changed: changed };
+  }
+
+  function noteCasLocal(key) {
+    if (casMode !== 2 || casOwner !== (currentUser && currentUser.id) || !protectedKey(key)) return;
+    applyCasEvent(key, { type: 'local_edit', valueText: localStorage.getItem(key) });
+    persistCas();
+  }
+
+  function initializeCas(owner) {
+    if (!window.DashboardSyncCore) throw new Error('SYNC_CORE_MISSING');
+    var saved = localStorage.getItem(CAS_PREFIX + owner);
+    var stored = saved ? JSON.parse(saved) : { version: 2, owner: owner, documents: {} };
+    if (!stored || stored.version !== 2 || stored.owner !== owner || !stored.documents || typeof stored.documents !== 'object' || Array.isArray(stored.documents)) throw new Error('INVALID_SYNC_CACHE');
+    Object.keys(stored.documents).forEach(function(key) {
+      var state = stored.documents[key];
+      if (!protectedKey(key) || !state || state.owner !== owner || state.key !== key ||
+          !Number.isSafeInteger(state.localEpoch) || state.localEpoch < 0 ||
+          (state.base !== null && !window.DashboardSyncCore.validSnapshot(state.base, key)) ||
+          (state.dirty !== null && (!state.dirty || !Number.isSafeInteger(state.dirty.epoch) || state.dirty.epoch !== state.localEpoch || (state.dirty.valueText !== null && typeof state.dirty.valueText !== 'string'))) ||
+          (state.conflict !== null && (!state.conflict || !window.DashboardSyncCore.validSnapshot(state.conflict.remote, key)))) throw new Error('INVALID_SYNC_CACHE');
+      state.inFlight = null;
+    });
+    if (casPreviousOwner && casPreviousOwner !== owner) stashDisplayedOwner();
+    casOwner = owner; casStates = stored.documents; casMode = 2;
+    var changedKeys = [], differentOwner = casPreviousOwner && casPreviousOwner !== owner;
+    if (differentOwner) {
+      getAllSyncKeys().filter(protectedKey).forEach(function(key) { rawRemoveItem(key); changedKeys.push(key); });
+      Object.keys(casStates).forEach(function(key) {
+        var state = casStates[key], value = state.dirty ? state.dirty.valueText : state.base && state.base.valueText;
+        if (value !== null && value !== undefined) rawSetItem(key, value);
+        changedKeys.push(key);
+      });
+    } else {
+      getAllSyncKeys().filter(protectedKey).forEach(function(key) {
+        applyCasEvent(key, { type: 'local_edit', valueText: localStorage.getItem(key) });
+      });
+    }
+    Object.keys(casStates).forEach(function(key) { if (casStates[key].dirty) pendingKeys[key] = true; });
+    rawSetItem(CAS_DISPLAY_OWNER, owner);
+    persistCas();
+    if (changedKeys.length) notifySyncedDataApplied(changedKeys);
+  }
+
+  // preserve guest-time edits in their displayed owner's cache before switching.
+  // this never sends a request and never assigns those values to the next owner.
+  function stashDisplayedOwner() {
+    var owner = localStorage.getItem(CAS_DISPLAY_OWNER);
+    if (!owner || !window.DashboardSyncCore) return;
+    var raw = localStorage.getItem(CAS_PREFIX + owner);
+    var stored = raw ? JSON.parse(raw) : { version: 2, owner: owner, documents: {} };
+    if (!stored || stored.version !== 2 || stored.owner !== owner || !stored.documents || typeof stored.documents !== 'object' || Array.isArray(stored.documents)) throw new Error('INVALID_SYNC_CACHE');
+    var keys = Object.keys(stored.documents);
+    getAllSyncKeys().filter(protectedKey).forEach(function(key) { if (keys.indexOf(key) === -1) keys.push(key); });
+    keys.forEach(function(key) {
+      var state = stored.documents[key] || window.DashboardSyncCore.create(owner, key);
+      if (!protectedKey(key) || state.owner !== owner || state.key !== key || !Number.isSafeInteger(state.localEpoch)) throw new Error('INVALID_SYNC_CACHE');
+      state = window.DashboardSyncCore.reduce(state, { type: 'account_changed' }).state;
+      stored.documents[key] = window.DashboardSyncCore.reduce(state, { type: 'local_edit', valueText: localStorage.getItem(key) }).state;
+    });
+    rawSetItem(CAS_PREFIX + owner, JSON.stringify(stored));
+  }
+
+  function ensureSyncProtocol() {
+    if (!currentUser || !supabase) return Promise.reject(new Error('NO_SESSION'));
+    if (casMode && casOwner === currentUser.id) return Promise.resolve(casMode);
+    if (casCapabilities) return casCapabilities;
+    var owner = currentUser.id, generation = authGeneration;
+    casCapabilities = Promise.resolve().then(function() {
+      return supabase.rpc('dashboard_sync_capabilities', { p_expected_owner: owner });
+    }).then(function(result) {
+      if (!currentUser || currentUser.id !== owner || authGeneration !== generation) throw new Error('OWNER_CHANGED');
+      if (result.error) {
+        if (result.error.code === 'PGRST202' && !result.error.hint && String(result.error.message).indexOf('public.dashboard_sync_capabilities') !== -1) {
+          casMode = 1; casOwner = owner; return 1;
+        }
+        throw new Error('CAPABILITIES_UNAVAILABLE');
+      }
+      if (!result.data || result.data.protocol !== 2 || typeof result.data.guardEnabled !== 'boolean' || typeof result.data.writeEnabled !== 'boolean') throw new Error('INVALID_CAPABILITIES');
+      initializeCas(owner);
+      return 2;
+    }).catch(function(error) {
+      if (authGeneration === generation) casCapabilities = null;
+      throw error;
+    });
+    return casCapabilities;
+  }
+
+  function documentToken(key) {
+    if (!currentUser) return { owner: null, key: key, baseRevision: null, localEpoch: 0 };
+    if (casMode !== 2 || !protectedKey(key)) return { owner: currentUser.id, key: key, baseRevision: null, localEpoch: readLocalMeta()[key] || 0 };
+    var state = getCasState(key);
+    return { owner: currentUser.id, key: key, baseRevision: state.base && state.base.revision, localEpoch: state.localEpoch, remoteRevision: state.conflict && state.conflict.remote.revision };
+  }
+
   // Expose for manual sync
   window.DashboardSync = {
     forceSync: function(key) {
@@ -338,20 +481,192 @@
       if (key) {
         touchLocalKey(key);
         pendingKeys[key] = true;
+        noteCasLocal(key);
       } else {
         getAllSyncKeys().forEach(function(k) {
           touchLocalKey(k);
           pendingKeys[k] = true;
+          noteCasLocal(k);
         });
       }
       return syncPendingChanges();
-    }
+    },
+    getDocumentToken: documentToken,
+    canApplyDocumentToken: function(token) { return !!token && JSON.stringify(token) === JSON.stringify(documentToken(token.key)); },
+    getConflict: conflictReview,
+    listConflicts: function() { return Object.keys(casStates).filter(function(key) { return !!casStates[key].conflict; }); },
+    resolveConflict: resolveConflict
   };
 
-  function syncPendingChanges() {
-    if (!currentUser || !supabase) return Promise.resolve();
+  function conflictReview(key) {
+    if (casMode !== 2 || !currentUser || casOwner !== currentUser.id || !casStates[key] || !casStates[key].conflict) return null;
+    var keys = (casStates[key].conflictKeys || [key]).slice().sort();
+    if (keys.some(function(k) { return !protectedKey(k) || !casStates[k] || !casStates[k].conflict; })) return null;
+    keys.forEach(noteCasLocal);
+    return JSON.parse(JSON.stringify({ owner: casOwner, key: key,
+      token: { owner: casOwner, documents: keys.map(documentToken) },
+      documents: keys.map(function(k) {
+        var state = casStates[k];
+        return { key: k, base: state.conflict.base,
+          local: { valueText: state.dirty ? state.dirty.valueText : localStorage.getItem(k) }, remote: state.conflict.remote };
+      }) }));
+  }
 
-    var keysToPush = Object.keys(pendingKeys);
+  function resolveConflict(key, choice, token) {
+    if (choice !== 'use_remote' && choice !== 'apply_reviewed_local') return Promise.resolve(syncOutcome('invalid_choice', 400));
+    var owner = currentUser && currentUser.id, generation = authGeneration;
+    function matches() {
+      var current = conflictReview(key);
+      return current && JSON.stringify(current.token) === JSON.stringify(token);
+    }
+    if (!owner || !matches()) return Promise.resolve(syncOutcome('conflict_changed'));
+    var queue = (casQueues[owner] || Promise.resolve()).catch(function() {}).then(async function() {
+      if (!currentUser || currentUser.id !== owner || generation !== authGeneration || !matches()) return syncOutcome('conflict_changed');
+      var loaded = await pullFromCloud();
+      if (!loaded || !loaded.ok || !currentUser || currentUser.id !== owner || generation !== authGeneration || !matches()) return syncOutcome('conflict_changed');
+      var keys = token.documents.map(function(item) { return item.key; }), changed = [];
+      keys.forEach(function(k) {
+        var state = getCasState(k);
+        var step = applyCasEvent(k, { type: 'resolve', choice: choice, remoteRevision: state.conflict.remote.revision, localEpoch: state.localEpoch });
+        delete step.state.conflictKeys;
+        // unchanged peers still guard the atomic operation against a new remote
+        // update between review and commit (not only the documents with diffs).
+        if (choice === 'apply_reviewed_local' && !step.state.dirty) step.state.dirty = { valueText: step.state.base.valueText, epoch: step.state.localEpoch };
+        if (step.changed) changed.push(k);
+        if (step.state.dirty) pendingKeys[k] = true; else delete pendingKeys[k];
+      });
+      persistCas();
+      if (changed.length) notifySyncedDataApplied(changed);
+      window.dispatchEvent(new CustomEvent('dashboard-sync-conflict', { detail: { keys: Object.keys(casStates).filter(function(k) { return !!casStates[k].conflict; }) } }));
+      if (choice === 'use_remote') return { ok: true };
+      var result = await pushCasChanges(owner, generation);
+      if (!result.ok && result.error.code === 'save_unavailable' && currentUser && currentUser.id === owner && generation === authGeneration) {
+        var retryKeys = keys.slice();
+        Object.keys(pendingKeys).filter(protectedKey).forEach(function(k) { if (!getCasState(k).conflict && retryKeys.indexOf(k) === -1) retryKeys.push(k); });
+        blockCasGroup(retryKeys);
+      }
+      return result;
+    }).catch(function() { return syncOutcome('sync_unavailable', 502); });
+    casQueues[owner] = queue;
+    return queue;
+  }
+
+  function syncOutcome(code, status) {
+    return { ok: false, error: { code: code, status: status || 409 } };
+  }
+
+  function blockCasGroup(keys, current) {
+    keys.forEach(function(key) {
+      var state = getCasState(key);
+      var remote = (current || []).find(function(row) { return row.key === key; }) ||
+        (state.conflict && state.conflict.remote) || state.base || missingSnapshot(key);
+      if (!window.DashboardSyncCore.validSnapshot(remote, key)) throw new Error('INVALID_SNAPSHOT');
+      casStates[key] = Object.assign({}, state, { inFlight: null, conflict: { base: state.base, remote: remote }, conflictKeys: keys.slice() });
+      delete pendingKeys[key];
+    });
+    persistCas();
+    window.dispatchEvent(new CustomEvent('dashboard-sync-conflict', { detail: { keys: keys } }));
+    return syncOutcome('conflict');
+  }
+
+  async function pushCasChanges(owner, generation) {
+    if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return syncOutcome('owner_changed', 403);
+    // another tab can change a conflicted source before its storage event arrives.
+    Object.keys(casStates).filter(function(key) { return !!casStates[key].conflict; }).forEach(function(key) {
+      var state = casStates[key], displayed = state.dirty ? state.dirty.valueText : state.base && state.base.valueText;
+      if (localStorage.getItem(key) !== displayed) { pendingKeys[key] = true; noteCasLocal(key); }
+    });
+    var keys = Object.keys(pendingKeys).filter(protectedKey), active = [];
+    keys.forEach(function(key) { noteCasLocal(key); });
+    var fresh = keys.filter(function(key) { return !getCasState(key).conflictKeys; });
+    var blocked = keys.some(function(key) { return !!getCasState(key).conflict; });
+    var newConflict = blocked;
+    if (newConflict) {
+      var joined = keys.slice();
+      keys.forEach(function(key) { (getCasState(key).conflictKeys || []).forEach(function(k) { if (joined.indexOf(k) === -1) joined.push(k); }); });
+      blockCasGroup(joined);
+      fresh = [];
+    }
+    var needsBase = fresh.some(function(key) { return getCasState(key).dirty && !getCasState(key).base; });
+    if (needsBase) {
+      await pullFromCloud();
+      if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return syncOutcome('owner_changed', 403);
+      return pushCasChanges(owner, generation);
+    }
+    fresh.forEach(function(key) {
+      var step = applyCasEvent(key, { type: 'push_started' });
+      step.effects.forEach(function(effect) { if (effect.type === 'save') active.push(effect); });
+      if (!step.state.dirty) delete pendingKeys[key];
+    });
+    var bytes = active.reduce(function(total, effect) { return total + new TextEncoder().encode(effect.change.valueText || '').length; }, 0);
+    if (active.length > 64 || bytes > 4194304) {
+      active.forEach(function(effect) { applyCasEvent(effect.change.key, { type: 'push_failed' }); });
+      persistCas();
+      return syncOutcome('request_too_large', 413);
+    }
+    if (active.length) {
+      active.forEach(function(effect) { delete pendingKeys[effect.change.key]; });
+      persistCas();
+      var result;
+      try {
+        result = await supabase.rpc('dashboard_save_documents', { p_expected_owner: owner, p_changes: active.map(function(effect) { return effect.change; }) });
+        if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return syncOutcome('owner_changed', 403);
+        if (result.error || !result.data || typeof result.data.ok !== 'boolean') throw new Error('SAVE_UNAVAILABLE');
+        if (!result.data.ok) {
+          if (result.data.error && result.data.error.code === 'conflict') {
+            var current = result.data.current;
+            var identical = Array.isArray(current) && current.length === active.length && active.every(function(effect) {
+              var matches = current.filter(function(row) { return row.key === effect.change.key; });
+              return matches.length === 1 && window.DashboardSyncCore.validSnapshot(matches[0], effect.change.key) && matches[0].valueText === effect.change.valueText &&
+                window.DashboardSyncCore.compareRevision(matches[0].revision, effect.change.expectedRevision) > 0;
+            });
+            if (!identical) return blockCasGroup(fresh, current);
+            result = { data: { ok: true, data: current }, error: null };
+          } else throw new Error('SAVE_REJECTED');
+        }
+        if (!Array.isArray(result.data.data) || result.data.data.length !== active.length) throw new Error('INVALID_SAVE_RECEIPT');
+        var receiptRows = result.data.data;
+        active.forEach(function(effect) {
+          var matching = receiptRows.filter(function(row) { return row.key === effect.change.key; });
+          if (matching.length !== 1 || !window.DashboardSyncCore.validSnapshot(matching[0], effect.change.key) || matching[0].valueText !== effect.change.valueText ||
+              window.DashboardSyncCore.compareRevision(matching[0].revision, effect.change.expectedRevision) <= 0) throw new Error('INVALID_SAVE_RECEIPT');
+        });
+        active.forEach(function(effect) {
+          var row = receiptRows.find(function(item) { return item.key === effect.change.key; });
+          var state = applyCasEvent(effect.change.key, { type: 'push_ok', snapshot: row, epoch: effect.epoch }).state;
+          if (state.dirty && !state.conflict) pendingKeys[effect.change.key] = true;
+        });
+        persistCas();
+      } catch (error) {
+        if (currentUser && currentUser.id === owner && generation === authGeneration) {
+          active.forEach(function(effect) { applyCasEvent(effect.change.key, { type: 'push_failed' }); pendingKeys[effect.change.key] = true; });
+          persistCas();
+        }
+        return syncOutcome('save_unavailable', 502);
+      }
+    }
+    if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return syncOutcome('owner_changed', 403);
+    await syncLegacyPendingChanges();
+    return blocked || newConflict ? syncOutcome('conflict') : { ok: true };
+  }
+
+  function syncPendingChanges() {
+    if (!currentUser || !supabase) return Promise.resolve(syncOutcome('no_session', 401));
+    var owner = currentUser.id, generation = authGeneration;
+    return ensureSyncProtocol().then(function(mode) {
+      if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return syncOutcome('owner_changed', 403);
+      if (mode === 1) return syncLegacyPendingChanges();
+      var queue = (casQueues[owner] || Promise.resolve()).catch(function() {}).then(function() { return pushCasChanges(owner, generation); });
+      casQueues[owner] = queue;
+      return queue;
+    }).catch(function() { showSyncIndicator('error'); return syncOutcome('sync_unavailable', 502); });
+  }
+
+  function syncLegacyPendingChanges() {
+    if (!currentUser || !supabase) return Promise.resolve();
+    var owner = currentUser.id, generation = authGeneration;
+
+    var keysToPush = Object.keys(pendingKeys).filter(function(key) { return casMode !== 2 || !protectedKey(key); });
     if (keysToPush.length === 0) return Promise.resolve();
 
     var rows = [];
@@ -373,8 +688,8 @@
       });
     });
 
-    var processingKeys = pendingKeys;
-    pendingKeys = {};
+    var processingKeys = {};
+    keysToPush.forEach(function(key) { processingKeys[key] = true; delete pendingKeys[key]; });
 
     lastLocalPushAt = Date.now();
     showSyncIndicator('syncing');
@@ -389,6 +704,7 @@
 
     return Promise.all(operations)
       .then(function(results) {
+        if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return syncOutcome('owner_changed', 403);
         for (var i = 0; i < results.length; i++) {
           if (results[i] && results[i].error) {
             console.error('[Supabase Sync] Ошибка сохранения:', results[i].error.message);
@@ -404,6 +720,7 @@
         return results;
       })
       .catch(function(err) {
+        if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return syncOutcome('owner_changed', 403);
         console.error('[Supabase Sync] Critical error:', err);
         Object.assign(pendingKeys, processingKeys);
         showSyncIndicator('error');
@@ -412,7 +729,8 @@
   }
 
   function pushAllToCloud() {
-    schedulePush(null);
+    getAllSyncKeys().forEach(function(key) { pendingKeys[key] = true; noteCasLocal(key); });
+    return syncPendingChanges();
   }
 
   function markMissingLocalKeysAfterSync(remoteRows) {
@@ -423,6 +741,7 @@
       remoteSet[remoteRows[i].key] = true;
     }
     getAllSyncKeys().forEach(function (k) {
+      if (casMode === 2 && protectedKey(k)) return;
       if (remoteSet[k]) return;
       pendingKeys[k] = true;
       touchLocalKey(k);
@@ -479,6 +798,8 @@
         table: 'user_data',
         filter: 'user_id=eq.' + currentUser.id
       }, function(payload) {
+        var eventKey = payload.new && payload.new.key || payload.old && payload.old.key;
+        if (protectedKey(eventKey) && casMode !== 1) { pullFromCloud().catch(function() {}); return; }
         // IGNORE changes if we just pushed something ourselves (< 3 seconds ago)
         // This prevents the "flicker" effect.
         if (Date.now() - lastLocalPushAt < 3000) {
@@ -497,18 +818,26 @@
     stopSyncPolling();
   }
 
-  async function fetchAllUserData(client, userId) {
+  async function fetchAllUserData(client, userId, mode) {
     var rows = [], cursor = null, seen = new Set();
     while (true) {
-      var query = client.from('user_data').select('key, value, updated_at').eq('user_id', userId).order('key', { ascending: true }).limit(500);
-      if (cursor !== null) query = query.gt('key', cursor);
-      var response = await query;
+      var response;
+      if (mode === 2) response = await client.rpc('dashboard_read_user_data', { p_after_key: cursor, p_limit: 500, p_expected_owner: userId });
+      else {
+        var query = client.from('user_data').select('key, value, updated_at').eq('user_id', userId).order('key', { ascending: true }).limit(500);
+        if (cursor !== null) query = query.gt('key', cursor);
+        response = await query;
+      }
       if (response.error) throw new Error('CLOUD_PAGE_FAILED');
       if (!Array.isArray(response.data)) throw new Error('INVALID_CLOUD_PAGE');
       if (!response.data.length) return rows;
       for (var i = 0; i < response.data.length; i++) {
         var row = response.data[i];
         if (!row || typeof row.key !== 'string' || seen.has(row.key)) throw new Error('INVALID_CLOUD_CURSOR');
+        if (mode === 2) {
+          if (!window.DashboardSyncCore.validSnapshot(row, row.key)) throw new Error('INVALID_CLOUD_SNAPSHOT');
+          row = Object.assign({}, row, { value: row.valueText, updated_at: row.updatedAt });
+        }
         seen.add(row.key); rows.push(row);
       }
       var nextCursor = response.data[response.data.length - 1].key;
@@ -520,16 +849,26 @@
   function pullFromCloud() {
     if (!currentUser || !supabase) return Promise.resolve();
     var userId = currentUser.id, generation = ++pullGeneration;
-    return fetchAllUserData(supabase, userId)
+    return ensureSyncProtocol().then(function(mode) { return fetchAllUserData(supabase, userId, mode); })
       .then(function(rows) {
-        if (!currentUser || currentUser.id !== userId || generation !== pullGeneration) return;
+        if (!currentUser || currentUser.id !== userId || generation !== pullGeneration) return { ok: false };
         isSyncing = true;
         try {
           var changedKeys = [];
           var localMeta = readLocalMeta();
           var hasMetaUpdates = false;
+          var protectedSeen = {};
+          var initialVersionedPull = casMode === 2 && !casHydrated;
           rows.forEach(function(row) {
             if (shouldSkipStorageKey(row.key)) return;
+            if (casMode === 2 && protectedKey(row.key)) {
+              protectedSeen[row.key] = true;
+              var known = casStates[row.key];
+              if ((known && (known.base || known.dirty)) || localStorage.getItem(row.key) !== null) noteCasLocal(row.key);
+              // A pre-auth editor may have rendered the same bytes with a different owner/token.
+              if (applyCasEvent(row.key, { type: 'remote', snapshot: row }).changed || initialVersionedPull) changedKeys.push(row.key);
+              return;
+            }
             var cloudTime = new Date(row.updated_at).getTime();
             var localTime = localMeta[row.key] || 0;
             
@@ -553,6 +892,24 @@
               }
             }
           });
+          if (casMode === 2) {
+            Object.keys(casStates).forEach(function(key) {
+              if (!protectedSeen[key]) {
+                var known = casStates[key];
+                if (known.base || known.dirty || localStorage.getItem(key) !== null) noteCasLocal(key);
+                if (applyCasEvent(key, { type: 'remote', snapshot: missingSnapshot(key) }).changed || initialVersionedPull) changedKeys.push(key);
+              }
+            });
+            casHydrated = true;
+            persistCas();
+            var conflicts = Object.keys(casStates).filter(function(key) { return !!casStates[key].conflict; });
+            var ungrouped = conflicts.filter(function(key) { return !casStates[key].conflictKeys; });
+            if (ungrouped.length) {
+              var group = Object.keys(casStates).filter(function(key) { return !casStates[key].conflictKeys && (casStates[key].dirty || casStates[key].conflict || pendingKeys[key]); });
+              blockCasGroup(group);
+            }
+            if (conflicts.length) window.dispatchEvent(new CustomEvent('dashboard-sync-conflict', { detail: { keys: conflicts } }));
+          }
           markMissingLocalKeysAfterSync(rows);
           if (changedKeys.length > 0 || hasMetaUpdates) {
             writeLocalMeta(localMeta);
@@ -560,6 +917,7 @@
           }
         } finally { isSyncing = false; }
         showSyncIndicator('synced');
+        return { ok: true };
       })
       .catch(function(err) {
         if (!currentUser || currentUser.id !== userId || generation !== pullGeneration) return;
@@ -727,8 +1085,12 @@
         console.warn('Supabase: Невозможно удалить данные (нет сессии)');
         return Promise.resolve({ error: 'No session' });
       }
-      console.log('Supabase: Удаление облачных данных для', currentUser.id);
-      return supabase.from('user_data').delete().eq('user_id', currentUser.id);
+      var owner = currentUser.id, generation = authGeneration;
+      return ensureSyncProtocol().then(function(mode) {
+        if (mode === 2) return { error: { code: 'protected_reset', message: 'Сброс защищённых задач и целей требует отдельного контролируемого решения. Локальные данные сохранены.' } };
+        if (!currentUser || currentUser.id !== owner || generation !== authGeneration) return { error: { code: 'owner_changed', message: 'Аккаунт изменился.' } };
+        return supabase.from('user_data').delete().eq('user_id', owner);
+      }).catch(function() { return { error: { code: 'sync_unavailable', message: 'Не удалось проверить защиту данных. Сброс отменён.' } }; });
     }
   };
 
